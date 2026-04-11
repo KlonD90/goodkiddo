@@ -2,7 +2,7 @@ import { ChatAnthropic } from "@langchain/anthropic";
 import { createFilesystemMiddleware } from "deepagents";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "../backends";
-import MAIN_MD from "../identities/MAIN.md?raw";
+import MAIN_MD from "../identities/DO_IT.md";
 import { createExecutionToolset } from "../tools";
 
 console.log("Main MD:", MAIN_MD);
