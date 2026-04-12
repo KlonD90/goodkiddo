@@ -1,16 +1,18 @@
-import { ChatAnthropic } from "@langchain/anthropic";
-import { createFilesystemMiddleware } from "deepagents";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "../backends";
-import MAIN_MD from "../identities/DO_IT.md";
+import DO_IT_MD from "../identities/DO_IT.md?raw";
 import { createExecutionToolset } from "../tools";
+import { modelChooser } from "../model/model_chooser";
+import { AI_API_KEY, AI_MODEL_NAME, AI_BASE_URL, AI_TYPE } from "../config";
 
-console.log("Main MD:", MAIN_MD);
+console.log("Main MD:", DO_IT_MD);
 
-const model = new ChatAnthropic({
-  modelName: "google/gemma-4-26b-a4b",
-  anthropicApiUrl: "http://localhost:1234",
-});
+console.log("AI_TYPE:", AI_TYPE);
+console.log("AI_MODEL_NAME:", AI_MODEL_NAME);
+console.log("AI_API_KEY:", AI_API_KEY);
+console.log("AI_BASE_URL:", AI_BASE_URL);
+
+const model = modelChooser(AI_TYPE, AI_MODEL_NAME, AI_API_KEY, AI_BASE_URL);
 
 const workspace = new SqliteStateBackend({
   dbPath: "./state.db",
@@ -23,7 +25,7 @@ const tools = await createExecutionToolset({
     backend: "auto",
     docker: {
       image: "top-fedder-dev:latest",
-      allowUnsafeNetwork: false,
+      allowUnsafeNetwork: true,
     },
   },
 });
@@ -31,12 +33,7 @@ const tools = await createExecutionToolset({
 const agent = createAgent({
   model: model,
   tools,
-  systemPrompt: MAIN_MD,
-  middleware: [
-    createFilesystemMiddleware({
-      backend: workspace,
-    }),
-  ],
+  systemPrompt: DO_IT_MD,
 });
 
 const stream = agent.streamEvents({
@@ -44,7 +41,7 @@ const stream = agent.streamEvents({
     {
       role: "user",
       content:
-        "Write a Python script called hello.py that prints 'Hello from the execution tool', execute it, and tell me the exit code.",
+        "Write little script with bun that will take file host.txt with google.com and ya.ru (file with list of hosts) and fetch each host and return http status code for each host. Execute it please then and tell me how result.",
     },
   ],
 });
@@ -53,7 +50,7 @@ let counter = 0;
 for await (const message of stream) {
   console.log(message);
   counter++;
-  if (counter > 100) {
+  if (counter > 300) {
     break;
   }
 }
