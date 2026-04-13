@@ -43,6 +43,13 @@ Run the project:
 ./dev.sh
 ```
 
+If the required env vars are missing, the bot now starts a terminal wizard. Pick-one fields use a movable arrow-key selector, and text fields explain what each value is for before continuing.
+
+Available entrypoints:
+
+- `cli`: runs the current local CLI bot flow
+- `telegram`: starts a Telegram polling bot using `TELEGRAM_BOT_TOKEN`
+
 What `dev.sh` does:
 
 - installs dependencies if needed

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	type AppEntrypoint,
 	checkAiType,
+	checkAppEntrypoint,
 	checkUsingMode,
 	type SupportedAiTypes,
 	type UsingMode,
@@ -52,5 +54,28 @@ describe("checkUsingMode", () => {
 
 		const narrowed: UsingMode = value;
 		expect(narrowed).toBe("multi");
+	});
+});
+
+describe("checkAppEntrypoint", () => {
+	test("accepts supported app entrypoints", () => {
+		expect(checkAppEntrypoint("cli")).toBe(true);
+		expect(checkAppEntrypoint("telegram")).toBe(true);
+	});
+
+	test("rejects unsupported app entrypoints", () => {
+		expect(checkAppEntrypoint("")).toBe(false);
+		expect(checkAppEntrypoint("web")).toBe(false);
+	});
+
+	test("narrows strings to AppEntrypoint", () => {
+		const value = "telegram" as string;
+
+		if (!checkAppEntrypoint(value)) {
+			throw new Error("expected value to be supported");
+		}
+
+		const narrowed: AppEntrypoint = value;
+		expect(narrowed).toBe("telegram");
 	});
 });

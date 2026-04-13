@@ -13,12 +13,14 @@ import type {
 	WriteResult,
 } from "deepagents";
 import { createFilesystemMiddleware } from "deepagents";
+import {
+	fileDataToString,
+	formatReadResponse,
+} from "../utils/filesystem";
 
 const DEFAULT_DB_PATH = "./.top-fedder/state.sqlite";
 const DEFAULT_NAMESPACE = "default";
-const EMPTY_CONTENT_WARNING =
-	"System reminder: File exists but has empty contents";
-const MAX_LINE_LENGTH = 10_000;
+const BINARY_CONTENT_PREFIX = "__top_fedder_binary__:";
 
 type SqliteFileRow = {
 	path: string;
@@ -62,8 +64,27 @@ function splitContent(content: string): string[] {
 	return content.split("\n");
 }
 
-function fileDataToString(fileData: FileData): string {
-	return fileData.content.join("\n");
+function encodeStoredContent(bytes: Uint8Array): string {
+	const decoded = new TextDecoder().decode(bytes);
+	const reencoded = new TextEncoder().encode(decoded);
+	const isRoundTripEqual =
+		reencoded.length === bytes.length &&
+		reencoded.every((value, index) => value === bytes[index]);
+
+	if (isRoundTripEqual) {
+		return decoded;
+	}
+
+	return `${BINARY_CONTENT_PREFIX}${Buffer.from(bytes).toString("base64")}`;
+}
+
+function decodeStoredContent(content: string): Uint8Array {
+	if (!content.startsWith(BINARY_CONTENT_PREFIX)) {
+		return new TextEncoder().encode(content);
+	}
+
+	const base64 = content.slice(BINARY_CONTENT_PREFIX.length);
+	return Uint8Array.from(Buffer.from(base64, "base64"));
 }
 
 function createFileData(content: string, createdAt?: string): FileData {
@@ -81,56 +102,6 @@ function updateFileData(existing: FileData, content: string): FileData {
 		created_at: existing.created_at,
 		modified_at: new Date().toISOString(),
 	};
-}
-
-function formatContentWithLineNumbers(
-	content: string[],
-	startLine = 1,
-): string {
-	const result: string[] = [];
-
-	for (let index = 0; index < content.length; index += 1) {
-		const line = content[index] ?? "";
-		const lineNumber = index + startLine;
-
-		if (line.length <= MAX_LINE_LENGTH) {
-			result.push(`${lineNumber.toString().padStart(6)}\t${line}`);
-			continue;
-		}
-
-		const chunks = Math.ceil(line.length / MAX_LINE_LENGTH);
-		for (let chunkIndex = 0; chunkIndex < chunks; chunkIndex += 1) {
-			const start = chunkIndex * MAX_LINE_LENGTH;
-			const end = Math.min(start + MAX_LINE_LENGTH, line.length);
-			const chunk = line.slice(start, end);
-			const marker =
-				chunkIndex === 0
-					? lineNumber.toString()
-					: `${lineNumber}.${chunkIndex}`;
-			result.push(`${marker.padStart(6)}\t${chunk}`);
-		}
-	}
-
-	return result.join("\n");
-}
-
-function formatReadResponse(
-	fileData: FileData,
-	offset: number,
-	limit: number,
-): string {
-	const content = fileDataToString(fileData);
-	if (content.trim() === "") return EMPTY_CONTENT_WARNING;
-
-	const lines = splitContent(content);
-	const start = offset;
-	const end = Math.min(start + limit, lines.length);
-
-	if (start >= lines.length) {
-		return `Error: Line offset ${offset} exceeds file length (${lines.length} lines)`;
-	}
-
-	return formatContentWithLineNumbers(lines.slice(start, end), start + 1);
 }
 
 function performStringReplacement(
@@ -437,7 +408,7 @@ export class SqliteStateBackend implements BackendProtocol {
 				const normalizedPath = normalizePath(filePath, "file");
 				const existing = this.getRow(normalizedPath);
 				const fileData = createFileData(
-					new TextDecoder().decode(bytes),
+					encodeStoredContent(bytes),
 					existing?.created_at,
 				);
 				upsertStatement.run(
@@ -468,7 +439,7 @@ export class SqliteStateBackend implements BackendProtocol {
 
 				return {
 					path: normalizedPath,
-					content: new TextEncoder().encode(row.content),
+					content: decodeStoredContent(row.content),
 					error: null,
 				};
 			} catch {

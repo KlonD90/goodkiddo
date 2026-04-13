@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "bun src/bin/bot.ts",
+    "start:telegram": "APP_ENTRYPOINT=telegram bun src/bin/bot.ts",
     "test": "bun test",
     "format": "biome check --write src/**/*.ts --unsafe",
     "lint": "biome lint src/**/*.ts"
