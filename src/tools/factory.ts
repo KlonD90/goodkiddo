@@ -32,11 +32,11 @@ export async function createExecutionToolset(
 
   return [
     createLsTool(options.workspace),
-    createGlobTool(options.workspace),
-    createGrepTool(options.workspace),
     createReadFileTool(options.workspace),
     createWriteFileTool(options.workspace),
     createEditFileTool(options.workspace),
+    createGlobTool(options.workspace),
+    createGrepTool(options.workspace),
     createExecuteWorkspaceTool(orchestrator, options.workspace),
   ];
 }
