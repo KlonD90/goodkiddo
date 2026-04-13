@@ -13,6 +13,7 @@ import type {
 	WriteResult,
 } from "deepagents";
 import { createFilesystemMiddleware } from "deepagents";
+import { getMimeType, isTextMimeType } from "../utils/mime.js";
 
 const DEFAULT_DB_PATH = "./.top-fedder/state.sqlite";
 const DEFAULT_NAMESPACE = "default";
@@ -436,10 +437,11 @@ export class SqliteStateBackend implements BackendProtocol {
 			try {
 				const normalizedPath = normalizePath(filePath, "file");
 				const existing = this.getRow(normalizedPath);
-				const fileData = createFileData(
-					new TextDecoder().decode(bytes),
-					existing?.created_at,
-				);
+				const mime = getMimeType(filePath);
+				const content = isTextMimeType(mime)
+					? new TextDecoder().decode(bytes)
+					: Buffer.from(bytes).toString("base64");
+				const fileData = createFileData(content, existing?.created_at);
 				upsertStatement.run(
 					this.namespace,
 					normalizedPath,
@@ -466,11 +468,12 @@ export class SqliteStateBackend implements BackendProtocol {
 						error: "file_not_found",
 					};
 
-				return {
-					path: normalizedPath,
-					content: new TextEncoder().encode(row.content),
-					error: null,
-				};
+				const mime = getMimeType(filePath);
+				const content = isTextMimeType(mime)
+					? new TextEncoder().encode(row.content)
+					: new Uint8Array(Buffer.from(row.content, "base64"));
+
+				return { path: normalizedPath, content, error: null };
 			} catch {
 				return { path: filePath, content: null, error: "invalid_path" };
 			}

@@ -7,7 +7,14 @@ import {
   createExecuteScriptTool,
   createExecuteWorkspaceTool,
 } from "./execute_tools";
-import { createReadFileTool, createWriteFileTool } from "./filesystem_tools";
+import {
+  createEditFileTool,
+  createGlobTool,
+  createGrepTool,
+  createLsTool,
+  createReadFileTool,
+  createWriteFileTool,
+} from "./filesystem_tools";
 
 export interface CreateExecutionToolsetOptions {
   workspace: WorkspaceBackend;
@@ -25,8 +32,12 @@ export async function createExecutionToolset(
   });
 
   return [
+    createLsTool(options.workspace),
     createReadFileTool(options.workspace),
     createWriteFileTool(options.workspace),
+    createEditFileTool(options.workspace),
+    createGlobTool(options.workspace),
+    createGrepTool(options.workspace),
     createExecuteWorkspaceTool(orchestrator, options.workspace),
   ];
 }

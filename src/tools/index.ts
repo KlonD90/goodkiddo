@@ -4,4 +4,11 @@ export {
 	createExecuteWorkspaceTool,
 } from "./execute_tools";
 export { createExecutionToolset } from "./factory";
-export { createReadFileTool, createWriteFileTool } from "./filesystem_tools";
+export {
+	createEditFileTool,
+	createGlobTool,
+	createGrepTool,
+	createLsTool,
+	createReadFileTool,
+	createWriteFileTool,
+} from "./filesystem_tools";
