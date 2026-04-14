@@ -22,8 +22,18 @@ describe("engine.resolveDecision", () => {
 
 	test("first match wins by priority", () => {
 		const rules: ToolRule[] = [
-			baseRule({ id: 1, priority: 50, toolName: "write_file", decision: "deny" }),
-			baseRule({ id: 2, priority: 10, toolName: "write_file", decision: "allow" }),
+			baseRule({
+				id: 1,
+				priority: 50,
+				toolName: "write_file",
+				decision: "deny",
+			}),
+			baseRule({
+				id: 2,
+				priority: 10,
+				toolName: "write_file",
+				decision: "allow",
+			}),
 		];
 		const resolved = resolveDecision(rules, "write_file", {});
 		expect(resolved.decision).toBe("allow");
@@ -57,8 +67,7 @@ describe("engine.resolveDecision", () => {
 				.decision,
 		).toBe("allow");
 		expect(
-			resolveDecision(rules, "write_file", { file_path: "secret.md" })
-				.decision,
+			resolveDecision(rules, "write_file", { file_path: "secret.md" }).decision,
 		).toBe("deny");
 	});
 });

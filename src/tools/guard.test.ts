@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { tool } from "langchain";
 import { z } from "zod";
-import {
-	type ApprovalBroker,
-	type ApprovalOutcome,
-	type ApprovalRequest,
+import type {
+	ApprovalBroker,
+	ApprovalOutcome,
+	ApprovalRequest,
 } from "../permissions/approval";
 import { NoopAuditLogger } from "../permissions/audit";
 import { PermissionsStore } from "../permissions/store";
@@ -55,7 +55,9 @@ describe("wrapToolWithGuard", () => {
 			broker,
 			audit: new NoopAuditLogger(),
 		});
-		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({ value: "x" });
+		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
+			value: "x",
+		});
 		expect(result).toBe("ran:x");
 		expect(broker.lastRequest).toBeNull();
 	});
@@ -74,7 +76,9 @@ describe("wrapToolWithGuard", () => {
 			broker,
 			audit: new NoopAuditLogger(),
 		});
-		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({ value: "x" });
+		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
+			value: "x",
+		});
 		expect(result).toMatch(/Permission denied by policy/);
 		expect(broker.lastRequest).toBeNull();
 	});
@@ -87,7 +91,9 @@ describe("wrapToolWithGuard", () => {
 			broker,
 			audit: new NoopAuditLogger(),
 		});
-		const result = await wrapped.invoke({ value: "y" });
+		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
+			value: "y",
+		});
 		expect(result).toBe("ran:y");
 		expect(broker.lastRequest?.toolName).toBe("sample");
 	});
@@ -100,7 +106,9 @@ describe("wrapToolWithGuard", () => {
 			broker,
 			audit: new NoopAuditLogger(),
 		});
-		const result = await wrapped.invoke({ value: "z" });
+		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
+			value: "z",
+		});
 		expect(result).toMatch(/Permission denied by user/);
 	});
 });

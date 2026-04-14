@@ -1,9 +1,6 @@
 import { tool } from "langchain";
+import { type ApprovalBroker, outcomeApproves } from "../permissions/approval";
 import type { AuditLogger } from "../permissions/audit";
-import {
-	type ApprovalBroker,
-	outcomeApproves,
-} from "../permissions/approval";
 import { resolveDecision } from "../permissions/engine";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";

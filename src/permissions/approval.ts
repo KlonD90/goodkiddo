@@ -1,5 +1,5 @@
-import * as readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import * as readline from "node:readline/promises";
 import type { PermissionsStore } from "./store";
 import type { ArgumentMatcher, Caller } from "./types";
 
@@ -29,13 +29,19 @@ function summarizeArgs(args: unknown): string {
 	}
 }
 
-export function deriveArgMatcherForAlways(args: unknown): ArgumentMatcher | null {
+export function deriveArgMatcherForAlways(
+	args: unknown,
+): ArgumentMatcher | null {
 	if (args === null || typeof args !== "object" || Array.isArray(args)) {
 		return null;
 	}
 	const matcher: ArgumentMatcher = {};
 	for (const [key, value] of Object.entries(args as Record<string, unknown>)) {
-		if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+		if (
+			typeof value === "string" ||
+			typeof value === "number" ||
+			typeof value === "boolean"
+		) {
 			matcher[key] = { eq: value };
 		}
 	}

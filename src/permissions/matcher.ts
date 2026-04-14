@@ -43,7 +43,10 @@ function globToRegex(pattern: string): RegExp {
 	return new RegExp(result);
 }
 
-function evaluateOperator(operator: ArgumentOperator, actual: unknown): boolean {
+function evaluateOperator(
+	operator: ArgumentOperator,
+	actual: unknown,
+): boolean {
 	if ("eq" in operator) {
 		return deepEquals(operator.eq, actual);
 	}
