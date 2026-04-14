@@ -5,3 +5,4 @@ node_modules/
 state.db*
 .claude
 .tmp
+permissions.log

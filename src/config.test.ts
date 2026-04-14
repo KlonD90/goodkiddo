@@ -84,6 +84,9 @@ describe("config", () => {
 					telegramAllowedChatId: "12345",
 					telegramBotToken: "telegram-token",
 					usingMode: "multi",
+					blockedUserMessage: "Access not configured. Contact the admin.",
+					permissionsMode: "enforce",
+					stateDbPath: "./state.db",
 				});
 			},
 		);
@@ -146,6 +149,9 @@ describe("config", () => {
 					telegramAllowedChatId: "",
 					telegramBotToken: "",
 					usingMode: "single",
+					blockedUserMessage: "Access not configured. Contact the admin.",
+					permissionsMode: "enforce",
+					stateDbPath: "./state.db",
 				});
 			},
 		);
@@ -188,6 +194,9 @@ describe("config", () => {
 				telegramAllowedChatId: "-1001234567890",
 				telegramBotToken: "telegram-token",
 				usingMode: "multi",
+				blockedUserMessage: "Access not configured. Contact the admin.",
+				permissionsMode: "enforce",
+				stateDbPath: "./state.db",
 			});
 		});
 	});

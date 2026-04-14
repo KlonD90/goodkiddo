@@ -19,7 +19,14 @@ export type AppConfig = {
 	telegramBotToken: string;
 	telegramAllowedChatId: string;
 	usingMode: UsingMode;
+	blockedUserMessage: string;
+	permissionsMode: "enforce" | "disabled";
+	stateDbPath: string;
 };
+
+const DEFAULT_BLOCKED_USER_MESSAGE =
+	"Access not configured. Contact the admin.";
+const DEFAULT_STATE_DB_PATH = "./state.db";
 
 type ConfigIssueField =
 	| "AI_API_KEY"
@@ -27,6 +34,9 @@ type ConfigIssueField =
 	| "AI_MODEL_NAME"
 	| "AI_TYPE"
 	| "APP_ENTRYPOINT"
+	| "BLOCKED_USER_MESSAGE"
+	| "PERMISSIONS_MODE"
+	| "STATE_DB_PATH"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
 	| "USING_MODE";
@@ -85,6 +95,10 @@ export const readConfigFromEnv = (): Partial<AppConfig> => {
 	const usingModeValue = normalize(getEnv("USING_MODE"));
 	const entrypointValue = normalize(getEnv("APP_ENTRYPOINT"));
 
+	const permissionsModeRaw = normalize(getEnv("PERMISSIONS_MODE"));
+	const permissionsMode =
+		permissionsModeRaw === "disabled" ? "disabled" : "enforce";
+
 	return {
 		aiApiKey: normalize(getEnv("AI_API_KEY")),
 		aiBaseUrl: normalize(getEnv("AI_BASE_URL")),
@@ -96,6 +110,10 @@ export const readConfigFromEnv = (): Partial<AppConfig> => {
 		telegramAllowedChatId: normalize(getEnv("TELEGRAM_BOT_ALLOWED_CHAT_ID")),
 		telegramBotToken: normalize(getEnv("TELEGRAM_BOT_TOKEN")),
 		usingMode: checkUsingMode(usingModeValue) ? usingModeValue : undefined,
+		blockedUserMessage:
+			normalize(getEnv("BLOCKED_USER_MESSAGE")) || DEFAULT_BLOCKED_USER_MESSAGE,
+		permissionsMode,
+		stateDbPath: normalize(getEnv("STATE_DB_PATH")) || DEFAULT_STATE_DB_PATH,
 	};
 };
 
@@ -155,6 +173,7 @@ export const findConfigIssues = (config: Partial<AppConfig>): ConfigIssue[] => {
 	}
 
 	if (
+		config.telegramAllowedChatId !== undefined &&
 		config.telegramAllowedChatId !== "" &&
 		!/^[-]?\d+$/.test(config.telegramAllowedChatId)
 	) {
@@ -452,6 +471,10 @@ Press enter to allow any chat the bot is added to.> `,
 		telegramAllowedChatId,
 		telegramBotToken,
 		usingMode,
+		blockedUserMessage:
+			initialConfig.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+		permissionsMode: initialConfig.permissionsMode ?? "enforce",
+		stateDbPath: initialConfig.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 	};
 };
 
@@ -497,6 +520,10 @@ export const resolveConfig = async (
 			telegramAllowedChatId: config.telegramAllowedChatId ?? "",
 			telegramBotToken: config.telegramBotToken ?? "",
 			usingMode: config.usingMode ?? DEFAULT_USING_MODE,
+			blockedUserMessage:
+				config.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+			permissionsMode: config.permissionsMode ?? "enforce",
+			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 		};
 		applyConfigToEnv(resolvedConfig);
 		return resolvedConfig;

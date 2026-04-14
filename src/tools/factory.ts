@@ -12,11 +12,13 @@ import {
 	createReadFileTool,
 	createWriteFileTool,
 } from "./filesystem_tools";
+import { type GuardContext, wrapToolWithGuard } from "./guard";
 
 export interface CreateExecutionToolsetOptions {
 	workspace: WorkspaceBackend;
 	backend?: CreateSandboxBackendOptions;
 	policy?: ExecutionPolicy;
+	guard?: GuardContext;
 }
 
 export async function createExecutionToolset(
@@ -28,7 +30,7 @@ export async function createExecutionToolset(
 		policy: options.policy,
 	});
 
-	return [
+	const tools = [
 		createLsTool(options.workspace),
 		createReadFileTool(options.workspace),
 		createWriteFileTool(options.workspace),
@@ -37,4 +39,8 @@ export async function createExecutionToolset(
 		createGrepTool(options.workspace),
 		createExecuteWorkspaceTool(orchestrator, options.workspace),
 	];
+
+	if (!options.guard) return tools;
+	const guard = options.guard;
+	return tools.map((original) => wrapToolWithGuard(original, guard));
 }

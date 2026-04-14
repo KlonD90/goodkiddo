@@ -1,14 +1,59 @@
-import * as readline from "node:readline/promises";
+import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
+import * as readline from "node:readline/promises";
 import { createAppAgent } from "../app";
 import type { AppConfig } from "../config";
+import { CLIApprovalBroker } from "../permissions/approval";
+import { FileAuditLogger } from "../permissions/audit";
+import { maybeHandleCommand } from "../permissions/commands";
+import { PermissionsStore } from "../permissions/store";
+import type { Caller } from "../permissions/types";
+
+const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
+
+function resolveCliCaller(): Caller {
+	const username = os.userInfo().username || "local";
+	return {
+		id: `cli:${username}`,
+		entrypoint: "cli",
+		externalId: username,
+		displayName: username,
+	};
+}
+
+function seedCliUser(store: PermissionsStore, caller: Caller): void {
+	const existing = store.getUser(caller.entrypoint, caller.externalId);
+	if (existing) return;
+	store.upsertUser({
+		entrypoint: caller.entrypoint,
+		externalId: caller.externalId,
+		displayName: caller.displayName ?? null,
+	});
+	if (CLI_DEFAULT_POLICY !== "strict") {
+		store.upsertRule(caller.id, {
+			priority: 1000,
+			toolName: "*",
+			args: null,
+			decision: "allow",
+		});
+	}
+}
 
 export const runCliEntrypoint = async (config: AppConfig): Promise<void> => {
-	const agent = await createAppAgent(config);
+	const store = new PermissionsStore({ dbPath: config.stateDbPath });
+	const caller = resolveCliCaller();
+	seedCliUser(store, caller);
+
+	const broker = new CLIApprovalBroker(store);
+	const audit = new FileAuditLogger("./permissions.log");
+
+	const agent = await createAppAgent(config, { caller, store, broker, audit });
 	const rl = readline.createInterface({ input, output });
 	const threadId = `cli-${Date.now()}`;
 
-	console.log('Chat started. Type "exit" or press Ctrl+C to quit.\n');
+	console.log(
+		`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands.\n`,
+	);
 
 	process.on("SIGINT", () => {
 		console.log("\nBye!");
@@ -28,11 +73,20 @@ export const runCliEntrypoint = async (config: AppConfig): Promise<void> => {
 			continue;
 		}
 
+		const command = maybeHandleCommand(userInput, caller, store);
+		if (command.handled) {
+			console.log(command.reply);
+			console.log();
+			continue;
+		}
+
 		const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 		let spinnerIdx = 0;
 		let firstToken = false;
 		const spinner = setInterval(() => {
-			process.stdout.write(`\r${spinnerFrames[spinnerIdx++ % spinnerFrames.length]} Thinking...`);
+			process.stdout.write(
+				`\r${spinnerFrames[spinnerIdx++ % spinnerFrames.length]} Thinking...`,
+			);
 		}, 80);
 
 		const stream = await agent.stream(
