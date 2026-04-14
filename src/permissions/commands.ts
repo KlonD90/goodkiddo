@@ -1,6 +1,6 @@
-import { ArgumentMatcherSchema } from "./types";
 import type { PermissionsStore } from "./store";
 import type { ArgumentMatcher, Caller, ToolRule } from "./types";
+import { ArgumentMatcherSchema } from "./types";
 
 export type CommandResult =
 	| { handled: false }
@@ -44,7 +44,8 @@ function parseMatcherFlag(value: string | undefined): ArgumentMatcher | null {
 }
 
 function formatRules(rules: ToolRule[]): string {
-	if (rules.length === 0) return "No policy rules. Every tool call will ask for approval.";
+	if (rules.length === 0)
+		return "No policy rules. Every tool call will ask for approval.";
 	const lines = rules.map((rule) => {
 		const args = rule.args ? ` args=${JSON.stringify(rule.args)}` : "";
 		return `  [${rule.priority}] ${rule.decision.padEnd(5)} ${rule.toolName}${args}`;
@@ -61,9 +62,9 @@ export function maybeHandleCommand(
 	if (!trimmed.startsWith("/")) return { handled: false };
 
 	const firstSpace = trimmed.indexOf(" ");
-	const command = (
-		firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)
-	).slice(1).toLowerCase();
+	const command = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
+		.slice(1)
+		.toLowerCase();
 	const rest = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1);
 
 	if (command === "policy") {

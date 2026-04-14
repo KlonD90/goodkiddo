@@ -21,17 +21,16 @@ const LIKELY_SECRET_KEYS = ["token", "apiKey", "api_key", "secret", "password"];
 function redactForAudit(value: unknown): unknown {
 	if (value === null) return null;
 	if (typeof value === "string") {
-		return value.length > 64 ? `${value.slice(0, 32)}…(${value.length}b)` : value;
+		return value.length > 64
+			? `${value.slice(0, 32)}…(${value.length}b)`
+			: value;
 	}
 	if (Array.isArray(value)) return value.map(redactForAudit);
 	if (typeof value === "object") {
 		const input = value as Record<string, unknown>;
 		const output: Record<string, unknown> = {};
 		for (const [key, child] of Object.entries(input)) {
-			if (
-				LIKELY_SECRET_KEYS.includes(key) &&
-				typeof child === "string"
-			) {
+			if (LIKELY_SECRET_KEYS.includes(key) && typeof child === "string") {
 				output[key] = maskSecret(child);
 				continue;
 			}

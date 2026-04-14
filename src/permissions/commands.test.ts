@@ -17,7 +17,9 @@ beforeEach(() => {
 
 describe("maybeHandleCommand", () => {
 	test("non-slash input is ignored", () => {
-		expect(maybeHandleCommand("hello", caller, store)).toEqual({ handled: false });
+		expect(maybeHandleCommand("hello", caller, store)).toEqual({
+			handled: false,
+		});
 	});
 
 	test("/policy on empty store explains default", () => {
@@ -27,9 +29,9 @@ describe("maybeHandleCommand", () => {
 	});
 
 	test("/allow then /policy reflects rule", () => {
-		expect(
-			maybeHandleCommand("/allow write_file", caller, store).handled,
-		).toBe(true);
+		expect(maybeHandleCommand("/allow write_file", caller, store).handled).toBe(
+			true,
+		);
 		const list = store.listRulesForUser(caller.id);
 		expect(list).toHaveLength(1);
 		expect(list[0].decision).toBe("allow");

@@ -53,7 +53,9 @@ function rowToRule(row: RuleRow): ToolRule {
 		userId: row.user_id,
 		priority: row.priority,
 		toolName: row.tool_name,
-		args: row.args_matcher ? (JSON.parse(row.args_matcher) as ArgumentMatcher) : null,
+		args: row.args_matcher
+			? (JSON.parse(row.args_matcher) as ArgumentMatcher)
+			: null,
 		decision: row.decision as PermissionDecision,
 	};
 }
@@ -128,10 +130,7 @@ export class PermissionsStore {
 		const id = callerId(params.entrypoint, params.externalId);
 		const now = Date.now();
 		this.database
-			.query<
-				never,
-				[string, string, string, string | null, number]
-			>(
+			.query<never, [string, string, string, string | null, number]>(
 				`INSERT INTO harness_users (id, entrypoint, external_id, display_name, status, created_at)
            VALUES (?1, ?2, ?3, ?4, 'active', ?5)
            ON CONFLICT(id) DO UPDATE SET display_name = COALESCE(excluded.display_name, harness_users.display_name)`,
@@ -215,9 +214,7 @@ export class PermissionsStore {
 
 	deleteAllRulesForUser(userId: string): number {
 		const result = this.database
-			.query<never, [string]>(
-				`DELETE FROM tool_permissions WHERE user_id = ?1`,
-			)
+			.query<never, [string]>(`DELETE FROM tool_permissions WHERE user_id = ?1`)
 			.run(userId);
 		return Number(result.changes);
 	}

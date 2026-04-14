@@ -8,8 +8,12 @@ describe("matcher", () => {
 	});
 
 	test("eq operator matches strings and primitives", () => {
-		expect(matchesArguments({ runtime: { eq: "python" } }, { runtime: "python" })).toBe(true);
-		expect(matchesArguments({ runtime: { eq: "python" } }, { runtime: "bun" })).toBe(false);
+		expect(
+			matchesArguments({ runtime: { eq: "python" } }, { runtime: "python" }),
+		).toBe(true);
+		expect(
+			matchesArguments({ runtime: { eq: "python" } }, { runtime: "bun" }),
+		).toBe(false);
 		expect(matchesArguments({ count: { eq: 3 } }, { count: 3 })).toBe(true);
 	});
 
@@ -21,8 +25,12 @@ describe("matcher", () => {
 
 	test("glob operator on file paths", () => {
 		const matcher = { file_path: { glob: "drafts/**" } };
-		expect(matchesArguments(matcher, { file_path: "drafts/today.md" })).toBe(true);
-		expect(matchesArguments(matcher, { file_path: "drafts/sub/x.md" })).toBe(true);
+		expect(matchesArguments(matcher, { file_path: "drafts/today.md" })).toBe(
+			true,
+		);
+		expect(matchesArguments(matcher, { file_path: "drafts/sub/x.md" })).toBe(
+			true,
+		);
 		expect(matchesArguments(matcher, { file_path: "secret.md" })).toBe(false);
 	});
 
@@ -38,7 +46,9 @@ describe("matcher", () => {
 
 	test("dotted paths into nested objects", () => {
 		const matcher = { "args.runtime": { eq: "python" } };
-		expect(matchesArguments(matcher, { args: { runtime: "python" } })).toBe(true);
+		expect(matchesArguments(matcher, { args: { runtime: "python" } })).toBe(
+			true,
+		);
 		expect(matchesArguments(matcher, { args: { runtime: "bun" } })).toBe(false);
 	});
 

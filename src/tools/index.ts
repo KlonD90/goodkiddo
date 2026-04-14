@@ -4,7 +4,6 @@ export {
 	createExecuteWorkspaceTool,
 } from "./execute_tools";
 export { createExecutionToolset } from "./factory";
-export { wrapToolWithGuard, type GuardContext } from "./guard";
 export {
 	createEditFileTool,
 	createGlobTool,
@@ -13,3 +12,4 @@ export {
 	createReadFileTool,
 	createWriteFileTool,
 } from "./filesystem_tools";
+export { type GuardContext, wrapToolWithGuard } from "./guard";

@@ -27,7 +27,10 @@ export const ToolRuleSchema = z.object({
 });
 export type ToolRule = z.infer<typeof ToolRuleSchema>;
 
-export const NewToolRuleSchema = ToolRuleSchema.omit({ id: true, userId: true });
+export const NewToolRuleSchema = ToolRuleSchema.omit({
+	id: true,
+	userId: true,
+});
 export type NewToolRule = z.infer<typeof NewToolRuleSchema>;
 
 export const UserStatusSchema = z.enum(["active", "suspended"]);
