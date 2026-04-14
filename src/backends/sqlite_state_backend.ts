@@ -13,10 +13,7 @@ import type {
 	WriteResult,
 } from "deepagents";
 import { createFilesystemMiddleware } from "deepagents";
-import {
-	fileDataToString,
-	formatReadResponse,
-} from "../utils/filesystem";
+import { fileDataToString, formatReadResponse } from "../utils/filesystem";
 
 const DEFAULT_DB_PATH = "./.top-fedder/state.sqlite";
 const DEFAULT_NAMESPACE = "default";

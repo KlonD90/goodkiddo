@@ -11,10 +11,13 @@ import { semanticNumber } from "../utils/semanticNumber.js";
 const DEFAULT_READ_LINE_LIMIT = 100;
 
 function toBackendPath(filePath: string): string {
-  return filePath.startsWith("/") ? filePath : `/${filePath}`;
+	return filePath.startsWith("/") ? filePath : `/${filePath}`;
 }
 
-function resolvePathInput(input: { file_path?: string; path?: string }): string {
+function resolvePathInput(input: {
+	file_path?: string;
+	path?: string;
+}): string {
 	const filePath = input.file_path ?? input.path;
 	if (!filePath) {
 		throw new Error("file_path is required");
@@ -33,7 +36,9 @@ type DownloadableBackend = BackendProtocol & {
 function hasDownloadFiles(
 	backend: BackendProtocol,
 ): backend is DownloadableBackend {
-	return "downloadFiles" in backend && typeof backend.downloadFiles === "function";
+	return (
+		"downloadFiles" in backend && typeof backend.downloadFiles === "function"
+	);
 }
 
 function detectMimeType(filePath: string): string | null {
@@ -196,7 +201,11 @@ export function createReadFileTool(backend: BackendProtocol) {
 
 			try {
 				const fileData = await backend.readRaw(resolvedPath);
-				let result = formatReadResponse(fileData, resolvedOffset, resolvedLimit);
+				let result = formatReadResponse(
+					fileData,
+					resolvedOffset,
+					resolvedLimit,
+				);
 				const lines = result.split("\n");
 				if (lines.length > resolvedLimit) {
 					result = lines.slice(0, resolvedLimit).join("\n");
@@ -211,12 +220,20 @@ export function createReadFileTool(backend: BackendProtocol) {
 			name: "read_file",
 			description: FILE_READ_PROMPT,
 			schema: z.object({
-				file_path: z.string().min(1).describe("Absolute path to the file to read"),
+				file_path: z
+					.string()
+					.min(1)
+					.describe("Absolute path to the file to read"),
 				offset: semanticNumber(
 					z.number().int().nonnegative().optional().default(0),
 				).describe("Line offset to start reading from (0-indexed)"),
 				limit: semanticNumber(
-					z.number().int().positive().optional().default(DEFAULT_READ_LINE_LIMIT),
+					z
+						.number()
+						.int()
+						.positive()
+						.optional()
+						.default(DEFAULT_READ_LINE_LIMIT),
 				).describe("Maximum number of lines to read"),
 			}),
 		},
@@ -225,13 +242,7 @@ export function createReadFileTool(backend: BackendProtocol) {
 
 export function createWriteFileTool(backend: BackendProtocol) {
 	return tool(
-		async ({
-			file_path,
-			content,
-		}: {
-			file_path?: string;
-			content: string;
-		}) => {
+		async ({ file_path, content }: { file_path?: string; content: string }) => {
 			const result = await backend.write(
 				resolvePathInput({ file_path }),
 				content,
@@ -245,8 +256,14 @@ export function createWriteFileTool(backend: BackendProtocol) {
 			name: "write_file",
 			description: FILE_WRITE_PROMPT,
 			schema: z.object({
-				file_path: z.string().min(1).describe("Absolute path to the file to write"),
-				content: z.string().default("").describe("Content to write to the file"),
+				file_path: z
+					.string()
+					.min(1)
+					.describe("Absolute path to the file to write"),
+				content: z
+					.string()
+					.default("")
+					.describe("Content to write to the file"),
 			}),
 		},
 	);
@@ -287,8 +304,13 @@ export function createEditFileTool(backend: BackendProtocol) {
 			name: "edit_file",
 			description: FILE_EDIT_PROMPT,
 			schema: z.object({
-				file_path: z.string().min(1).describe("Absolute path to the file to edit"),
-				old_string: z.string().describe("String to be replaced (must match exactly)"),
+				file_path: z
+					.string()
+					.min(1)
+					.describe("Absolute path to the file to edit"),
+				old_string: z
+					.string()
+					.describe("String to be replaced (must match exactly)"),
 				new_string: z.string().describe("String to replace with"),
 				replace_all: z
 					.boolean()

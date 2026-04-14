@@ -1,7 +1,7 @@
+import { describe, expect, test } from "bun:test";
 import { ChatAnthropic } from "@langchain/anthropic";
 import { ChatOpenAI } from "@langchain/openai";
 import { ChatOpenRouter } from "@langchain/openrouter";
-import { describe, expect, test } from "bun:test";
 import { modelChooser } from "./model_chooser";
 
 describe("modelChooser", () => {
@@ -38,7 +38,11 @@ describe("modelChooser", () => {
 	});
 
 	test("creates an openai model without configuration override when base URL is empty", () => {
-		const model = modelChooser("openai", "gpt-4.1-mini", "openai-key") as ChatOpenAI & {
+		const model = modelChooser(
+			"openai",
+			"gpt-4.1-mini",
+			"openai-key",
+		) as ChatOpenAI & {
 			fields?: { configuration?: { baseURL?: string } };
 		};
 
