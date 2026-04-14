@@ -1,6 +1,5 @@
 import { maskSecret, resolveConfig } from "../config";
-import { runCliEntrypoint } from "./cli_runner";
-import { runTelegramEntrypoint } from "./telegram_runner";
+import { runAppChannel } from "../channels";
 
 const config = await resolveConfig();
 
@@ -18,7 +17,5 @@ if (config.appEntrypoint === "telegram") {
 			? "<any>"
 			: config.telegramAllowedChatId,
 	);
-	await runTelegramEntrypoint(config);
-} else {
-	await runCliEntrypoint(config);
 }
+await runAppChannel(config);

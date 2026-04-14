@@ -1,0 +1,129 @@
+import * as os from "node:os";
+import { stdin as input, stdout as output } from "node:process";
+import * as readline from "node:readline/promises";
+import type { AppConfig } from "../config";
+import { CLIApprovalBroker } from "../permissions/approval";
+import { maybeHandleCommand } from "../permissions/commands";
+import { PermissionsStore } from "../permissions/store";
+import type { Caller } from "../permissions/types";
+import { extractTextFromContent, createChannelAgentSession } from "./shared";
+import type { AppChannel } from "./types";
+
+const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
+
+function resolveCliCaller(): Caller {
+	const username = os.userInfo().username || "local";
+	return {
+		id: `cli:${username}`,
+		entrypoint: "cli",
+		externalId: username,
+		displayName: username,
+	};
+}
+
+function seedCliUser(store: PermissionsStore, caller: Caller): void {
+	const existing = store.getUser(caller.entrypoint, caller.externalId);
+	if (existing) return;
+	store.upsertUser({
+		entrypoint: caller.entrypoint,
+		externalId: caller.externalId,
+		displayName: caller.displayName ?? null,
+	});
+	if (CLI_DEFAULT_POLICY !== "strict") {
+		store.upsertRule(caller.id, {
+			priority: 1000,
+			toolName: "*",
+			args: null,
+			decision: "allow",
+		});
+	}
+}
+
+export const cliChannel: AppChannel = {
+	entrypoint: "cli",
+	async run(config: AppConfig): Promise<void> {
+		const store = new PermissionsStore({ dbPath: config.stateDbPath });
+		const caller = resolveCliCaller();
+		seedCliUser(store, caller);
+
+		const broker = new CLIApprovalBroker(store);
+		const session = await createChannelAgentSession(config, {
+			caller,
+			store,
+			broker,
+			threadId: `cli-${Date.now()}`,
+		});
+
+		const rl = readline.createInterface({ input, output });
+
+		console.log(
+			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands.\n`,
+		);
+
+		process.on("SIGINT", () => {
+			console.log("\nBye!");
+			rl.close();
+			process.exit(0);
+		});
+
+		while (true) {
+			const userInput = await rl.question("You: ");
+
+			if (userInput.trim().toLowerCase() === "exit") {
+				console.log("Bye!");
+				break;
+			}
+
+			if (!userInput.trim()) {
+				continue;
+			}
+
+			const command = maybeHandleCommand(userInput, caller, store);
+			if (command.handled) {
+				console.log(command.reply);
+				console.log();
+				continue;
+			}
+
+			const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+			let spinnerIdx = 0;
+			let firstToken = false;
+			const spinner = setInterval(() => {
+				process.stdout.write(
+					`\r${spinnerFrames[spinnerIdx++ % spinnerFrames.length]} Thinking...`,
+				);
+			}, 80);
+
+			const stream = await session.agent.stream(
+				{ messages: [{ role: "user", content: userInput }] },
+				{
+					streamMode: "messages",
+					configurable: { thread_id: session.threadId },
+				},
+			);
+
+			for await (const [message] of stream as AsyncIterable<
+				[{ content: string | { type: string; text?: string }[]; type?: string }]
+			>) {
+				const isAi = message.type === "ai";
+				const text = extractTextFromContent(message.content);
+				if (isAi && text) {
+					if (!firstToken) {
+						clearInterval(spinner);
+						process.stdout.write("\rAssistant: ");
+						firstToken = true;
+					}
+					process.stdout.write(text);
+				}
+			}
+
+			clearInterval(spinner);
+			if (!firstToken) {
+				process.stdout.write("\rAssistant: ");
+			}
+			console.log("\n");
+		}
+
+		rl.close();
+	},
+};
