@@ -13,6 +13,11 @@ import {
 	createWriteFileTool,
 } from "./filesystem_tools";
 import { type GuardContext, wrapToolWithGuard } from "./guard";
+import {
+	createMemoryAppendLogTool,
+	createMemoryWriteTool,
+	createSkillWriteTool,
+} from "./memory_tools";
 
 export interface CreateExecutionToolsetOptions {
 	workspace: WorkspaceBackend;
@@ -38,6 +43,9 @@ export async function createExecutionToolset(
 		createGlobTool(options.workspace),
 		createGrepTool(options.workspace),
 		createExecuteWorkspaceTool(orchestrator, options.workspace),
+		createMemoryWriteTool(options.workspace),
+		createSkillWriteTool(options.workspace),
+		createMemoryAppendLogTool(options.workspace),
 	];
 
 	if (!options.guard) return tools;

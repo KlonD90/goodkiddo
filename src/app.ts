@@ -1,7 +1,10 @@
+import { MemorySaver } from "@langchain/langgraph";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "./backends";
 import type { AppConfig } from "./config";
 import DO_IT_MD from "./identities/DO_IT.md?raw";
+import { ensureMemoryBootstrapped } from "./memory/bootstrap";
+import { buildSystemPrompt } from "./memory/session_loader";
 import { modelChooser } from "./model/model_chooser";
 import type { ApprovalBroker } from "./permissions/approval";
 import type { AuditLogger } from "./permissions/audit";
@@ -17,10 +20,19 @@ export interface CreateAppAgentOptions {
 	audit: AuditLogger;
 }
 
+// Memory-scoped agent bits that the channel layer also needs access to — the
+// model (for /new-thread summarization) and the workspace backend (for log
+// writes and direct reads). Returned alongside the agent.
+export type AppAgentBundle = {
+	agent: Awaited<ReturnType<typeof createAgent>>;
+	workspace: SqliteStateBackend;
+	model: ReturnType<typeof modelChooser>;
+};
+
 export const createAppAgent = async (
 	config: AppConfig,
 	options: CreateAppAgentOptions,
-) => {
+): Promise<AppAgentBundle> => {
 	const model = modelChooser(
 		config.aiType,
 		config.aiModelName,
@@ -32,6 +44,8 @@ export const createAppAgent = async (
 		dbPath: config.stateDbPath,
 		namespace: options.caller.id,
 	});
+
+	await ensureMemoryBootstrapped(workspace);
 
 	const guard: GuardContext | undefined =
 		config.permissionsMode === "enforce"
@@ -55,9 +69,17 @@ export const createAppAgent = async (
 		guard,
 	});
 
-	return createAgent({
+	const systemPrompt = await buildSystemPrompt({
+		identityPrompt: DO_IT_MD,
+		backend: workspace,
+	});
+
+	const agent = createAgent({
 		model,
 		tools,
-		systemPrompt: DO_IT_MD,
+		systemPrompt,
+		checkpointer: new MemorySaver(),
 	});
+
+	return { agent, workspace, model };
 };

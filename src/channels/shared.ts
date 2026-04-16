@@ -1,15 +1,19 @@
-import { createAppAgent } from "../app";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { BackendProtocol } from "deepagents";
+import { type AppAgentBundle, createAppAgent } from "../app";
 import type { AppConfig } from "../config";
 import { FileAuditLogger } from "../permissions/audit";
 import type { ApprovalBroker } from "../permissions/approval";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 
-export type AgentInstance = Awaited<ReturnType<typeof createAppAgent>>;
+export type AgentInstance = AppAgentBundle["agent"];
 
 export type ChannelAgentSession = {
 	agent: AgentInstance;
 	threadId: string;
+	workspace: BackendProtocol;
+	model: BaseChatModel;
 };
 
 export async function createChannelAgentSession(
@@ -22,7 +26,7 @@ export async function createChannelAgentSession(
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
-	const agent = await createAppAgent(config, {
+	const bundle = await createAppAgent(config, {
 		caller: options.caller,
 		store: options.store,
 		broker: options.broker,
@@ -30,8 +34,10 @@ export async function createChannelAgentSession(
 	});
 
 	return {
-		agent,
+		agent: bundle.agent,
 		threadId: options.threadId,
+		workspace: bundle.workspace,
+		model: bundle.model,
 	};
 }
 

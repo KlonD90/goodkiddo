@@ -1,5 +1,5 @@
 node_modules/
-.env
+.env.*
 .history
 .zed
 state.db*

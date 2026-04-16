@@ -12,8 +12,9 @@ import type { Caller } from "../permissions/types";
 import {
 	createChannelAgentSession,
 	extractAgentReply,
-	type AgentInstance,
+	type ChannelAgentSession,
 } from "./shared";
+import { maybeHandleSessionCommand } from "./session_commands";
 import type { AppChannel } from "./types";
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
@@ -26,12 +27,10 @@ type PendingApproval = {
 	promptId: string;
 };
 
-type TelegramAgentSession = {
-	agent: AgentInstance;
+type TelegramAgentSession = ChannelAgentSession & {
 	running: boolean;
 	queue: string[];
 	pending: PendingApproval | null;
-	threadId: string;
 };
 
 const chunkMessage = (text: string): string[] => {
@@ -138,11 +137,12 @@ async function ensureTelegramSession(
 	if (existing) return existing;
 
 	const broker = new TelegramApprovalBroker(bot, sessions, chatId, store);
+	const baseThreadId = `telegram-${chatId}`;
 	const session = await createChannelAgentSession(config, {
 		caller,
 		store,
 		broker,
-		threadId: `telegram-${chatId}`,
+		threadId: baseThreadId,
 	});
 	const telegramSession: TelegramAgentSession = {
 		...session,
@@ -152,6 +152,10 @@ async function ensureTelegramSession(
 	};
 	sessions.set(chatId, telegramSession);
 	return telegramSession;
+}
+
+function mintTelegramThreadId(chatId: string): string {
+	return `telegram-${chatId}-${Date.now()}`;
 }
 
 async function runAgentTurn(
@@ -296,6 +300,17 @@ export const telegramChannel: AppChannel = {
 			);
 
 			if (maybeHandleApprovalReply(session, text)) return;
+
+			const sessionCommand = await maybeHandleSessionCommand(text, {
+				session,
+				model: session.model,
+				backend: session.workspace,
+				mintThreadId: () => mintTelegramThreadId(chatIdString),
+			});
+			if (sessionCommand.handled) {
+				await sendTelegramMessage(bot, chatIdString, sessionCommand.reply);
+				return;
+			}
 
 			const command = maybeHandleCommand(text, caller, store);
 			if (command.handled) {

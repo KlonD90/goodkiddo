@@ -7,6 +7,7 @@ import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { extractTextFromContent, createChannelAgentSession } from "./shared";
+import { maybeHandleSessionCommand } from "./session_commands";
 import type { AppChannel } from "./types";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
@@ -47,17 +48,20 @@ export const cliChannel: AppChannel = {
 		seedCliUser(store, caller);
 
 		const broker = new CLIApprovalBroker(store);
+		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			caller,
 			store,
 			broker,
-			threadId: `cli-${Date.now()}`,
+			threadId: baseThreadId,
 		});
+
+		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;
 
 		const rl = readline.createInterface({ input, output });
 
 		console.log(
-			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands.\n`,
+			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands, "/new-thread" to start a fresh conversation.\n`,
 		);
 
 		process.on("SIGINT", () => {
@@ -75,6 +79,18 @@ export const cliChannel: AppChannel = {
 			}
 
 			if (!userInput.trim()) {
+				continue;
+			}
+
+			const sessionCommand = await maybeHandleSessionCommand(userInput, {
+				session,
+				model: session.model,
+				backend: session.workspace,
+				mintThreadId,
+			});
+			if (sessionCommand.handled) {
+				console.log(sessionCommand.reply);
+				console.log();
 				continue;
 			}
 
