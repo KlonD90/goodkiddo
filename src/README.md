@@ -8,6 +8,7 @@ Source root for the harness.
 - `config.ts` — env + wizard config resolver
 - `permissions/` — multi-tenant permissions (DB-backed, allow/ask/deny)
 - `tools/` — LangChain tools (FS + sandbox execution)
+- `memory/` — per-caller memory wiki (notes, skills, log)
 - `backends/` — virtual filesystem backend (SQLite today)
 - `execution/` — sandbox-side manifest validation + orchestration
 - `sandbox/` — sandbox backend implementations (Docker/Firecracker)
