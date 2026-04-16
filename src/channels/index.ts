@@ -4,13 +4,13 @@ import { cliChannel } from "./cli";
 import { telegramChannel } from "./telegram";
 import type { AppChannel } from "./types";
 
-const channels: Record<AppEntrypoint, AppChannel> = {
+export const channelRegistry: Record<AppEntrypoint, AppChannel> = {
 	cli: cliChannel,
 	telegram: telegramChannel,
 };
 
 export function getAppChannel(entrypoint: AppEntrypoint): AppChannel {
-	return channels[entrypoint];
+	return channelRegistry[entrypoint];
 }
 
 export async function runAppChannel(config: AppConfig): Promise<void> {

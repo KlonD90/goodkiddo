@@ -19,6 +19,8 @@ export interface ApprovalBroker {
 	requestApproval(request: ApprovalRequest): Promise<ApprovalOutcome>;
 }
 
+type CliQuestion = (prompt: string) => Promise<string>;
+
 function summarizeArgs(args: unknown): string {
 	try {
 		const json = JSON.stringify(args);
@@ -65,50 +67,59 @@ export async function persistAlwaysRule(
 }
 
 export class CLIApprovalBroker implements ApprovalBroker {
-	constructor(private readonly store: PermissionsStore) {}
+	constructor(
+		private readonly store: PermissionsStore,
+		private readonly ask: CliQuestion = createCliQuestion(),
+	) {}
 
 	async requestApproval(request: ApprovalRequest): Promise<ApprovalOutcome> {
+		process.stdout.write("\n");
+		process.stdout.write(
+			`Tool approval requested: ${request.toolName}(${summarizeArgs(request.args)})\n`,
+		);
+		process.stdout.write(
+			"[y] allow once   [a] always allow   [n] deny once   [d] always deny\n",
+		);
+		while (true) {
+			const answer = (await this.ask("> ")).trim().toLowerCase();
+			if (answer === "y" || answer === "yes") return "approve-once";
+			if (answer === "a" || answer === "always") {
+				await persistAlwaysRule(
+					this.store,
+					request.caller,
+					request.toolName,
+					request.args,
+					"allow",
+				);
+				return "approve-always";
+			}
+			if (answer === "n" || answer === "no" || answer === "") {
+				return "deny-once";
+			}
+			if (answer === "d" || answer === "never") {
+				await persistAlwaysRule(
+					this.store,
+					request.caller,
+					request.toolName,
+					request.args,
+					"deny",
+				);
+				return "deny-always";
+			}
+			process.stdout.write("Please answer y / a / n / d.\n");
+		}
+	}
+}
+
+function createCliQuestion(): CliQuestion {
+	return async (prompt: string) => {
 		const rl = readline.createInterface({ input, output });
 		try {
-			process.stdout.write("\n");
-			process.stdout.write(
-				`Tool approval requested: ${request.toolName}(${summarizeArgs(request.args)})\n`,
-			);
-			process.stdout.write(
-				"[y] allow once   [a] always allow   [n] deny once   [d] always deny\n",
-			);
-			while (true) {
-				const answer = (await rl.question("> ")).trim().toLowerCase();
-				if (answer === "y" || answer === "yes") return "approve-once";
-				if (answer === "a" || answer === "always") {
-					await persistAlwaysRule(
-						this.store,
-						request.caller,
-						request.toolName,
-						request.args,
-						"allow",
-					);
-					return "approve-always";
-				}
-				if (answer === "n" || answer === "no" || answer === "") {
-					return "deny-once";
-				}
-				if (answer === "d" || answer === "never") {
-					await persistAlwaysRule(
-						this.store,
-						request.caller,
-						request.toolName,
-						request.args,
-						"deny",
-					);
-					return "deny-always";
-				}
-				process.stdout.write("Please answer y / a / n / d.\n");
-			}
+			return await rl.question(prompt);
 		} finally {
 			rl.close();
 		}
-	}
+	};
 }
 
 export function outcomeApproves(outcome: ApprovalOutcome): boolean {

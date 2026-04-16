@@ -6,12 +6,12 @@ import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import { extractTextFromContent, createChannelAgentSession } from "./shared";
+import { createChannelAgentSession, extractAgentReply } from "./shared";
 import type { AppChannel } from "./types";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
 
-function resolveCliCaller(): Caller {
+export function resolveCliCaller(): Caller {
 	const username = os.userInfo().username || "local";
 	return {
 		id: `cli:${username}`,
@@ -21,7 +21,7 @@ function resolveCliCaller(): Caller {
 	};
 }
 
-function seedCliUser(store: PermissionsStore, caller: Caller): void {
+export function seedCliUser(store: PermissionsStore, caller: Caller): void {
 	const existing = store.getUser(caller.entrypoint, caller.externalId);
 	if (existing) return;
 	store.upsertUser({
@@ -46,15 +46,14 @@ export const cliChannel: AppChannel = {
 		const caller = resolveCliCaller();
 		seedCliUser(store, caller);
 
-		const broker = new CLIApprovalBroker(store);
+		const rl = readline.createInterface({ input, output });
+		const broker = new CLIApprovalBroker(store, (prompt) => rl.question(prompt));
 		const session = await createChannelAgentSession(config, {
 			caller,
 			store,
 			broker,
 			threadId: `cli-${Date.now()}`,
 		});
-
-		const rl = readline.createInterface({ input, output });
 
 		console.log(
 			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands.\n`,
@@ -87,41 +86,29 @@ export const cliChannel: AppChannel = {
 
 			const spinnerFrames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 			let spinnerIdx = 0;
-			let firstToken = false;
 			const spinner = setInterval(() => {
 				process.stdout.write(
 					`\r${spinnerFrames[spinnerIdx++ % spinnerFrames.length]} Thinking...`,
 				);
 			}, 80);
 
-			const stream = await session.agent.stream(
-				{ messages: [{ role: "user", content: userInput }] },
-				{
-					streamMode: "messages",
-					configurable: { thread_id: session.threadId },
-				},
-			);
+			try {
+				const result = await session.agent.invoke(
+					{ messages: [{ role: "user", content: userInput }] },
+					{ configurable: { thread_id: session.threadId } },
+				);
+				const reply = extractAgentReply(result);
 
-			for await (const [message] of stream as AsyncIterable<
-				[{ content: string | { type: string; text?: string }[]; type?: string }]
-			>) {
-				const isAi = message.type === "ai";
-				const text = extractTextFromContent(message.content);
-				if (isAi && text) {
-					if (!firstToken) {
-						clearInterval(spinner);
-						process.stdout.write("\rAssistant: ");
-						firstToken = true;
-					}
-					process.stdout.write(text);
-				}
-			}
-
-			clearInterval(spinner);
-			if (!firstToken) {
+				clearInterval(spinner);
 				process.stdout.write("\rAssistant: ");
+				console.log(`${reply}\n`);
+			} catch (error) {
+				clearInterval(spinner);
+				const message =
+					error instanceof Error ? error.message : "Unknown CLI error";
+				process.stdout.write("\rAssistant: ");
+				console.log(`Request failed: ${message}\n`);
 			}
-			console.log("\n");
 		}
 
 		rl.close();

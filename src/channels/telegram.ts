@@ -34,7 +34,7 @@ type TelegramAgentSession = {
 	threadId: string;
 };
 
-const chunkMessage = (text: string): string[] => {
+export const chunkTelegramMessage = (text: string): string[] => {
 	if (text.length <= TELEGRAM_MAX_MESSAGE_LENGTH) return [text];
 	const chunks: string[] = [];
 	for (
@@ -47,13 +47,27 @@ const chunkMessage = (text: string): string[] => {
 	return chunks;
 };
 
+export function getTelegramCaller(
+	store: PermissionsStore,
+	chatId: string,
+): Caller | null {
+	const user = store.getUser("telegram", chatId);
+	if (!user || user.status === "suspended") return null;
+	return {
+		id: user.id,
+		entrypoint: "telegram",
+		externalId: user.externalId,
+		displayName: user.displayName ?? undefined,
+	};
+}
+
 async function sendTelegramMessage(
 	bot: Bot,
 	chatId: string,
 	text: string,
 	options: Record<string, unknown> = {},
 ): Promise<void> {
-	for (const chunk of chunkMessage(text)) {
+	for (const chunk of chunkTelegramMessage(text)) {
 		await bot.api.sendMessage(chatId, chunk, options);
 	}
 }
@@ -193,7 +207,7 @@ async function pumpQueue(
 	}
 }
 
-function maybeHandleApprovalReply(
+export function maybeHandleTelegramApprovalReply(
 	session: TelegramAgentSession,
 	text: string,
 ): boolean {
@@ -273,18 +287,11 @@ export const telegramChannel: AppChannel = {
 			if (text === "") return;
 
 			const chatIdString = String(chatId);
-			const user = store.getUser("telegram", chatIdString);
-			if (!user || user.status === "suspended") {
+			const caller = getTelegramCaller(store, chatIdString);
+			if (!caller) {
 				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return;
 			}
-
-			const caller: Caller = {
-				id: user.id,
-				entrypoint: "telegram",
-				externalId: user.externalId,
-				displayName: user.displayName ?? undefined,
-			};
 
 			const session = await ensureTelegramSession(
 				chatIdString,
@@ -295,7 +302,7 @@ export const telegramChannel: AppChannel = {
 				sessions,
 			);
 
-			if (maybeHandleApprovalReply(session, text)) return;
+			if (maybeHandleTelegramApprovalReply(session, text)) return;
 
 			const command = maybeHandleCommand(text, caller, store);
 			if (command.handled) {
