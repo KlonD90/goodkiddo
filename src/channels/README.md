@@ -5,8 +5,18 @@ Channel runtime adapters for the CLI and Telegram entrypoints.
 - `index.ts` — channel registry and dispatch by `APP_ENTRYPOINT`
 - `cli.ts` — interactive local channel
 - `telegram.ts` — multi-tenant Telegram channel
-- `shared.ts` — shared agent-session helpers
+- `shared.ts` — shared agent-session helpers, including the persistent checkpointer wiring
 - `session_commands.ts` — channel-agnostic session commands (`/new-thread` summarizes and rotates the thread)
+
+## Shared Session State
+
+CLI and Telegram sessions share the same LangGraph checkpoint flow:
+
+- live thread state is persisted in `state.db`
+- checkpoints are handled by the Bun-native saver in [`src/checkpoints/bun_sqlite_saver.ts`](../checkpoints/bun_sqlite_saver.ts)
+- rebuilding the agent between turns refreshes the system prompt without losing thread history
+
+This is separate from the `/memory/` wiki. The wiki stores durable notes and preferences; the checkpointer stores the current turn-by-turn conversation state.
 
 ## Telegram Formatting
 
@@ -86,6 +96,13 @@ Relevant files:
 
 - `src/channels/telegram.ts`
 - `src/channels/telegram.test.ts`
+
+Photo handling:
+
+- Telegram `message:photo` updates are accepted
+- captions are treated as user text
+- the largest Telegram photo variant is downloaded and sent to the model as an image content block
+- if the streamed response yields no visible text, Telegram falls back to the latest assistant text in final agent state instead of a generic placeholder or trailing user text
 
 Recommended workflow:
 

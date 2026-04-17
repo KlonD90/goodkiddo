@@ -59,12 +59,12 @@ function parseMatcherFlag(value: string | undefined): ArgumentMatcher | null {
 
 function formatRules(rules: ToolRule[]): string {
 	if (rules.length === 0)
-		return "No policy rules. Every tool call will ask for approval.";
+		return "No policy rules. Most tools are allowed automatically; execute tools still ask for approval.";
 	const lines = rules.map((rule) => {
 		const args = rule.args ? ` args=${JSON.stringify(rule.args)}` : "";
 		return `  [${rule.priority}] ${rule.decision.padEnd(5)} ${rule.toolName}${args}`;
 	});
-	return `Policy rules (first match wins; default is ask):\n${lines.join("\n")}`;
+	return `Policy rules (first match wins; default is allow except execute tools ask):\n${lines.join("\n")}`;
 }
 
 export function maybeHandleCommand(
@@ -85,7 +85,7 @@ export function maybeHandleCommand(
 		const removed = store.deleteAllRulesForUser(caller.id);
 		return {
 			handled: true,
-			reply: `Removed ${removed} rule(s). All tools now default to ask.`,
+			reply: `Removed ${removed} rule(s). Tools now follow the default policy: allow except execute tools ask.`,
 		};
 	}
 
@@ -114,7 +114,7 @@ export function maybeHandleCommand(
 			const removed = store.deleteMatchingRules(caller.id, toolName, matcher);
 			return {
 				handled: true,
-				reply: `Removed ${removed} matching rule(s). '${toolName}' now defaults to ask.`,
+				reply: `Removed ${removed} matching rule(s). '${toolName}' now follows the default policy.`,
 			};
 		}
 
@@ -141,7 +141,7 @@ export function maybeHandleCommand(
 				"  /policy                          show your current rules",
 				"  /allow <tool> [--args <json>]    always allow a tool",
 				"  /deny  <tool> [--args <json>]    always deny a tool",
-				"  /ask   <tool> [--args <json>]    forget a rule (default: ask)",
+				"  /ask   <tool> [--args <json>]    forget a rule (revert to default policy)",
 				"  /reset                           clear all your rules",
 			].join("\n"),
 		};

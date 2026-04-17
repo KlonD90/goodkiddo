@@ -62,5 +62,5 @@ export function callerId(entrypoint: Entrypoint, externalId: string): string {
 
 export type ResolvedDecision = {
 	decision: PermissionDecision;
-	ruleId: number | "default-ask";
+	ruleId: number | "default-allow" | "default-ask";
 };

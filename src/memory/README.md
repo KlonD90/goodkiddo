@@ -1,6 +1,6 @@
 # memory
 
-Per-caller agent memory: long-term notes, procedural skills, append-only log. File + grep retrieval, agent-curated.
+Per-caller agent memory: long-term notes, procedural skills, append-only log, plus persistent short-term conversation checkpoints. File + grep retrieval, agent-curated.
 
 - `layout.ts` — paths (`/memory/`, `/skills/`), token cap, slug helpers
 - `fs.ts` — internal backend helpers (`readOrEmpty`, `overwrite`, `append`, `exists`)
@@ -13,6 +13,7 @@ Per-caller agent memory: long-term notes, procedural skills, append-only log. Fi
 - `memory_prompt.md` — identity-agnostic memory-usage rules injected between identity and snapshot
 - `summarize.ts` — `summarizeThread(model, messages)` for the `/new-thread` command
 - `rotate_thread.ts` — `rotateThread` summarizes the current thread into log.md and rotates `session.threadId`
+- `../checkpoints/bun_sqlite_saver.ts` — Bun-native LangGraph checkpointer persisted in `state.db`
 
 Layout per caller:
 
@@ -27,4 +28,11 @@ Layout per caller:
   <slug>.md          one file per playbook
 ```
 
-Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools. Short-term conversation history lives in a LangGraph `MemorySaver` wired in [`src/app.ts`](../app.ts).
+Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools.
+
+Conversation state is split into two layers:
+
+- Long-term memory lives in the per-caller `/memory/` and `/skills/` files.
+- Short-term thread history lives in LangGraph checkpoints stored by the Bun SQLite saver in [`src/checkpoints/bun_sqlite_saver.ts`](../checkpoints/bun_sqlite_saver.ts) and wired through [`src/channels/shared.ts`](../channels/shared.ts).
+
+Both layers persist across bot restarts. `/new-thread` rotates the active thread id and summarizes the previous thread into `log.md`, but it does not erase long-term memory.

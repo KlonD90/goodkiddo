@@ -55,7 +55,9 @@ function main(): void {
 			}
 			const rules = store.listRulesForUser(userId);
 			if (rules.length === 0) {
-				console.log("(no rules; all tools default to ask)");
+				console.log(
+					"(no rules; default policy is allow, except execute tools ask)",
+				);
 				break;
 			}
 			for (const rule of rules) {

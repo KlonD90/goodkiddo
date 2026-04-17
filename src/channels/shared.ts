@@ -1,10 +1,10 @@
-import { MemorySaver } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import { type AppAgentBundle, createAppAgent } from "../app";
+import { createPersistentCheckpointer } from "../checkpoints/bun_sqlite_saver";
 import type { AppConfig } from "../config";
-import { FileAuditLogger } from "../permissions/audit";
 import type { ApprovalBroker } from "../permissions/approval";
+import { FileAuditLogger } from "../permissions/audit";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 
@@ -28,7 +28,7 @@ export async function createChannelAgentSession(
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
-	const checkpointer = new MemorySaver();
+	const checkpointer = createPersistentCheckpointer(config.stateDbPath);
 	const makeBundle = () =>
 		createAppAgent(config, {
 			caller: options.caller,
@@ -59,30 +59,46 @@ export const extractTextFromContent = (content: unknown): string => {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
 		return content
-			.map((item) => {
-				if (typeof item === "string") return item;
-				if (
-					typeof item === "object" &&
-					item !== null &&
-					"text" in item &&
-					typeof item.text === "string"
-				) {
-					return item.text;
-				}
-				return "";
-			})
+			.map((item) => extractTextFromContent(item))
 			.filter((item) => item !== "")
 			.join("\n");
+	}
+	if (typeof content === "object" && content !== null) {
+		if ("text" in content && typeof content.text === "string") {
+			return content.text;
+		}
+		if ("content" in content) {
+			return extractTextFromContent(content.content);
+		}
 	}
 	return "";
 };
 
-export const extractAgentReply = (result: {
-	messages?: Array<{ content?: unknown }>;
-}): string => {
+function isAssistantMessage(message: unknown): boolean {
+	if (typeof message !== "object" || message === null) return false;
+
+	if ("role" in message) {
+		const role = message.role;
+		if (role === "assistant" || role === "ai") return true;
+	}
+
+	if ("getType" in message && typeof message.getType === "function") {
+		const type = message.getType();
+		if (type === "ai" || type === "assistant") return true;
+	}
+
+	return false;
+}
+
+export const extractAgentReply = (result: { messages?: unknown[] }): string => {
 	const messages = result.messages ?? [];
 	for (let index = messages.length - 1; index >= 0; index -= 1) {
-		const content = extractTextFromContent(messages[index]?.content);
+		const message = messages[index];
+		if (!isAssistantMessage(message)) continue;
+		const content =
+			typeof message === "object" && message !== null
+				? extractTextFromContent(message.content)
+				: "";
 		if (content !== "") return content;
 	}
 	return "The agent completed the task but did not return a text response.";

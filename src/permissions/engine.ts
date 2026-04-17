@@ -1,6 +1,13 @@
 import { matchesArguments } from "./matcher";
 import type { ResolvedDecision, ToolRule } from "./types";
 
+function resolveDefaultDecision(toolName: string): ResolvedDecision {
+	if (toolName.startsWith("execute_")) {
+		return { decision: "ask", ruleId: "default-ask" };
+	}
+	return { decision: "allow", ruleId: "default-allow" };
+}
+
 export function resolveDecision(
 	rules: ToolRule[],
 	toolName: string,
@@ -12,5 +19,5 @@ export function resolveDecision(
 		if (!matchesArguments(rule.args, args)) continue;
 		return { decision: rule.decision, ruleId: rule.id };
 	}
-	return { decision: "ask", ruleId: "default-ask" };
+	return resolveDefaultDecision(toolName);
 }

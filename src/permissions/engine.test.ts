@@ -13,8 +13,15 @@ const baseRule = (overrides: Partial<ToolRule>): ToolRule => ({
 });
 
 describe("engine.resolveDecision", () => {
-	test("default-ask when no rules", () => {
+	test("non-execute tools default to allow when no rules", () => {
 		expect(resolveDecision([], "anything", {})).toEqual({
+			decision: "allow",
+			ruleId: "default-allow",
+		});
+	});
+
+	test("execute tools default to ask when no rules", () => {
+		expect(resolveDecision([], "execute_workspace", {})).toEqual({
 			decision: "ask",
 			ruleId: "default-ask",
 		});

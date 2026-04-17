@@ -2,9 +2,12 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
 import {
+	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
 	chunkTelegramMessage,
 	extractTelegramCommandName,
+	extractTelegramReplyFromAgentState,
+	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
 	maybeHandleTelegramApprovalReply,
@@ -292,6 +295,97 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(rendered).toContain("• <b>Claude Opus</b> (Anthropic):");
 		expect(rendered).toContain("  • Long-document comprehension");
 		expect(rendered).toContain("• <b>ChatGPT 4o</b> (OpenAI):");
+	});
+
+	test("buildTelegramPhotoContent keeps caption text and image bytes", () => {
+		const imageData = Uint8Array.from([1, 2, 3]);
+		const content = buildTelegramPhotoContent(imageData, {
+			caption: "what is in this photo?",
+			filePath: "photos/cat.png",
+		});
+
+		expect(content).toEqual([
+			{
+				type: "text",
+				text: "what is in this photo?",
+			},
+			{
+				type: "image",
+				mimeType: "image/png",
+				data: imageData,
+			},
+		]);
+	});
+
+	test("buildTelegramPhotoContent adds fallback text for captionless photos", () => {
+		const content = buildTelegramPhotoContent(Uint8Array.from([9]), {
+			filePath: "photos/cat.jpg",
+		});
+
+		expect(content).toEqual([
+			{
+				type: "text",
+				text: "User attached an image without a caption.",
+			},
+			{
+				type: "image",
+				mimeType: "image/jpeg",
+				data: Uint8Array.from([9]),
+			},
+		]);
+	});
+
+	test("fetchTelegramFileBytes downloads Telegram-hosted image bytes", async () => {
+		const result = await fetchTelegramFileBytes(
+			{ file_path: "photos/file_1.png" },
+			"token-123",
+			async (input) => {
+				expect(String(input)).toBe(
+					"https://api.telegram.org/file/bottoken-123/photos/file_1.png",
+				);
+				return new Response(Uint8Array.from([7, 8, 9]), { status: 200 });
+			},
+		);
+
+		expect(result).toEqual({
+			data: Uint8Array.from([7, 8, 9]),
+			filePath: "photos/file_1.png",
+		});
+	});
+
+	test("fetchTelegramFileBytes rejects files without a download path", async () => {
+		await expect(
+			fetchTelegramFileBytes({ file_path: "" }, "token-123"),
+		).rejects.toThrow("Telegram did not return a downloadable file path.");
+	});
+
+	test("extractTelegramReplyFromAgentState returns the latest text reply", () => {
+		expect(
+			extractTelegramReplyFromAgentState({
+				values: {
+					messages: [
+						{ role: "assistant", content: [{ type: "text", text: "older" }] },
+						{
+							role: "assistant",
+							content: [
+								{ type: "text", text: "final answer" },
+								{ type: "tool_use", name: "ignored" },
+							],
+						},
+					],
+				},
+			}),
+		).toBe("final answer");
+	});
+
+	test("extractTelegramReplyFromAgentState returns empty string when state has no text", () => {
+		expect(
+			extractTelegramReplyFromAgentState({
+				values: {
+					messages: [{ role: "assistant", content: [{ type: "image" }] }],
+				},
+			}),
+		).toBe("");
 	});
 
 	test("getTelegramCaller returns null for unknown or suspended users", () => {

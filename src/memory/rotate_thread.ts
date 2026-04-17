@@ -1,5 +1,5 @@
-import type { BackendProtocol } from "deepagents";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import type { BackendProtocol } from "deepagents";
 import type { AgentInstance, ChannelAgentSession } from "../channels/shared";
 import { appendLog } from "./log";
 import { summarizeThread, type ThreadMessage } from "./summarize";
@@ -22,10 +22,13 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 	if (raw === null || typeof raw !== "object") return null;
 	const obj = raw as Record<string, unknown>;
 
-	// Shape 1: plain { role, content }
-	if (typeof obj.role === "string" && typeof obj.content === "string") {
+	// Shape 1: plain { role, content }, where content may be a string or a
+	// structured array of blocks from multimodal/tool-enabled providers.
+	if (typeof obj.role === "string" && "content" in obj) {
 		if (["user", "assistant", "system", "tool"].includes(obj.role)) {
-			return { role: obj.role as ThreadMessage["role"], content: obj.content };
+			const content = extractContentText(obj.content);
+			if (content.trim().length === 0) return null;
+			return { role: obj.role as ThreadMessage["role"], content };
 		}
 	}
 
@@ -60,16 +63,16 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 function extractContentText(content: unknown): string {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
-		return content
-			.map((part) => {
-				if (typeof part === "string") return part;
-				if (typeof part === "object" && part !== null && "text" in part) {
-					const text = (part as { text?: unknown }).text;
-					return typeof text === "string" ? text : "";
-				}
-				return "";
-			})
-			.join("");
+		return content.map((part) => extractContentText(part)).join("");
+	}
+	if (typeof content === "object" && content !== null) {
+		if ("text" in content) {
+			const text = (content as { text?: unknown }).text;
+			if (typeof text === "string") return text;
+		}
+		if ("content" in content) {
+			return extractContentText((content as { content?: unknown }).content);
+		}
 	}
 	return "";
 }
@@ -98,7 +101,11 @@ export async function rotateThread(options: {
 	model: BaseChatModel;
 	backend: BackendProtocol;
 	mintThreadId: () => string;
-}): Promise<{ summary: string; previousThreadId: string; newThreadId: string }> {
+}): Promise<{
+	summary: string;
+	previousThreadId: string;
+	newThreadId: string;
+}> {
 	const { session, model, backend, mintThreadId } = options;
 	const previousThreadId = session.threadId;
 

@@ -31,20 +31,11 @@ describe("cli channel", () => {
 		});
 	});
 
-	test("seedCliUser installs permissive default rule once", () => {
+	test("seedCliUser leaves permissive mode to the global default policy", () => {
 		store = new PermissionsStore({ dbPath: ":memory:" });
 		seedCliUser(store, caller);
 		seedCliUser(store, caller);
 
-		expect(store.listRulesForUser(caller.id)).toEqual([
-			{
-				id: expect.any(Number),
-				userId: caller.id,
-				priority: 1000,
-				toolName: "*",
-				args: null,
-				decision: "allow",
-			},
-		]);
+		expect(store.listRulesForUser(caller.id)).toEqual([]);
 	});
 });

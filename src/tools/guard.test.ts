@@ -41,6 +41,21 @@ beforeEach(() => {
 });
 
 describe("wrapToolWithGuard", () => {
+	test("default-allow runs non-execute tools without consulting broker", async () => {
+		const broker = new FakeBroker("deny-once");
+		const wrapped = wrapToolWithGuard(sampleTool(), {
+			caller,
+			store,
+			broker,
+			audit: new NoopAuditLogger(),
+		});
+		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
+			value: "y",
+		});
+		expect(result).toBe("ran:y");
+		expect(broker.lastRequest).toBeNull();
+	});
+
 	test("allow rule passes through", async () => {
 		store.upsertRule(caller.id, {
 			priority: 100,
@@ -83,29 +98,43 @@ describe("wrapToolWithGuard", () => {
 		expect(broker.lastRequest).toBeNull();
 	});
 
-	test("default-ask consults broker; approve-once runs", async () => {
+	test("execute tools still consult broker by default; approve-once runs", async () => {
 		const broker = new FakeBroker("approve-once");
-		const wrapped = wrapToolWithGuard(sampleTool(), {
-			caller,
-			store,
-			broker,
-			audit: new NoopAuditLogger(),
-		});
+		const wrapped = wrapToolWithGuard(
+			tool(async (input: { value: string }) => `ran:${input.value}`, {
+				name: "execute_workspace",
+				description: "Execute tool for tests.",
+				schema: z.object({ value: z.string() }),
+			}),
+			{
+				caller,
+				store,
+				broker,
+				audit: new NoopAuditLogger(),
+			},
+		);
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
 			value: "y",
 		});
 		expect(result).toBe("ran:y");
-		expect(broker.lastRequest?.toolName).toBe("sample");
+		expect(broker.lastRequest?.toolName).toBe("execute_workspace");
 	});
 
-	test("default-ask + deny-once returns denial", async () => {
+	test("execute tools default-ask + deny-once returns denial", async () => {
 		const broker = new FakeBroker("deny-once");
-		const wrapped = wrapToolWithGuard(sampleTool(), {
-			caller,
-			store,
-			broker,
-			audit: new NoopAuditLogger(),
-		});
+		const wrapped = wrapToolWithGuard(
+			tool(async (input: { value: string }) => `ran:${input.value}`, {
+				name: "execute_workspace",
+				description: "Execute tool for tests.",
+				schema: z.object({ value: z.string() }),
+			}),
+			{
+				caller,
+				store,
+				broker,
+				audit: new NoopAuditLogger(),
+			},
+		);
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
 			value: "z",
 		});

@@ -1,3 +1,4 @@
+import { extname } from "node:path";
 import { Bot, InlineKeyboard } from "grammy";
 import MarkdownIt from "markdown-it";
 import type { AppConfig } from "../config";
@@ -14,6 +15,7 @@ import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	type ChannelAgentSession,
 	createChannelAgentSession,
+	extractAgentReply,
 	extractTextFromContent,
 } from "./shared";
 import type { AppChannel } from "./types";
@@ -44,8 +46,28 @@ type PendingApproval = {
 
 type TelegramAgentSession = ChannelAgentSession & {
 	running: boolean;
-	queue: string[];
+	queue: TelegramQueuedTurn[];
 	pendingApprovals: Map<string, PendingApproval>;
+};
+
+type TelegramTextContentBlock = {
+	type: "text";
+	text: string;
+};
+
+type TelegramImageContentBlock = {
+	type: "image";
+	mimeType: string;
+	data: Uint8Array;
+};
+
+type TelegramUserInput =
+	| string
+	| Array<TelegramTextContentBlock | TelegramImageContentBlock>;
+
+type TelegramQueuedTurn = {
+	content: TelegramUserInput;
+	commandText: string;
 };
 
 type TelegramListState = { type: "bullet" } | { type: "ordered"; next: number };
@@ -1011,6 +1033,73 @@ function extractTelegramStreamText(message: unknown): string {
 	return "";
 }
 
+function normalizeTelegramCommandText(text: string | null | undefined): string {
+	return typeof text === "string" ? text.trim() : "";
+}
+
+function detectTelegramImageMimeType(filePath: string | undefined): string {
+	switch (extname(filePath ?? "").toLowerCase()) {
+		case ".png":
+			return "image/png";
+		case ".webp":
+			return "image/webp";
+		case ".gif":
+			return "image/gif";
+		case ".bmp":
+			return "image/bmp";
+		default:
+			return "image/jpeg";
+	}
+}
+
+export function buildTelegramPhotoContent(
+	imageData: Uint8Array,
+	options?: {
+		caption?: string | null;
+		filePath?: string;
+	},
+): Array<TelegramTextContentBlock | TelegramImageContentBlock> {
+	const caption = normalizeTelegramCommandText(options?.caption);
+
+	return [
+		{
+			type: "text",
+			text:
+				caption === "" ? "User attached an image without a caption." : caption,
+		},
+		{
+			type: "image",
+			mimeType: detectTelegramImageMimeType(options?.filePath),
+			data: imageData,
+		},
+	];
+}
+
+export async function fetchTelegramFileBytes(
+	file: { file_path?: string },
+	botToken: string,
+	fetchImpl: typeof fetch = fetch,
+): Promise<{ data: Uint8Array; filePath: string }> {
+	const filePath = file.file_path;
+	if (typeof filePath !== "string" || filePath === "") {
+		throw new Error("Telegram did not return a downloadable file path.");
+	}
+
+	const response = await fetchImpl(
+		`https://api.telegram.org/file/bot${botToken}/${filePath}`,
+	);
+	if (!response.ok) {
+		throw new Error(
+			`Telegram file download failed with status ${response.status}.`,
+		);
+	}
+
+	return {
+		data: new Uint8Array(await response.arrayBuffer()),
+		filePath,
+	};
+}
+
 function summarizeArgs(args: unknown): string {
 	try {
 		const json = JSON.stringify(args);
@@ -1018,6 +1107,39 @@ function summarizeArgs(args: unknown): string {
 		return `${json.slice(0, 177)}...`;
 	} catch {
 		return String(args);
+	}
+}
+
+export function extractTelegramReplyFromAgentState(state: unknown): string {
+	if (
+		typeof state !== "object" ||
+		state === null ||
+		!("values" in state) ||
+		typeof state.values !== "object" ||
+		state.values === null
+	) {
+		return "";
+	}
+
+	const reply = extractAgentReply(
+		state.values as { messages?: Array<{ content?: unknown }> },
+	);
+	return reply ===
+		"The agent completed the task but did not return a text response."
+		? ""
+		: reply;
+}
+
+async function getTelegramFinalAgentReply(
+	session: TelegramAgentSession,
+): Promise<string> {
+	try {
+		const state = await session.agent.getState({
+			configurable: { thread_id: session.threadId },
+		});
+		return extractTelegramReplyFromAgentState(state);
+	} catch {
+		return "";
 	}
 }
 
@@ -1116,7 +1238,7 @@ async function runAgentTurn(
 	session: TelegramAgentSession,
 	bot: Bot,
 	chatId: string,
-	userInput: string,
+	userInput: TelegramUserInput,
 ): Promise<void> {
 	const stopTyping = startTelegramTypingLoop(bot, chatId);
 	try {
@@ -1153,6 +1275,14 @@ async function runAgentTurn(
 		}
 
 		if (!sentAnyReply) {
+			const finalReply = await getTelegramFinalAgentReply(session);
+			if (finalReply !== "") {
+				await sendTelegramMessage(bot, chatId, finalReply);
+				sentAnyReply = true;
+			}
+		}
+
+		if (!sentAnyReply) {
 			await sendTelegramMessage(
 				bot,
 				chatId,
@@ -1178,7 +1308,7 @@ async function pumpQueue(
 	if (next === undefined) return;
 	session.running = true;
 	try {
-		await runAgentTurn(session, bot, chatId, next);
+		await runAgentTurn(session, bot, chatId, next.content);
 	} finally {
 		session.running = false;
 		if (session.queue.length > 0) {
@@ -1246,6 +1376,83 @@ export function maybeHandleTelegramApprovalReply(
 	return { handled: false };
 }
 
+async function handleTelegramControlInput(
+	session: TelegramAgentSession,
+	bot: Bot,
+	chatId: string,
+	commandText: string,
+	caller: Caller,
+	store: PermissionsStore,
+): Promise<boolean> {
+	if (commandText !== "") {
+		const approvalReply = maybeHandleTelegramApprovalReply(
+			session,
+			commandText,
+		);
+		if (approvalReply.handled) {
+			if (approvalReply.reply) {
+				await sendTelegramMessage(bot, chatId, approvalReply.reply);
+			}
+			return true;
+		}
+
+		const sessionCommand = await maybeHandleSessionCommand(commandText, {
+			session,
+			model: session.model,
+			backend: session.workspace,
+			mintThreadId: () => mintTelegramThreadId(chatId),
+		});
+		if (sessionCommand.handled) {
+			await sendTelegramMessage(bot, chatId, sessionCommand.reply);
+			return true;
+		}
+
+		const command = maybeHandleCommand(commandText, caller, store);
+		if (command.handled) {
+			await sendTelegramMessage(bot, chatId, command.reply);
+			return true;
+		}
+
+		const slashCommand = extractTelegramCommandName(commandText);
+		if (slashCommand !== null) {
+			await sendTelegramMessage(
+				bot,
+				chatId,
+				formatUnknownTelegramCommandReply(slashCommand),
+			);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+async function handleTelegramQueuedTurn(
+	session: TelegramAgentSession,
+	bot: Bot,
+	chatId: string,
+	commandText: string,
+	content: TelegramUserInput,
+	caller: Caller,
+	store: PermissionsStore,
+): Promise<void> {
+	if (
+		await handleTelegramControlInput(
+			session,
+			bot,
+			chatId,
+			commandText,
+			caller,
+			store,
+		)
+	) {
+		return;
+	}
+
+	session.queue.push({ content, commandText });
+	void pumpQueue(session, bot, chatId);
+}
+
 export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig): Promise<void> {
@@ -1291,7 +1498,7 @@ export const telegramChannel: AppChannel = {
 
 		bot.on("message:text", async (ctx) => {
 			const chatId = ctx.chat.id;
-			const text = ctx.message.text.trim();
+			const text = normalizeTelegramCommandText(ctx.message.text);
 			if (text === "") return;
 
 			const chatIdString = String(chatId);
@@ -1310,43 +1517,79 @@ export const telegramChannel: AppChannel = {
 				sessions,
 			);
 
-			const approvalReply = maybeHandleTelegramApprovalReply(session, text);
-			if (approvalReply.handled) {
-				if (approvalReply.reply) {
-					await sendTelegramMessage(bot, chatIdString, approvalReply.reply);
-				}
-				return;
-			}
-
-			const sessionCommand = await maybeHandleSessionCommand(text, {
+			await handleTelegramQueuedTurn(
 				session,
-				model: session.model,
-				backend: session.workspace,
-				mintThreadId: () => mintTelegramThreadId(chatIdString),
-			});
-			if (sessionCommand.handled) {
-				await sendTelegramMessage(bot, chatIdString, sessionCommand.reply);
+				bot,
+				chatIdString,
+				text,
+				text,
+				caller,
+				store,
+			);
+		});
+
+		bot.on("message:photo", async (ctx) => {
+			const chatIdString = String(ctx.chat.id);
+			const caller = getTelegramCaller(store, chatIdString);
+			if (!caller) {
+				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return;
 			}
 
-			const command = maybeHandleCommand(text, caller, store);
-			if (command.handled) {
-				await sendTelegramMessage(bot, chatIdString, command.reply);
-				return;
-			}
+			const session = await ensureTelegramSession(
+				chatIdString,
+				caller,
+				config,
+				store,
+				bot,
+				sessions,
+			);
+			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
-			const slashCommand = extractTelegramCommandName(text);
-			if (slashCommand !== null) {
+			try {
+				if (
+					await handleTelegramControlInput(
+						session,
+						bot,
+						chatIdString,
+						caption,
+						caller,
+						store,
+					)
+				) {
+					return;
+				}
+
+				const file = await ctx.getFile();
+				const downloaded = await fetchTelegramFileBytes(
+					file,
+					config.telegramBotToken,
+				);
+				const content = buildTelegramPhotoContent(downloaded.data, {
+					caption,
+					filePath: downloaded.filePath,
+				});
+
+				await handleTelegramQueuedTurn(
+					session,
+					bot,
+					chatIdString,
+					"",
+					content,
+					caller,
+					store,
+				);
+			} catch (error) {
+				const message =
+					error instanceof Error
+						? error.message
+						: "Unknown Telegram photo handling error";
 				await sendTelegramMessage(
 					bot,
 					chatIdString,
-					formatUnknownTelegramCommandReply(slashCommand),
+					`Request failed: ${message}`,
 				);
-				return;
 			}
-
-			session.queue.push(text);
-			void pumpQueue(session, bot, chatIdString);
 		});
 
 		bot.catch(async (error) => {

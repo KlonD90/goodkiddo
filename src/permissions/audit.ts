@@ -11,7 +11,11 @@ export type AuditEntry = {
 	toolName: string;
 	args: unknown;
 	decision: PermissionDecision;
-	ruleId: number | "default-ask" | "blocked-unknown-user";
+	ruleId:
+		| number
+		| "default-allow"
+		| "default-ask"
+		| "blocked-unknown-user";
 	outcome: "allowed" | "denied-by-policy" | "denied-by-user" | "blocked";
 	timestamp?: number;
 };

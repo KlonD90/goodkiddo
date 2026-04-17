@@ -16,20 +16,48 @@ describe("channel shared helpers", () => {
 		).toBe("first\nsecond");
 	});
 
+	test("extractTextFromContent reads nested content blocks", () => {
+		expect(
+			extractTextFromContent([
+				{
+					type: "tool_result",
+					content: [{ type: "text", text: "nested" }],
+				},
+			]),
+		).toBe("nested");
+	});
+
 	test("extractAgentReply returns the latest text reply", () => {
 		expect(
 			extractAgentReply({
 				messages: [
-					{ content: "older" },
-					{ content: [{ type: "text", text: "newer" }] },
+					{ role: "user", content: "question" },
+					{ role: "assistant", content: "older" },
+					{ role: "assistant", content: [{ type: "text", text: "newer" }] },
 				],
 			}),
 		).toBe("newer");
 	});
 
+	test("extractAgentReply ignores trailing user text", () => {
+		expect(
+			extractAgentReply({
+				messages: [
+					{
+						role: "assistant",
+						content: [{ type: "text", text: "real reply" }],
+					},
+					{ role: "user", content: [{ type: "text", text: "echo me" }] },
+				],
+			}),
+		).toBe("real reply");
+	});
+
 	test("extractAgentReply falls back when no text exists", () => {
-		expect(extractAgentReply({ messages: [{ content: [{ type: "image" }] }] })).toBe(
-			"The agent completed the task but did not return a text response.",
-		);
+		expect(
+			extractAgentReply({
+				messages: [{ role: "assistant", content: [{ type: "image" }] }],
+			}),
+		).toBe("The agent completed the task but did not return a text response.");
 	});
 });

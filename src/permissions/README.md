@@ -1,10 +1,10 @@
 # permissions
 
-Multi-tenant tool permissions. Per-user rules in SQLite, default decision is `ask`.
+Multi-tenant tool permissions. Per-user rules in SQLite, default decision is `allow`, except `execute_*` tools which default to `ask`.
 
 - `types.ts` — `Caller`, `ToolRule`, `ArgumentMatcher` (eq/in/glob/regex)
 - `store.ts` — `harness_users` + `tool_permissions` tables; CRUD
-- `engine.ts` — `resolveDecision(rules, tool, args)` — first match wins, default `ask`
+- `engine.ts` — `resolveDecision(rules, tool, args)` — first match wins, default `allow` except `execute_*` uses `ask`
 - `matcher.ts` — argument matcher evaluator (dotted paths, mini-glob)
 - `approval.ts` — `ApprovalBroker` interface + CLI broker; outcomes `approve-once|always`, `deny-once|always`
 - `audit.ts` — append-only JSON-line log of every decision

@@ -1,4 +1,4 @@
-import { MemorySaver } from "@langchain/langgraph";
+import { type BaseCheckpointSaver, MemorySaver } from "@langchain/langgraph";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "./backends";
 import type { AppConfig } from "./config";
@@ -18,7 +18,7 @@ export interface CreateAppAgentOptions {
 	store: PermissionsStore;
 	broker: ApprovalBroker;
 	audit: AuditLogger;
-	checkpointer?: MemorySaver;
+	checkpointer?: BaseCheckpointSaver;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the

@@ -30,12 +30,12 @@ export function seedCliUser(store: PermissionsStore, caller: Caller): void {
 		externalId: caller.externalId,
 		displayName: caller.displayName ?? null,
 	});
-	if (CLI_DEFAULT_POLICY !== "strict") {
+	if (CLI_DEFAULT_POLICY === "strict") {
 		store.upsertRule(caller.id, {
 			priority: 1000,
 			toolName: "*",
 			args: null,
-			decision: "allow",
+			decision: "ask",
 		});
 	}
 }
