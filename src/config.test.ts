@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
 	type AppConfig,
 	findConfigIssues,
@@ -96,6 +96,7 @@ describe("config", () => {
 					blockedUserMessage: "Access not configured. Contact the admin.",
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
+					enableExecute: true,
 				});
 			},
 		);
@@ -162,6 +163,7 @@ describe("config", () => {
 					blockedUserMessage: "Access not configured. Contact the admin.",
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
+					enableExecute: true,
 				});
 			},
 		);
@@ -208,6 +210,7 @@ describe("config", () => {
 				blockedUserMessage: "Access not configured. Contact the admin.",
 				permissionsMode: "enforce",
 				stateDbPath: "./state.db",
+				enableExecute: true,
 			});
 		});
 	});
@@ -279,7 +282,9 @@ describe("config", () => {
 			expect(config.aiType).toBe("anthropic");
 			expect(config.appEntrypoint).toBe("cli");
 			expect(config.usingMode).toBe("single");
-			expect(readFileSync(envFilePath, "utf8")).toContain('CUSTOM_FLAG="keep-me"');
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'CUSTOM_FLAG="keep-me"',
+			);
 		});
 	});
 

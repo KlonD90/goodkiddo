@@ -14,11 +14,11 @@ import { createExecutionToolset } from "./tools";
 import type { GuardContext } from "./tools/guard";
 
 export interface CreateAppAgentOptions {
-  caller: Caller;
-  store: PermissionsStore;
-  broker: ApprovalBroker;
-  audit: AuditLogger;
-  checkpointer?: MemorySaver;
+	caller: Caller;
+	store: PermissionsStore;
+	broker: ApprovalBroker;
+	audit: AuditLogger;
+	checkpointer?: MemorySaver;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -41,10 +41,10 @@ export const createAppAgent = async (
 		config.aiBaseUrl,
 	);
 
-  const workspace = new SqliteStateBackend({
-    dbPath: config.stateDbPath,
-    namespace: options.caller.id,
-  });
+	const workspace = new SqliteStateBackend({
+		dbPath: config.stateDbPath,
+		namespace: options.caller.id,
+	});
 
 	await ensureMemoryBootstrapped(workspace);
 
@@ -58,17 +58,19 @@ export const createAppAgent = async (
 				}
 			: undefined;
 
-  const tools = await createExecutionToolset({
-    workspace,
-    backend: {
-      backend: "auto",
-      docker: {
-        image: "top-fedder-dev:latest",
-        allowUnsafeNetwork: true,
-      },
-    },
-    guard,
-  });
+	const tools = await createExecutionToolset({
+		workspace,
+		backend: {
+			backend: "auto",
+			docker: {
+				image: "top-fedder-dev:latest",
+				allowUnsafeNetwork: true,
+			},
+		},
+		guard,
+		enableExecute: config.enableExecute,
+		callerId: options.caller.id,
+	});
 
 	const systemPrompt = await buildSystemPrompt({
 		identityPrompt: DO_IT_MD,

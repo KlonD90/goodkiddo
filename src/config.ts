@@ -1,6 +1,6 @@
-import { clearScreenDown, cursorTo, emitKeypressEvents } from "node:readline";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
+import { clearScreenDown, cursorTo, emitKeypressEvents } from "node:readline";
 import {
 	type AppEntrypoint,
 	checkAiType,
@@ -24,6 +24,7 @@ export type AppConfig = {
 	blockedUserMessage: string;
 	permissionsMode: "enforce" | "disabled";
 	stateDbPath: string;
+	enableExecute: boolean;
 };
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
@@ -37,6 +38,7 @@ type ConfigIssueField =
 	| "AI_TYPE"
 	| "APP_ENTRYPOINT"
 	| "BLOCKED_USER_MESSAGE"
+	| "ENABLE_EXECUTE"
 	| "PERMISSIONS_MODE"
 	| "STATE_DB_PATH"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
@@ -77,6 +79,7 @@ const PERSISTED_ENV_KEYS = [
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
+	"ENABLE_EXECUTE",
 	"PERMISSIONS_MODE",
 	"STATE_DB_PATH",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
@@ -132,6 +135,9 @@ export const readConfigFromEnv = (
 	const permissionsMode =
 		permissionsModeRaw === "disabled" ? "disabled" : "enforce";
 
+	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
+	const enableExecute = enableExecuteRaw !== "false";
+
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
 		aiBaseUrl: getEnv("AI_BASE_URL", persistedValues),
@@ -140,14 +146,19 @@ export const readConfigFromEnv = (
 			? entrypointValue
 			: undefined,
 		aiType: checkAiType(aiTypeValue) ? aiTypeValue : undefined,
-		telegramAllowedChatId: getEnv("TELEGRAM_BOT_ALLOWED_CHAT_ID", persistedValues),
+		telegramAllowedChatId: getEnv(
+			"TELEGRAM_BOT_ALLOWED_CHAT_ID",
+			persistedValues,
+		),
 		telegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", persistedValues),
 		usingMode: checkUsingMode(usingModeValue) ? usingModeValue : undefined,
 		blockedUserMessage:
 			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
 			DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode,
-		stateDbPath: getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
+		stateDbPath:
+			getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
+		enableExecute,
 	};
 };
 
@@ -512,6 +523,7 @@ Press enter to allow any chat the bot is added to.> `,
 			initialConfig.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		stateDbPath: initialConfig.stateDbPath ?? DEFAULT_STATE_DB_PATH,
+		enableExecute: initialConfig.enableExecute ?? true,
 	};
 };
 
@@ -534,6 +546,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.appEntrypoint)}`;
 		case "BLOCKED_USER_MESSAGE":
 			return `${key}=${escapeEnvValue(config.blockedUserMessage)}`;
+		case "ENABLE_EXECUTE":
+			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "STATE_DB_PATH":
@@ -578,7 +592,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -602,11 +616,13 @@ const persistConfigToEnvFile = (
 		? readFileSync(envFilePath, "utf8")
 		: "";
 	const existingLines =
-		existingContent === "" ? [] : existingContent.replace(/\r\n/g, "\n").split("\n");
+		existingContent === ""
+			? []
+			: existingContent.replace(/\r\n/g, "\n").split("\n");
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=/,
 		);
 		if (!match) {
 			return line;
@@ -663,6 +679,7 @@ export const resolveConfig = async (
 				config.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
 			permissionsMode: config.permissionsMode ?? "enforce",
 			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
+			enableExecute: config.enableExecute ?? true,
 		};
 		return resolvedConfig;
 	}
