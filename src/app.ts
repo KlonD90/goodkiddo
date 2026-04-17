@@ -18,6 +18,7 @@ export interface CreateAppAgentOptions {
   store: PermissionsStore;
   broker: ApprovalBroker;
   audit: AuditLogger;
+  checkpointer?: MemorySaver;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -78,7 +79,7 @@ export const createAppAgent = async (
 		model,
 		tools,
 		systemPrompt,
-		checkpointer: new MemorySaver(),
+		checkpointer: options.checkpointer ?? new MemorySaver(),
 	});
 
 	return { agent, workspace, model };

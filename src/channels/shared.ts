@@ -1,3 +1,4 @@
+import { MemorySaver } from "@langchain/langgraph";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import { type AppAgentBundle, createAppAgent } from "../app";
@@ -14,6 +15,7 @@ export type ChannelAgentSession = {
 	threadId: string;
 	workspace: BackendProtocol;
 	model: BaseChatModel;
+	refreshAgent: () => Promise<void>;
 };
 
 export async function createChannelAgentSession(
@@ -26,19 +28,31 @@ export async function createChannelAgentSession(
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
-	const bundle = await createAppAgent(config, {
-		caller: options.caller,
-		store: options.store,
-		broker: options.broker,
-		audit,
-	});
+	const checkpointer = new MemorySaver();
+	const makeBundle = () =>
+		createAppAgent(config, {
+			caller: options.caller,
+			store: options.store,
+			broker: options.broker,
+			audit,
+			checkpointer,
+		});
+	let bundle = await makeBundle();
 
-	return {
+	const session: ChannelAgentSession = {
 		agent: bundle.agent,
 		threadId: options.threadId,
 		workspace: bundle.workspace,
 		model: bundle.model,
+		refreshAgent: async () => {
+			bundle = await makeBundle();
+			session.agent = bundle.agent;
+			session.workspace = bundle.workspace;
+			session.model = bundle.model;
+		},
 	};
+
+	return session;
 }
 
 export const extractTextFromContent = (content: unknown): string => {

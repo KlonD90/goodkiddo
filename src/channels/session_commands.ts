@@ -28,7 +28,8 @@ export async function maybeHandleSessionCommand(
 	const firstSpace = trimmed.indexOf(" ");
 	const command = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
 		.slice(1)
-		.toLowerCase();
+		.toLowerCase()
+		.split("@", 1)[0];
 
 	if (command === "new-thread" || command === "new_thread") {
 		const { summary, newThreadId } = await rotateThread({

@@ -111,6 +111,7 @@ export const cliChannel: AppChannel = {
 			}, 80);
 
 			try {
+				await session.refreshAgent();
 				const result = await session.agent.invoke(
 					{ messages: [{ role: "user", content: userInput }] },
 					{ configurable: { thread_id: session.threadId } },

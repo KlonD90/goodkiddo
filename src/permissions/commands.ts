@@ -6,6 +6,20 @@ export type CommandResult =
 	| { handled: false }
 	| { handled: true; reply: string };
 
+function parseSlashCommand(input: string): { command: string; rest: string } | null {
+	const trimmed = input.trim();
+	if (!trimmed.startsWith("/")) return null;
+
+	const firstSpace = trimmed.indexOf(" ");
+	const rawCommand = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
+		.slice(1)
+		.toLowerCase();
+	const command = rawCommand.split("@", 1)[0] ?? "";
+	const rest = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1);
+
+	return command === "" ? null : { command, rest };
+}
+
 type ParsedArgs = {
 	positional: string[];
 	flags: Record<string, string>;
@@ -58,14 +72,9 @@ export function maybeHandleCommand(
 	caller: Caller,
 	store: PermissionsStore,
 ): CommandResult {
-	const trimmed = input.trim();
-	if (!trimmed.startsWith("/")) return { handled: false };
-
-	const firstSpace = trimmed.indexOf(" ");
-	const command = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
-		.slice(1)
-		.toLowerCase();
-	const rest = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1);
+	const parsedCommand = parseSlashCommand(input);
+	if (!parsedCommand) return { handled: false };
+	const { command, rest } = parsedCommand;
 
 	if (command === "policy") {
 		const rules = store.listRulesForUser(caller.id);

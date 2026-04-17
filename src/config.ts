@@ -1,4 +1,6 @@
 import { clearScreenDown, cursorTo, emitKeypressEvents } from "node:readline";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 import {
 	type AppEntrypoint,
 	checkAiType,
@@ -56,14 +58,43 @@ type WizardSelect = <TValue extends string>(
 	description: string,
 	options: readonly WizardOption<TValue>[],
 ) => Promise<TValue>;
+type ResolveConfigOptions = {
+	promptUser?: WizardPrompt;
+	selectValue?: WizardSelect;
+	envFilePath?: string;
+};
+type PersistedEnvValues = Partial<Record<ConfigIssueField, string>>;
 
 const SUPPORTED_USING_MODES: readonly UsingMode[] = ["single", "multi"];
 const DEFAULT_AI_TYPE: SupportedAiTypes = "anthropic";
 const DEFAULT_USING_MODE: UsingMode = "single";
 const DEFAULT_APP_ENTRYPOINT: AppEntrypoint = "cli";
+const DEFAULT_ENV_FILE_PATH = resolvePath(process.cwd(), ".env");
+const PERSISTED_ENV_KEYS = [
+	"AI_API_KEY",
+	"AI_BASE_URL",
+	"AI_MODEL_NAME",
+	"AI_TYPE",
+	"APP_ENTRYPOINT",
+	"BLOCKED_USER_MESSAGE",
+	"PERMISSIONS_MODE",
+	"STATE_DB_PATH",
+	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
+	"TELEGRAM_BOT_TOKEN",
+	"USING_MODE",
+] as const;
 
-const getEnv = (name: ConfigIssueField): string =>
-	(process.env[name] as string) || "";
+const getEnv = (
+	name: ConfigIssueField,
+	persistedValues: PersistedEnvValues = {},
+): string => {
+	const processValue = normalize(process.env[name] as string | undefined);
+	if (processValue !== "") {
+		return processValue;
+	}
+
+	return normalize(persistedValues[name]);
+};
 const normalize = (value: string | null | undefined): string =>
 	(value ?? "").trim();
 
@@ -90,38 +121,44 @@ const USING_MODE_OPTIONS: readonly WizardOption<UsingMode>[] =
 				: "multi: reserve multi-agent mode",
 	}));
 
-export const readConfigFromEnv = (): Partial<AppConfig> => {
-	const aiTypeValue = normalize(getEnv("AI_TYPE"));
-	const usingModeValue = normalize(getEnv("USING_MODE"));
-	const entrypointValue = normalize(getEnv("APP_ENTRYPOINT"));
+export const readConfigFromEnv = (
+	persistedValues: PersistedEnvValues = {},
+): Partial<AppConfig> => {
+	const aiTypeValue = getEnv("AI_TYPE", persistedValues);
+	const usingModeValue = getEnv("USING_MODE", persistedValues);
+	const entrypointValue = getEnv("APP_ENTRYPOINT", persistedValues);
 
-	const permissionsModeRaw = normalize(getEnv("PERMISSIONS_MODE"));
+	const permissionsModeRaw = getEnv("PERMISSIONS_MODE", persistedValues);
 	const permissionsMode =
 		permissionsModeRaw === "disabled" ? "disabled" : "enforce";
 
 	return {
-		aiApiKey: normalize(getEnv("AI_API_KEY")),
-		aiBaseUrl: normalize(getEnv("AI_BASE_URL")),
-		aiModelName: normalize(getEnv("AI_MODEL_NAME")),
+		aiApiKey: getEnv("AI_API_KEY", persistedValues),
+		aiBaseUrl: getEnv("AI_BASE_URL", persistedValues),
+		aiModelName: getEnv("AI_MODEL_NAME", persistedValues),
 		appEntrypoint: checkAppEntrypoint(entrypointValue)
 			? entrypointValue
 			: undefined,
 		aiType: checkAiType(aiTypeValue) ? aiTypeValue : undefined,
-		telegramAllowedChatId: normalize(getEnv("TELEGRAM_BOT_ALLOWED_CHAT_ID")),
-		telegramBotToken: normalize(getEnv("TELEGRAM_BOT_TOKEN")),
+		telegramAllowedChatId: getEnv("TELEGRAM_BOT_ALLOWED_CHAT_ID", persistedValues),
+		telegramBotToken: getEnv("TELEGRAM_BOT_TOKEN", persistedValues),
 		usingMode: checkUsingMode(usingModeValue) ? usingModeValue : undefined,
 		blockedUserMessage:
-			normalize(getEnv("BLOCKED_USER_MESSAGE")) || DEFAULT_BLOCKED_USER_MESSAGE,
+			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
+			DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode,
-		stateDbPath: normalize(getEnv("STATE_DB_PATH")) || DEFAULT_STATE_DB_PATH,
+		stateDbPath: getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
 	};
 };
 
-export const findConfigIssues = (config: Partial<AppConfig>): ConfigIssue[] => {
+export const findConfigIssues = (
+	config: Partial<AppConfig>,
+	persistedValues: PersistedEnvValues = {},
+): ConfigIssue[] => {
 	const issues: ConfigIssue[] = [];
-	const rawAiType = normalize(getEnv("AI_TYPE"));
-	const rawUsingMode = normalize(getEnv("USING_MODE"));
-	const rawEntrypoint = normalize(getEnv("APP_ENTRYPOINT"));
+	const rawAiType = getEnv("AI_TYPE", persistedValues);
+	const rawUsingMode = getEnv("USING_MODE", persistedValues);
+	const rawEntrypoint = getEnv("APP_ENTRYPOINT", persistedValues);
 
 	if (rawAiType !== "" && !checkAiType(rawAiType)) {
 		issues.push({
@@ -478,15 +515,116 @@ Press enter to allow any chat the bot is added to.> `,
 	};
 };
 
-const applyConfigToEnv = (config: AppConfig): void => {
-	process.env.AI_API_KEY = config.aiApiKey;
-	process.env.AI_BASE_URL = config.aiBaseUrl;
-	process.env.AI_MODEL_NAME = config.aiModelName;
-	process.env.AI_TYPE = config.aiType;
-	process.env.APP_ENTRYPOINT = config.appEntrypoint;
-	process.env.TELEGRAM_BOT_ALLOWED_CHAT_ID = config.telegramAllowedChatId;
-	process.env.TELEGRAM_BOT_TOKEN = config.telegramBotToken;
-	process.env.USING_MODE = config.usingMode;
+const escapeEnvValue = (value: string): string => JSON.stringify(value);
+
+const formatPersistedEnvLine = (
+	key: (typeof PERSISTED_ENV_KEYS)[number],
+	config: AppConfig,
+): string => {
+	switch (key) {
+		case "AI_API_KEY":
+			return `${key}=${escapeEnvValue(config.aiApiKey)}`;
+		case "AI_BASE_URL":
+			return `${key}=${escapeEnvValue(config.aiBaseUrl)}`;
+		case "AI_MODEL_NAME":
+			return `${key}=${escapeEnvValue(config.aiModelName)}`;
+		case "AI_TYPE":
+			return `${key}=${escapeEnvValue(config.aiType)}`;
+		case "APP_ENTRYPOINT":
+			return `${key}=${escapeEnvValue(config.appEntrypoint)}`;
+		case "BLOCKED_USER_MESSAGE":
+			return `${key}=${escapeEnvValue(config.blockedUserMessage)}`;
+		case "PERMISSIONS_MODE":
+			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
+		case "STATE_DB_PATH":
+			return `${key}=${escapeEnvValue(config.stateDbPath)}`;
+		case "TELEGRAM_BOT_ALLOWED_CHAT_ID":
+			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
+		case "TELEGRAM_BOT_TOKEN":
+			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "USING_MODE":
+			return `${key}=${escapeEnvValue(config.usingMode)}`;
+	}
+};
+
+const parseEnvAssignmentValue = (rawValue: string): string => {
+	const trimmed = rawValue.trim();
+	if (trimmed === "") {
+		return "";
+	}
+
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	) {
+		try {
+			return JSON.parse(trimmed);
+		} catch {
+			return trimmed.slice(1, -1);
+		}
+	}
+
+	return trimmed;
+};
+
+const readPersistedEnvFile = (
+	envFilePath = DEFAULT_ENV_FILE_PATH,
+): PersistedEnvValues => {
+	if (!existsSync(envFilePath)) {
+		return {};
+	}
+
+	const persistedValues: PersistedEnvValues = {};
+	const envContent = readFileSync(envFilePath, "utf8");
+	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
+		const match = line.match(
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=(.*)$/u,
+		);
+		if (!match) {
+			continue;
+		}
+
+		const key = match[1] as ConfigIssueField;
+		persistedValues[key] = parseEnvAssignmentValue(match[2]);
+	}
+
+	return persistedValues;
+};
+
+const persistConfigToEnvFile = (
+	config: AppConfig,
+	envFilePath = DEFAULT_ENV_FILE_PATH,
+): void => {
+	const nextLinesByKey = new Map(
+		PERSISTED_ENV_KEYS.map((key) => [key, formatPersistedEnvLine(key, config)]),
+	);
+	const existingContent = existsSync(envFilePath)
+		? readFileSync(envFilePath, "utf8")
+		: "";
+	const existingLines =
+		existingContent === "" ? [] : existingContent.replace(/\r\n/g, "\n").split("\n");
+	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
+	const updatedLines = existingLines.map((line) => {
+		const match = line.match(
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=/,
+		);
+		if (!match) {
+			return line;
+		}
+
+		const key = match[1] as (typeof PERSISTED_ENV_KEYS)[number];
+		seenKeys.add(key);
+		return nextLinesByKey.get(key) ?? line;
+	});
+
+	for (const key of PERSISTED_ENV_KEYS) {
+		if (!seenKeys.has(key)) {
+			updatedLines.push(nextLinesByKey.get(key) ?? "");
+		}
+	}
+
+	const persistedContent = `${updatedLines.join("\n").replace(/\n+$/u, "")}\n`;
+	writeFileSync(envFilePath, persistedContent, "utf8");
 };
 
 const canRunWizard = (): boolean =>
@@ -505,10 +643,11 @@ export const maskSecret = (value: string): string => {
 };
 
 export const resolveConfig = async (
-	options: { promptUser?: WizardPrompt; selectValue?: WizardSelect } = {},
+	options: ResolveConfigOptions = {},
 ): Promise<AppConfig> => {
-	const config = readConfigFromEnv();
-	const issues = findConfigIssues(config);
+	const persistedValues = readPersistedEnvFile(options.envFilePath);
+	const config = readConfigFromEnv(persistedValues);
+	const issues = findConfigIssues(config, persistedValues);
 
 	if (issues.length === 0) {
 		const resolvedConfig: AppConfig = {
@@ -525,7 +664,6 @@ export const resolveConfig = async (
 			permissionsMode: config.permissionsMode ?? "enforce",
 			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 		};
-		applyConfigToEnv(resolvedConfig);
 		return resolvedConfig;
 	}
 
@@ -545,6 +683,6 @@ export const resolveConfig = async (
 		promptUser,
 		options.selectValue,
 	);
-	applyConfigToEnv(resolvedConfig);
+	persistConfigToEnvFile(resolvedConfig, options.envFilePath);
 	return resolvedConfig;
 };

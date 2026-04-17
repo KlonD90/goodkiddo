@@ -76,4 +76,10 @@ describe("maybeHandleCommand", () => {
 		const result = maybeHandleCommand("/help", caller, store);
 		expect(result.handled).toBe(true);
 	});
+
+	test("telegram-style commands with bot username suffix are recognized", () => {
+		const result = maybeHandleCommand("/policy@top_fedder_bot", caller, store);
+		expect(result.handled).toBe(true);
+		if (result.handled) expect(result.reply).toMatch(/No policy/);
+	});
 });

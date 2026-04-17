@@ -20,6 +20,7 @@ If config is missing, the app starts an interactive setup wizard.
 ## Read Next
 
 - [`src/README.md`](./src/README.md) for the code map
+- [`src/channels/README.md`](./src/channels/README.md) for the CLI and Telegram channels, including Telegram formatting and troubleshooting
 - [`src/bin/README.md`](./src/bin/README.md) for entrypoints
 - [`src/permissions/README.md`](./src/permissions/README.md) for the permission model
 - [`src/memory/README.md`](./src/memory/README.md) for the memory subsystem

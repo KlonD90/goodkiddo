@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
 	type AppConfig,
 	findConfigIssues,
@@ -13,6 +16,9 @@ const CONFIG_KEYS = [
 	"AI_MODEL_NAME",
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
+	"BLOCKED_USER_MESSAGE",
+	"PERMISSIONS_MODE",
+	"STATE_DB_PATH",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
 	"USING_MODE",
@@ -60,6 +66,9 @@ const pickOptionValue = <TValue extends string>(
 
 	return option.value;
 };
+
+const makeTempEnvPath = (): string =>
+	join(mkdtempSync(join(tmpdir(), "top-fedder-config-")), ".env");
 
 describe("config", () => {
 	test("reads complete config from env", async () => {
@@ -138,6 +147,7 @@ describe("config", () => {
 					promptUser: () => textAnswers.shift(),
 					selectValue: async (_title, _description, options) =>
 						pickOptionValue(options, 0),
+					envFilePath: makeTempEnvPath(),
 				});
 
 				expect(config).toEqual<AppConfig>({
@@ -183,6 +193,7 @@ describe("config", () => {
 
 					return pickOptionValue(options, 1);
 				},
+				envFilePath: makeTempEnvPath(),
 			});
 
 			expect(config).toEqual<AppConfig>({
@@ -204,5 +215,95 @@ describe("config", () => {
 	test("masks secrets in logs", () => {
 		expect(maskSecret("")).toBe("<empty>");
 		expect(maskSecret("secret-token")).toBe("sec***ken");
+	});
+
+	test("persists wizard answers into the env file", async () => {
+		await withEnv({}, async () => {
+			const envFilePath = makeTempEnvPath();
+			const textAnswers = ["gpt-4.1-mini", "wizard-key", ""];
+
+			await resolveConfig({
+				promptUser: () => textAnswers.shift(),
+				selectValue: async (_title, _description, options) =>
+					pickOptionValue(options, 0),
+				envFilePath,
+			});
+
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'AI_API_KEY="wizard-key"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'AI_MODEL_NAME="gpt-4.1-mini"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'AI_TYPE="anthropic"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'APP_ENTRYPOINT="cli"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'USING_MODE="single"',
+			);
+		});
+	});
+
+	test("reuses persisted env values without prompting again", async () => {
+		await withEnv({}, async () => {
+			const envFilePath = makeTempEnvPath();
+			const initialAnswers = ["gpt-4.1-mini", "wizard-key", ""];
+
+			writeFileSync(envFilePath, 'CUSTOM_FLAG="keep-me"\n', "utf8");
+
+			await resolveConfig({
+				promptUser: () => initialAnswers.shift(),
+				selectValue: async (_title, _description, options) =>
+					pickOptionValue(options, 0),
+				envFilePath,
+			});
+
+			let promptCalls = 0;
+			const config = await resolveConfig({
+				promptUser: () => {
+					promptCalls += 1;
+					return "should-not-be-used";
+				},
+				selectValue: async () => {
+					throw new Error("selector should not run when env file is complete");
+				},
+				envFilePath,
+			});
+
+			expect(promptCalls).toBe(0);
+			expect(config.aiApiKey).toBe("wizard-key");
+			expect(config.aiModelName).toBe("gpt-4.1-mini");
+			expect(config.aiType).toBe("anthropic");
+			expect(config.appEntrypoint).toBe("cli");
+			expect(config.usingMode).toBe("single");
+			expect(readFileSync(envFilePath, "utf8")).toContain('CUSTOM_FLAG="keep-me"');
+		});
+	});
+
+	test("does not write persisted values back into process.env", async () => {
+		await withEnv({}, async () => {
+			const envFilePath = makeTempEnvPath();
+			writeFileSync(
+				envFilePath,
+				[
+					'AI_API_KEY="persisted-key"',
+					'AI_MODEL_NAME="persisted-model"',
+					'AI_TYPE="openai"',
+					'APP_ENTRYPOINT="cli"',
+					'USING_MODE="single"',
+				].join("\n"),
+				"utf8",
+			);
+
+			const config = await resolveConfig({ envFilePath });
+
+			expect(config.aiApiKey).toBe("persisted-key");
+			expect(process.env.AI_API_KEY).toBeUndefined();
+			expect(process.env.AI_MODEL_NAME).toBeUndefined();
+			expect(process.env.AI_TYPE).toBeUndefined();
+		});
 	});
 });
