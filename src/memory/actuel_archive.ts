@@ -41,7 +41,8 @@ function splitSections(content: string): Sections {
 
 function composeSections(sections: Sections): string {
 	const parts: string[] = [];
-	if (sections.header.length > 0) parts.push(sections.header.replace(/\n+$/, ""));
+	if (sections.header.length > 0)
+		parts.push(sections.header.replace(/\n+$/, ""));
 	parts.push(ACTUEL_HEADING);
 	parts.push(sections.actuel);
 	if (sections.archive.trim().length > 0) {
@@ -53,10 +54,7 @@ function composeSections(sections: Sections): string {
 }
 
 // Build a brand-new file (used when kind=note and the topic doesn't exist yet).
-export function composeFresh(
-	header: string,
-	actuelBody: string,
-): string {
+export function composeFresh(header: string, actuelBody: string): string {
 	return composeSections({
 		header: header.trim(),
 		actuel: actuelBody.trim(),

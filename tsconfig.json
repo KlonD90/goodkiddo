@@ -13,4 +13,5 @@
     "esModuleInterop": true,
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/env.d.ts"],
+  "exclude": ["src/server/frontend/**"],
 }

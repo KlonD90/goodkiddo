@@ -54,10 +54,7 @@ export function formatIndex(header: string, entries: IndexEntry[]): string {
 		.slice()
 		.sort((a, b) => a.slug.localeCompare(b.slug))
 		.map((entry) => `- [${entry.slug}](${entry.path}): ${entry.hook}`);
-	const body =
-		lines.length === 0
-			? "_No entries yet._"
-			: lines.join("\n");
+	const body = lines.length === 0 ? "_No entries yet._" : lines.join("\n");
 	return `${headerTrimmed}\n\n${INDEX_HEADING}\n${body}\n`;
 }
 
@@ -69,10 +66,7 @@ export function upsertEntry(
 	return [...without, next];
 }
 
-export function removeEntry(
-	entries: IndexEntry[],
-	slug: string,
-): IndexEntry[] {
+export function removeEntry(entries: IndexEntry[], slug: string): IndexEntry[] {
 	return entries.filter((entry) => entry.slug !== slug);
 }
 

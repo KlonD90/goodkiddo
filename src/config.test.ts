@@ -97,6 +97,8 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
 					enableExecute: true,
+					webPort: null,
+					webPublicBaseUrl: "",
 				});
 			},
 		);
@@ -164,6 +166,8 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
 					enableExecute: true,
+					webPort: null,
+					webPublicBaseUrl: "",
 				});
 			},
 		);
@@ -211,6 +215,8 @@ describe("config", () => {
 				permissionsMode: "enforce",
 				stateDbPath: "./state.db",
 				enableExecute: true,
+				webPort: null,
+				webPublicBaseUrl: "",
 			});
 		});
 	});

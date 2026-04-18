@@ -1,5 +1,6 @@
 export {
 	createSqliteFilesystemMiddleware,
+	normalizePath,
 	type SqliteFilesystemMiddlewareOptions,
 	SqliteStateBackend,
 	type SqliteStateBackendOptions,

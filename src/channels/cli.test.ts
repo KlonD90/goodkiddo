@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { seedCliUser } from "./cli";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { seedCliUser } from "./cli";
 
 let store: PermissionsStore;
 

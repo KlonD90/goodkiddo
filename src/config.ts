@@ -25,6 +25,8 @@ export type AppConfig = {
 	permissionsMode: "enforce" | "disabled";
 	stateDbPath: string;
 	enableExecute: boolean;
+	webPort: number | null;
+	webPublicBaseUrl: string;
 };
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
@@ -43,7 +45,9 @@ type ConfigIssueField =
 	| "STATE_DB_PATH"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
-	| "USING_MODE";
+	| "USING_MODE"
+	| "WEB_PORT"
+	| "WEB_PUBLIC_BASE_URL";
 
 type ConfigIssue = {
 	field: ConfigIssueField;
@@ -85,6 +89,8 @@ const PERSISTED_ENV_KEYS = [
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
 	"USING_MODE",
+	"WEB_PORT",
+	"WEB_PUBLIC_BASE_URL",
 ] as const;
 
 const getEnv = (
@@ -138,6 +144,9 @@ export const readConfigFromEnv = (
 	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
 	const enableExecute = enableExecuteRaw !== "false";
 
+	const webPortRaw = getEnv("WEB_PORT", persistedValues);
+	const webPort = webPortRaw === "" ? null : Number.parseInt(webPortRaw, 10);
+
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
 		aiBaseUrl: getEnv("AI_BASE_URL", persistedValues),
@@ -159,6 +168,8 @@ export const readConfigFromEnv = (
 		stateDbPath:
 			getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
 		enableExecute,
+		webPort: webPort !== null && Number.isFinite(webPort) ? webPort : null,
+		webPublicBaseUrl: getEnv("WEB_PUBLIC_BASE_URL", persistedValues),
 	};
 };
 
@@ -217,6 +228,28 @@ export const findConfigIssues = (
 		issues.push({
 			field: "TELEGRAM_BOT_TOKEN",
 			reason: "TELEGRAM_BOT_TOKEN is required when APP_ENTRYPOINT is telegram.",
+		});
+	}
+
+	if (
+		config.webPort !== null &&
+		config.webPort !== undefined &&
+		(!Number.isFinite(config.webPort) || config.webPort <= 0)
+	) {
+		issues.push({
+			field: "WEB_PORT",
+			reason: "WEB_PORT must be a positive integer.",
+		});
+	}
+
+	if (
+		config.webPort !== null &&
+		config.webPort !== undefined &&
+		(!config.webPublicBaseUrl || config.webPublicBaseUrl === "")
+	) {
+		issues.push({
+			field: "WEB_PUBLIC_BASE_URL",
+			reason: "WEB_PUBLIC_BASE_URL is required when WEB_PORT is set.",
 		});
 	}
 
@@ -524,6 +557,8 @@ Press enter to allow any chat the bot is added to.> `,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		stateDbPath: initialConfig.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 		enableExecute: initialConfig.enableExecute ?? true,
+		webPort: initialConfig.webPort ?? null,
+		webPublicBaseUrl: initialConfig.webPublicBaseUrl ?? "",
 	};
 };
 
@@ -558,6 +593,10 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
 		case "USING_MODE":
 			return `${key}=${escapeEnvValue(config.usingMode)}`;
+		case "WEB_PORT":
+			return `${key}=${escapeEnvValue(config.webPort === null ? "" : String(config.webPort))}`;
+		case "WEB_PUBLIC_BASE_URL":
+			return `${key}=${escapeEnvValue(config.webPublicBaseUrl)}`;
 	}
 };
 
@@ -592,7 +631,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -622,7 +661,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -680,6 +719,8 @@ export const resolveConfig = async (
 			permissionsMode: config.permissionsMode ?? "enforce",
 			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 			enableExecute: config.enableExecute ?? true,
+			webPort: config.webPort ?? null,
+			webPublicBaseUrl: config.webPublicBaseUrl ?? "",
 		};
 		return resolvedConfig;
 	}

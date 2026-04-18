@@ -3,11 +3,7 @@ import { SqliteStateBackend } from "../backends";
 import { ensureMemoryBootstrapped } from "./bootstrap";
 import { overwrite } from "./fs";
 import { upsertIndexFile } from "./index_manager";
-import {
-	MEMORY_INDEX_PATH,
-	MEMORY_PROMPT_CHAR_CAP,
-	SKILLS_INDEX_PATH,
-} from "./layout";
+import { MEMORY_INDEX_PATH, MEMORY_PROMPT_CHAR_CAP } from "./layout";
 import { formatMaintenanceBlock, isEmpty, runLint } from "./lint";
 
 function createBackend(namespace: string) {

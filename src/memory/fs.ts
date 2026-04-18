@@ -40,7 +40,9 @@ export async function overwrite(
 	// It's optional on BackendProtocol, but every concrete backend we use
 	// (SqliteStateBackend in particular) implements it.
 	if (!backend.uploadFiles) {
-		throw new Error(`Backend does not support uploadFiles; cannot write ${path}`);
+		throw new Error(
+			`Backend does not support uploadFiles; cannot write ${path}`,
+		);
 	}
 	const results = await backend.uploadFiles([
 		[path, new TextEncoder().encode(content)],

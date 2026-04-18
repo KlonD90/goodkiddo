@@ -1,5 +1,5 @@
 import { extname } from "node:path";
-import { Bot, InlineKeyboard } from "grammy";
+import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
 import type { AppConfig } from "../config";
 import {
@@ -11,6 +11,12 @@ import {
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { basenameFromPath } from "../utils/filesystem";
+import type {
+	OutboundChannel,
+	OutboundSendFileArgs,
+	OutboundSendResult,
+} from "./outbound";
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	type ChannelAgentSession,
@@ -18,7 +24,7 @@ import {
 	extractAgentReply,
 	extractTextFromContent,
 } from "./shared";
-import type { AppChannel } from "./types";
+import type { AppChannel, ChannelRunOptions } from "./types";
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 const APPROVAL_TIMEOUT_MS = 120_000;
@@ -35,6 +41,8 @@ const TELEGRAM_COMMANDS = [
 	{ command: "ask", description: "Forget a saved tool rule" },
 	{ command: "reset", description: "Clear all your permission rules" },
 	{ command: "new_thread", description: "Start a fresh conversation thread" },
+	{ command: "open_fs", description: "Open your files in a web browser" },
+	{ command: "revoke_fs", description: "Revoke all active file-share links" },
 ] as const;
 
 type PendingApproval = {
@@ -996,6 +1004,42 @@ async function sendTelegramTyping(bot: Bot, chatId: string): Promise<void> {
 	await bot.api.sendChatAction(chatId, "typing").catch(() => undefined);
 }
 
+export class TelegramOutboundChannel implements OutboundChannel {
+	constructor(
+		private readonly bot: Bot,
+		private readonly resolveChatId: (callerId: string) => string | null,
+	) {}
+
+	async sendFile(args: OutboundSendFileArgs): Promise<OutboundSendResult> {
+		const chatId = this.resolveChatId(args.callerId);
+		if (!chatId) {
+			return {
+				ok: false,
+				error: `No active telegram chat for caller '${args.callerId}'.`,
+			};
+		}
+
+		const filename = basenameFromPath(args.path) || "file";
+		const buffer = Buffer.from(
+			args.bytes.buffer,
+			args.bytes.byteOffset,
+			args.bytes.byteLength,
+		);
+
+		try {
+			await this.bot.api.sendDocument(chatId, new InputFile(buffer, filename), {
+				caption: args.caption,
+				parse_mode: args.caption ? TELEGRAM_HTML_PARSE_MODE : undefined,
+			});
+			return { ok: true };
+		} catch (error) {
+			const message =
+				error instanceof Error ? error.message : "unknown telegram error";
+			return { ok: false, error: message };
+		}
+	}
+}
+
 function startTelegramTypingLoop(bot: Bot, chatId: string): () => void {
 	void sendTelegramTyping(bot, chatId);
 	const timer = setInterval(() => {
@@ -1208,6 +1252,8 @@ async function ensureTelegramSession(
 	store: PermissionsStore,
 	bot: Bot,
 	sessions: Map<string, TelegramAgentSession>,
+	outbound: OutboundChannel,
+	webShare: ChannelRunOptions["webShare"],
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1219,6 +1265,8 @@ async function ensureTelegramSession(
 		store,
 		broker,
 		threadId: baseThreadId,
+		outbound,
+		webShare,
 	});
 	const telegramSession: TelegramAgentSession = {
 		...session,
@@ -1383,6 +1431,7 @@ async function handleTelegramControlInput(
 	commandText: string,
 	caller: Caller,
 	store: PermissionsStore,
+	webShare: ChannelRunOptions["webShare"],
 ): Promise<boolean> {
 	if (commandText !== "") {
 		const approvalReply = maybeHandleTelegramApprovalReply(
@@ -1401,6 +1450,13 @@ async function handleTelegramControlInput(
 			model: session.model,
 			backend: session.workspace,
 			mintThreadId: () => mintTelegramThreadId(chatId),
+			webShare: webShare
+				? {
+						access: webShare.access,
+						publicBaseUrl: webShare.publicBaseUrl,
+						callerId: caller.id,
+					}
+				: undefined,
 		});
 		if (sessionCommand.handled) {
 			await sendTelegramMessage(bot, chatId, sessionCommand.reply);
@@ -1435,6 +1491,7 @@ async function handleTelegramQueuedTurn(
 	content: TelegramUserInput,
 	caller: Caller,
 	store: PermissionsStore,
+	webShare: ChannelRunOptions["webShare"],
 ): Promise<void> {
 	if (
 		await handleTelegramControlInput(
@@ -1444,6 +1501,7 @@ async function handleTelegramQueuedTurn(
 			commandText,
 			caller,
 			store,
+			webShare,
 		)
 	) {
 		return;
@@ -1455,10 +1513,18 @@ async function handleTelegramQueuedTurn(
 
 export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
-	async run(config: AppConfig): Promise<void> {
+	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
+		const webShare = options?.webShare;
 		const store = new PermissionsStore({ dbPath: config.stateDbPath });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
+		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
+			const telegramPrefix = "telegram:";
+			if (!callerId.startsWith(telegramPrefix)) return null;
+			const chatId = callerId.slice(telegramPrefix.length);
+			if (!sessions.has(chatId)) return null;
+			return chatId;
+		});
 		await syncTelegramCommands(bot);
 
 		console.log("Starting Telegram bot polling loop with grammy.");
@@ -1515,6 +1581,8 @@ export const telegramChannel: AppChannel = {
 				store,
 				bot,
 				sessions,
+				outbound,
+				webShare,
 			);
 
 			await handleTelegramQueuedTurn(
@@ -1525,6 +1593,7 @@ export const telegramChannel: AppChannel = {
 				text,
 				caller,
 				store,
+				webShare,
 			);
 		});
 
@@ -1543,6 +1612,8 @@ export const telegramChannel: AppChannel = {
 				store,
 				bot,
 				sessions,
+				outbound,
+				webShare,
 			);
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
@@ -1555,6 +1626,7 @@ export const telegramChannel: AppChannel = {
 						caption,
 						caller,
 						store,
+						webShare,
 					)
 				) {
 					return;
@@ -1578,6 +1650,7 @@ export const telegramChannel: AppChannel = {
 					content,
 					caller,
 					store,
+					webShare,
 				);
 			} catch (error) {
 				const message =

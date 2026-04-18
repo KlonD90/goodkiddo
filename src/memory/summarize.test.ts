@@ -23,7 +23,9 @@ describe("summarizeThread", () => {
 	});
 
 	test("calls model with system + user prompt and returns trimmed string", async () => {
-		const { model, seen } = createStubModel("  - intent was X\n- decision was Y  ");
+		const { model, seen } = createStubModel(
+			"  - intent was X\n- decision was Y  ",
+		);
 		const messages: ThreadMessage[] = [
 			{ role: "user", content: "Please fix the bug" },
 			{ role: "assistant", content: "Sure, here's the fix" },

@@ -7,11 +7,7 @@ import {
 	composeFresh,
 } from "../memory/actuel_archive";
 import { exists, overwrite, readOrEmpty } from "../memory/fs";
-import {
-	formatIndex,
-	parseIndex,
-	upsertEntry,
-} from "../memory/index_manager";
+import { formatIndex, parseIndex, upsertEntry } from "../memory/index_manager";
 import {
 	MEMORY_INDEX_PATH,
 	notePath,
@@ -75,7 +71,9 @@ async function performWrite(ctx: WriteContext): Promise<string> {
 	const slug = slugify(ctx.topic);
 	const header = `# ${ctx.topic.trim()}`;
 	const hadFile = await exists(ctx.backend, ctx.targetPath);
-	const existing = hadFile ? await readOrEmpty(ctx.backend, ctx.targetPath) : "";
+	const existing = hadFile
+		? await readOrEmpty(ctx.backend, ctx.targetPath)
+		: "";
 
 	let nextBody: string;
 	if (!hadFile) {

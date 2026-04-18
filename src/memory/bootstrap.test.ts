@@ -20,7 +20,9 @@ describe("ensureMemoryBootstrapped", () => {
 
 		expect(await readOrEmpty(backend, MEMORY_INDEX_PATH)).toContain("## Index");
 		expect(await readOrEmpty(backend, SKILLS_INDEX_PATH)).toContain("## Index");
-		expect(await readOrEmpty(backend, USER_PROFILE_PATH)).toContain("# USER.md");
+		expect(await readOrEmpty(backend, USER_PROFILE_PATH)).toContain(
+			"# USER.md",
+		);
 		expect(await readOrEmpty(backend, MEMORY_LOG_PATH)).toContain("# Log");
 	});
 
@@ -31,7 +33,10 @@ describe("ensureMemoryBootstrapped", () => {
 		// Simulate curated content.
 		const encoder = new TextEncoder();
 		await backend.uploadFiles([
-			[USER_PROFILE_PATH, encoder.encode("# USER.md\n\n## Actuel\nCurated facts.")],
+			[
+				USER_PROFILE_PATH,
+				encoder.encode("# USER.md\n\n## Actuel\nCurated facts."),
+			],
 		]);
 
 		await ensureMemoryBootstrapped(backend);

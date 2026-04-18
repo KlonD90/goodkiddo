@@ -2,7 +2,9 @@ import type { BackendProtocol } from "deepagents";
 import { context, tool } from "langchain";
 import { z } from "zod";
 import {
+	detectMimeType,
 	formatReadResponse,
+	isMultimodalMimeType,
 	MAX_LINE_LENGTH,
 	truncateIfTooLong,
 } from "../utils/filesystem.js";
@@ -38,22 +40,6 @@ function hasDownloadFiles(
 	return (
 		"downloadFiles" in backend && typeof backend.downloadFiles === "function"
 	);
-}
-
-function detectMimeType(filePath: string): string | null {
-	const lower = filePath.toLowerCase();
-	if (lower.endsWith(".png")) return "image/png";
-	if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-	if (lower.endsWith(".gif")) return "image/gif";
-	if (lower.endsWith(".webp")) return "image/webp";
-	if (lower.endsWith(".bmp")) return "image/bmp";
-	if (lower.endsWith(".svg")) return "image/svg+xml";
-	if (lower.endsWith(".pdf")) return "application/pdf";
-	return null;
-}
-
-function isMultimodalMimeType(mimeType: string): boolean {
-	return mimeType.startsWith("image/") || mimeType === "application/pdf";
 }
 
 // respect https://github.com/langchain-ai/deepagentsjs/blob/main/libs/deepagents/src/middleware/fs.ts for inspiration

@@ -1,5 +1,6 @@
-import { maskSecret, resolveConfig } from "../config";
 import { runAppChannel } from "../channels";
+import { maskSecret, resolveConfig } from "../config";
+import { startWebServer } from "../server/http";
 
 const config = await resolveConfig();
 
@@ -18,4 +19,20 @@ if (config.appEntrypoint === "telegram") {
 			: config.telegramAllowedChatId,
 	);
 }
-await runAppChannel(config);
+
+const webServer = await startWebServer(config);
+const shutdown = async () => {
+	if (webServer) await webServer.close();
+};
+process.on("SIGINT", () => {
+	void shutdown().finally(() => process.exit(0));
+});
+process.on("SIGTERM", () => {
+	void shutdown().finally(() => process.exit(0));
+});
+
+await runAppChannel(config, {
+	webShare: webServer
+		? { access: webServer.access, publicBaseUrl: webServer.publicBaseUrl }
+		: undefined,
+});

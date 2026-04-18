@@ -35,7 +35,7 @@ export interface SqliteFilesystemMiddlewareOptions
 	extends Omit<FilesystemMiddlewareOptions, "backend">,
 		SqliteStateBackendOptions {}
 
-function normalizePath(input: string, kind: "file" | "dir"): string {
+export function normalizePath(input: string, kind: "file" | "dir"): string {
 	const raw = (input || "/").trim().replaceAll("\\", "/");
 	if (!raw) {
 		if (kind === "dir") return "/";

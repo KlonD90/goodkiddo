@@ -1,6 +1,7 @@
 import { type BaseCheckpointSaver, MemorySaver } from "@langchain/langgraph";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "./backends";
+import type { OutboundChannel } from "./channels/outbound";
 import type { AppConfig } from "./config";
 import DO_IT_MD from "./identities/DO_IT.md?raw";
 import { ensureMemoryBootstrapped } from "./memory/bootstrap";
@@ -11,6 +12,7 @@ import type { AuditLogger } from "./permissions/audit";
 import type { PermissionsStore } from "./permissions/store";
 import type { Caller } from "./permissions/types";
 import { createExecutionToolset } from "./tools";
+import type { WebShareOptions } from "./tools/factory";
 import type { GuardContext } from "./tools/guard";
 
 export interface CreateAppAgentOptions {
@@ -19,6 +21,8 @@ export interface CreateAppAgentOptions {
 	broker: ApprovalBroker;
 	audit: AuditLogger;
 	checkpointer?: BaseCheckpointSaver;
+	outbound?: OutboundChannel;
+	webShare?: WebShareOptions;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -70,6 +74,8 @@ export const createAppAgent = async (
 		guard,
 		enableExecute: config.enableExecute,
 		callerId: options.caller.id,
+		outbound: options.outbound,
+		webShare: options.webShare,
 	});
 
 	const systemPrompt = await buildSystemPrompt({

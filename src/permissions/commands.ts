@@ -6,12 +6,16 @@ export type CommandResult =
 	| { handled: false }
 	| { handled: true; reply: string };
 
-function parseSlashCommand(input: string): { command: string; rest: string } | null {
+function parseSlashCommand(
+	input: string,
+): { command: string; rest: string } | null {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("/")) return null;
 
 	const firstSpace = trimmed.indexOf(" ");
-	const rawCommand = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
+	const rawCommand = (
+		firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)
+	)
 		.slice(1)
 		.toLowerCase();
 	const command = rawCommand.split("@", 1)[0] ?? "";

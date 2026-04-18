@@ -7,6 +7,8 @@ import type { ApprovalBroker } from "../permissions/approval";
 import { FileAuditLogger } from "../permissions/audit";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import type { WebShareOptions } from "../tools/factory";
+import type { OutboundChannel } from "./outbound";
 
 export type AgentInstance = AppAgentBundle["agent"];
 
@@ -25,6 +27,8 @@ export async function createChannelAgentSession(
 		store: PermissionsStore;
 		broker: ApprovalBroker;
 		threadId: string;
+		outbound?: OutboundChannel;
+		webShare?: WebShareOptions;
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
@@ -36,6 +40,8 @@ export async function createChannelAgentSession(
 			broker: options.broker,
 			audit,
 			checkpointer,
+			outbound: options.outbound,
+			webShare: options.webShare,
 		});
 	let bundle = await makeBundle();
 

@@ -2,6 +2,52 @@ import type { FileData } from "deepagents";
 
 export const EMPTY_CONTENT_WARNING =
 	"System reminder: File exists but has empty contents";
+
+const MIME_BY_EXTENSION: Record<string, string> = {
+	".png": "image/png",
+	".jpg": "image/jpeg",
+	".jpeg": "image/jpeg",
+	".gif": "image/gif",
+	".webp": "image/webp",
+	".bmp": "image/bmp",
+	".svg": "image/svg+xml",
+	".pdf": "application/pdf",
+	".md": "text/markdown",
+	".markdown": "text/markdown",
+	".txt": "text/plain",
+	".json": "application/json",
+	".xml": "application/xml",
+	".html": "text/html",
+	".htm": "text/html",
+	".css": "text/css",
+	".js": "text/javascript",
+	".mjs": "text/javascript",
+	".ts": "text/plain",
+	".tsx": "text/plain",
+	".jsx": "text/plain",
+	".yaml": "text/yaml",
+	".yml": "text/yaml",
+	".csv": "text/csv",
+	".zip": "application/zip",
+	".tar": "application/x-tar",
+	".gz": "application/gzip",
+};
+
+export function detectMimeType(filePath: string): string | null {
+	const lower = filePath.toLowerCase();
+	const dot = lower.lastIndexOf(".");
+	if (dot === -1) return null;
+	return MIME_BY_EXTENSION[lower.slice(dot)] ?? null;
+}
+
+export function isMultimodalMimeType(mimeType: string): boolean {
+	return mimeType.startsWith("image/") || mimeType === "application/pdf";
+}
+
+export function basenameFromPath(path: string): string {
+	const idx = path.lastIndexOf("/");
+	return idx === -1 ? path : path.slice(idx + 1);
+}
 export const MAX_LINE_LENGTH = 10_000;
 export const TOOL_RESULT_TOKEN_LIMIT = 20_000;
 export const TRUNCATION_GUIDANCE =

@@ -6,11 +6,39 @@ import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import { createChannelAgentSession, extractAgentReply } from "./shared";
+import type {
+	OutboundChannel,
+	OutboundSendFileArgs,
+	OutboundSendResult,
+} from "./outbound";
 import { maybeHandleSessionCommand } from "./session_commands";
-import type { AppChannel } from "./types";
+import { createChannelAgentSession, extractAgentReply } from "./shared";
+import type { AppChannel, ChannelRunOptions } from "./types";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
+
+export class CliOutboundChannel implements OutboundChannel {
+	constructor(
+		private readonly stream: NodeJS.WritableStream = process.stdout,
+	) {}
+
+	async sendFile(args: OutboundSendFileArgs): Promise<OutboundSendResult> {
+		const header = `\n--- attached: ${args.path} (${args.bytes.length} bytes, ${args.mimeType}) ---\n`;
+		this.stream.write(header);
+		this.stream.write(Buffer.from(args.bytes));
+		if (args.bytes.length > 0) {
+			const last = args.bytes[args.bytes.length - 1];
+			if (last !== 0x0a) {
+				this.stream.write("\n");
+			}
+		}
+		if (args.caption) {
+			this.stream.write(`--- caption: ${args.caption}\n`);
+		}
+		this.stream.write("--- end ---\n");
+		return { ok: true };
+	}
+}
 
 export function resolveCliCaller(): Caller {
 	const username = os.userInfo().username || "local";
@@ -42,24 +70,27 @@ export function seedCliUser(store: PermissionsStore, caller: Caller): void {
 
 export const cliChannel: AppChannel = {
 	entrypoint: "cli",
-	async run(config: AppConfig): Promise<void> {
+	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
+		const webShare = options?.webShare;
 		const store = new PermissionsStore({ dbPath: config.stateDbPath });
 		const caller = resolveCliCaller();
 		seedCliUser(store, caller);
 
 		const broker = new CLIApprovalBroker(store);
+		const outbound = new CliOutboundChannel();
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			caller,
 			store,
 			broker,
 			threadId: baseThreadId,
+			outbound,
+			webShare,
 		});
 
 		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;
 
 		const rl = readline.createInterface({ input, output });
-
 
 		console.log(
 			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands, "/new-thread" to start a fresh conversation.\n`,
@@ -88,6 +119,13 @@ export const cliChannel: AppChannel = {
 				model: session.model,
 				backend: session.workspace,
 				mintThreadId,
+				webShare: webShare
+					? {
+							access: webShare.access,
+							publicBaseUrl: webShare.publicBaseUrl,
+							callerId: caller.id,
+						}
+					: undefined,
 			});
 			if (sessionCommand.handled) {
 				console.log(sessionCommand.reply);
