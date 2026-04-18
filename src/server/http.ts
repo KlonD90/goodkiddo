@@ -17,10 +17,9 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function startWebServer(
 	config: AppConfig,
-): Promise<WebServerHandle | null> {
-	if (config.webPort === null) return null;
+): Promise<WebServerHandle> {
 	if (!config.webPublicBaseUrl) {
-		throw new Error("WEB_PUBLIC_BASE_URL is required when WEB_PORT is set");
+		throw new Error("WEB_PUBLIC_BASE_URL must not be empty");
 	}
 
 	const access = new AccessStore({ dbPath: config.stateDbPath });

@@ -97,8 +97,8 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
 					enableExecute: true,
-					webPort: null,
-					webPublicBaseUrl: "",
+					webPort: 8083,
+					webPublicBaseUrl: "http://localhost:8083",
 				});
 			},
 		);
@@ -166,8 +166,8 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					stateDbPath: "./state.db",
 					enableExecute: true,
-					webPort: null,
-					webPublicBaseUrl: "",
+					webPort: 8083,
+					webPublicBaseUrl: "http://localhost:8083",
 				});
 			},
 		);
@@ -215,8 +215,8 @@ describe("config", () => {
 				permissionsMode: "enforce",
 				stateDbPath: "./state.db",
 				enableExecute: true,
-				webPort: null,
-				webPublicBaseUrl: "",
+				webPort: 8083,
+				webPublicBaseUrl: "http://localhost:8083",
 			});
 		});
 	});

@@ -25,13 +25,15 @@ export type AppConfig = {
 	permissionsMode: "enforce" | "disabled";
 	stateDbPath: string;
 	enableExecute: boolean;
-	webPort: number | null;
+	webPort: number;
 	webPublicBaseUrl: string;
 };
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
 const DEFAULT_STATE_DB_PATH = "./state.db";
+const DEFAULT_WEB_PORT = 8083;
+const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
 
 type ConfigIssueField =
 	| "AI_API_KEY"
@@ -145,7 +147,9 @@ export const readConfigFromEnv = (
 	const enableExecute = enableExecuteRaw !== "false";
 
 	const webPortRaw = getEnv("WEB_PORT", persistedValues);
-	const webPort = webPortRaw === "" ? null : Number.parseInt(webPortRaw, 10);
+	const webPort =
+		webPortRaw === "" ? DEFAULT_WEB_PORT : Number.parseInt(webPortRaw, 10);
+	const webPublicBaseUrlRaw = getEnv("WEB_PUBLIC_BASE_URL", persistedValues);
 
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
@@ -168,8 +172,8 @@ export const readConfigFromEnv = (
 		stateDbPath:
 			getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
 		enableExecute,
-		webPort: webPort !== null && Number.isFinite(webPort) ? webPort : null,
-		webPublicBaseUrl: getEnv("WEB_PUBLIC_BASE_URL", persistedValues),
+		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
+		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 	};
 };
 
@@ -232,7 +236,6 @@ export const findConfigIssues = (
 	}
 
 	if (
-		config.webPort !== null &&
 		config.webPort !== undefined &&
 		(!Number.isFinite(config.webPort) || config.webPort <= 0)
 	) {
@@ -242,14 +245,10 @@ export const findConfigIssues = (
 		});
 	}
 
-	if (
-		config.webPort !== null &&
-		config.webPort !== undefined &&
-		(!config.webPublicBaseUrl || config.webPublicBaseUrl === "")
-	) {
+	if (config.webPublicBaseUrl !== undefined && config.webPublicBaseUrl === "") {
 		issues.push({
 			field: "WEB_PUBLIC_BASE_URL",
-			reason: "WEB_PUBLIC_BASE_URL is required when WEB_PORT is set.",
+			reason: "WEB_PUBLIC_BASE_URL must not be empty.",
 		});
 	}
 
@@ -557,8 +556,9 @@ Press enter to allow any chat the bot is added to.> `,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		stateDbPath: initialConfig.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 		enableExecute: initialConfig.enableExecute ?? true,
-		webPort: initialConfig.webPort ?? null,
-		webPublicBaseUrl: initialConfig.webPublicBaseUrl ?? "",
+		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
+		webPublicBaseUrl:
+			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 	};
 };
 
@@ -594,7 +594,7 @@ const formatPersistedEnvLine = (
 		case "USING_MODE":
 			return `${key}=${escapeEnvValue(config.usingMode)}`;
 		case "WEB_PORT":
-			return `${key}=${escapeEnvValue(config.webPort === null ? "" : String(config.webPort))}`;
+			return `${key}=${escapeEnvValue(String(config.webPort))}`;
 		case "WEB_PUBLIC_BASE_URL":
 			return `${key}=${escapeEnvValue(config.webPublicBaseUrl)}`;
 	}
@@ -719,8 +719,8 @@ export const resolveConfig = async (
 			permissionsMode: config.permissionsMode ?? "enforce",
 			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
 			enableExecute: config.enableExecute ?? true,
-			webPort: config.webPort ?? null,
-			webPublicBaseUrl: config.webPublicBaseUrl ?? "",
+			webPort: config.webPort ?? DEFAULT_WEB_PORT,
+			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 		};
 		return resolvedConfig;
 	}

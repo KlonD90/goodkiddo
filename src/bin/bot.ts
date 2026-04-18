@@ -22,7 +22,7 @@ if (config.appEntrypoint === "telegram") {
 
 const webServer = await startWebServer(config);
 const shutdown = async () => {
-	if (webServer) await webServer.close();
+	await webServer.close();
 };
 process.on("SIGINT", () => {
 	void shutdown().finally(() => process.exit(0));
@@ -32,7 +32,8 @@ process.on("SIGTERM", () => {
 });
 
 await runAppChannel(config, {
-	webShare: webServer
-		? { access: webServer.access, publicBaseUrl: webServer.publicBaseUrl }
-		: undefined,
+	webShare: {
+		access: webServer.access,
+		publicBaseUrl: webServer.publicBaseUrl,
+	},
 });
