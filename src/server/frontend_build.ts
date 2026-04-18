@@ -15,7 +15,9 @@ body { margin: 0; }
 /* Breadcrumbs single-line + ellipsis */
 .fs-breadcrumbs { min-width: 0; flex-wrap: nowrap; overflow: hidden; }
 .fs-breadcrumbs > * { min-width: 0; }
-.fs-breadcrumb-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.fs-breadcrumb-item { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; cursor: pointer; }
+.fs-breadcrumb-item, .fs-breadcrumb-item * { cursor: pointer; }
+.fs-breadcrumb-item:hover { color: var(--mantine-color-blue-4) !important; }
 
 /* Markdown styling */
 .fs-preview a { color: var(--mantine-color-blue-4); }
@@ -29,7 +31,25 @@ body { margin: 0; }
 .fs-preview .markdown h1,
 .fs-preview .markdown h2,
 .fs-preview .markdown h3,
-.fs-preview .markdown h4 { margin-top: 0.7em; margin-bottom: 0.4em; }
+.fs-preview .markdown h4 { margin-top: 0.7em; margin-bottom: 0.4em; position: relative; scroll-margin-top: 80px; }
+.fs-preview .markdown h1 a.fs-anchor,
+.fs-preview .markdown h2 a.fs-anchor,
+.fs-preview .markdown h3 a.fs-anchor,
+.fs-preview .markdown h4 a.fs-anchor,
+.fs-preview .markdown h5 a.fs-anchor,
+.fs-preview .markdown h6 a.fs-anchor { position: absolute; left: -1.1em; top: 0; padding-right: 0.3em; opacity: 0; text-decoration: none; color: var(--mantine-color-dimmed); font-weight: normal; }
+.fs-preview .markdown h1:hover a.fs-anchor,
+.fs-preview .markdown h2:hover a.fs-anchor,
+.fs-preview .markdown h3:hover a.fs-anchor,
+.fs-preview .markdown h4:hover a.fs-anchor,
+.fs-preview .markdown h5:hover a.fs-anchor,
+.fs-preview .markdown h6:hover a.fs-anchor { opacity: 1; }
+.fs-preview .markdown h1 a.fs-anchor:hover,
+.fs-preview .markdown h2 a.fs-anchor:hover,
+.fs-preview .markdown h3 a.fs-anchor:hover,
+.fs-preview .markdown h4 a.fs-anchor:hover,
+.fs-preview .markdown h5 a.fs-anchor:hover,
+.fs-preview .markdown h6 a.fs-anchor:hover { color: var(--mantine-color-blue-4); }
 .fs-preview .markdown ul,
 .fs-preview .markdown ol { padding-left: 1.6em; margin: 0.5em 0; }
 .fs-preview .markdown li { margin: 0.2em 0; }

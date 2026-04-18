@@ -115,6 +115,16 @@ function escapeHtml(value: string): string {
 		.replaceAll(">", "&gt;");
 }
 
+function slugify(text: string): string {
+	return text
+		.toLowerCase()
+		.trim()
+		.replace(/[^\w\s-]/g, "")
+		.replace(/\s+/g, "-")
+		.replace(/-+/g, "-")
+		.replace(/^-|-$/g, "");
+}
+
 const md = new MarkdownIt({
 	html: false,
 	linkify: true,
@@ -125,6 +135,30 @@ const md = new MarkdownIt({
 		return `<pre><code class="hljs language-${language ?? "plaintext"}">${highlighted}</code></pre>`;
 	},
 });
+
+// Disable autolinking of bare hostnames (e.g. "MEMORY.md" being treated as a link
+// because .md is Moldova's TLD). Real http:// URLs still get linkified.
+md.linkify.set({ fuzzyLink: false, fuzzyEmail: false });
+
+// GitHub-style heading anchors: `# Title` becomes `<h1 id="title"><a href="#title" class="fs-anchor">#</a>Title</h1>`.
+md.renderer.rules.heading_open = (tokens, idx, options, _env, self) => {
+	const token = tokens[idx];
+	const inline = tokens[idx + 1];
+	const text = inline?.children
+		? inline.children
+				.filter(
+					(child) => child.type === "text" || child.type === "code_inline",
+				)
+				.map((child) => child.content)
+				.join("")
+		: (inline?.content ?? "");
+	const id = slugify(text);
+	if (id) token.attrSet("id", id);
+	const anchor = id
+		? `<a class="fs-anchor" href="#${id}" aria-label="Link to this section">#</a>`
+		: "";
+	return `${self.renderToken(tokens, idx, options)}${anchor}`;
+};
 
 function isCodeMime(mime: string): boolean {
 	if (mime.startsWith("text/")) return true;
