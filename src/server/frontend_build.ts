@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export interface FrontendBundle {
@@ -7,39 +7,50 @@ export interface FrontendBundle {
 	css: string;
 }
 
-const BASE_CSS = `
-:root {
-	color-scheme: light dark;
-	font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-}
-* { box-sizing: border-box; }
-body { margin: 0; background: #0f1115; color: #e8ebf0; }
-#root { display: grid; grid-template-columns: 320px 1fr; min-height: 100vh; }
-nav { border-right: 1px solid #23262d; padding: 16px; overflow-y: auto; }
-main { padding: 24px; overflow: auto; }
-.breadcrumbs { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; font-size: 13px; color: #8a919c; }
-.breadcrumbs .breadcrumb { background: none; border: none; padding: 0; color: #7ec8ff; cursor: pointer; font: inherit; }
-.breadcrumbs .breadcrumb:hover { text-decoration: underline; }
-.breadcrumbs span { color: #8a919c; }
-ul.file-list { list-style: none; padding: 0; margin: 0; }
-ul.file-list li { padding: 6px 8px; cursor: pointer; border-radius: 4px; display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
-ul.file-list li:hover { background: #1a1d24; }
-ul.file-list li.active { background: #233044; }
-.size { color: #8a919c; font-size: 12px; }
-.preview { background: #161922; border: 1px solid #23262d; border-radius: 6px; padding: 16px; }
-.preview img { max-width: 100%; height: auto; }
-.preview pre { overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: "SF Mono", "Menlo", monospace; font-size: 13px; }
-.preview .markdown h1, .preview .markdown h2, .preview .markdown h3 { margin-top: 1em; }
-.preview .markdown code { background: #0f1115; padding: 2px 4px; border-radius: 3px; }
-.toolbar { display: flex; gap: 8px; margin-bottom: 12px; }
-button, a.button { cursor: pointer; background: #233044; color: #e8ebf0; border: 1px solid #2e3b54; border-radius: 4px; padding: 6px 12px; font-size: 13px; text-decoration: none; display: inline-block; }
-button:hover, a.button:hover { background: #2e3b54; }
-.error { color: #ff7a7a; padding: 12px; }
+const APP_CSS = `
+:root { color-scheme: dark; }
+body { margin: 0; }
+.fs-shell { min-height: 100vh; }
+.fs-preview a { color: var(--mantine-color-blue-4); }
+.fs-preview img { max-width: 100%; height: auto; border-radius: 6px; }
+.fs-preview pre { overflow: auto; white-space: pre-wrap; word-break: break-word; }
+.fs-preview code { font-family: "SF Mono", "Menlo", ui-monospace, monospace; }
+.fs-preview .markdown { line-height: 1.6; }
+.fs-preview .markdown h1,
+.fs-preview .markdown h2,
+.fs-preview .markdown h3,
+.fs-preview .markdown h4 { margin-top: 1.4em; margin-bottom: 0.5em; }
+.fs-preview .markdown ul,
+.fs-preview .markdown ol { padding-left: 1.6em; margin: 0.6em 0; }
+.fs-preview .markdown li { margin: 0.25em 0; }
+.fs-preview .markdown blockquote { border-left: 3px solid var(--mantine-color-dark-3); margin: 0.6em 0; padding: 0.2em 0.9em; color: var(--mantine-color-dimmed); }
+.fs-preview .markdown code:not(pre code) { background: var(--mantine-color-dark-6); padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+.fs-preview .markdown pre { background: var(--mantine-color-dark-8); padding: 12px 14px; border-radius: 6px; }
+.fs-preview .markdown table { border-collapse: collapse; margin: 0.8em 0; }
+.fs-preview .markdown th,
+.fs-preview .markdown td { border: 1px solid var(--mantine-color-dark-4); padding: 6px 10px; }
+.fs-preview .markdown hr { border: none; border-top: 1px solid var(--mantine-color-dark-4); margin: 1.2em 0; }
 `;
 
 const FALLBACK_JS = `
-document.getElementById("root").innerHTML = "<div class='error'>Frontend bundle unavailable.</div>";
+document.getElementById("root").innerHTML = "<div style='padding:24px;color:#ff7a7a;font-family:sans-serif'>Frontend bundle unavailable. Check server logs.</div>";
 `;
+
+function readMantineCss(): string {
+	try {
+		const mantinePath = resolve(
+			process.cwd(),
+			"node_modules",
+			"@mantine",
+			"core",
+			"styles.css",
+		);
+		return readFileSync(mantinePath, "utf8");
+	} catch (error) {
+		console.warn("Could not load @mantine/core/styles.css:", error);
+		return "";
+	}
+}
 
 async function tryBuild(entry: string): Promise<string | null> {
 	try {
@@ -49,12 +60,19 @@ async function tryBuild(entry: string): Promise<string | null> {
 			minify: true,
 			format: "iife",
 		});
-		if (!result.success || result.outputs.length === 0) return null;
+		if (!result.success || result.outputs.length === 0) {
+			console.warn(
+				`Frontend build failed for ${entry}:`,
+				result.logs.map((log) => log.message ?? String(log)).join("\n"),
+			);
+			return null;
+		}
 		const chunks = await Promise.all(
 			result.outputs.map((output) => output.text()),
 		);
 		return chunks.join("\n");
-	} catch {
+	} catch (error) {
+		console.warn(`Frontend build threw for ${entry}:`, error);
 		return null;
 	}
 }
@@ -66,18 +84,12 @@ export async function buildFrontendBundle(): Promise<FrontendBundle> {
 	let js = await tryBuild(entry);
 	if (!js) js = FALLBACK_JS;
 
-	let css = BASE_CSS;
-	try {
-		const cssPath = join(here, "frontend", "styles.css");
-		const extra = readFileSync(cssPath, "utf8");
-		css = `${BASE_CSS}\n${extra}`;
-	} catch {
-		/* styles.css optional */
-	}
+	const mantineCss = readMantineCss();
+	const css = `${mantineCss}\n${APP_CSS}`;
 
 	return { js, css };
 }
 
 export function makeStubBundle(): FrontendBundle {
-	return { js: FALLBACK_JS, css: BASE_CSS };
+	return { js: FALLBACK_JS, css: APP_CSS };
 }
