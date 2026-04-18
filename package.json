@@ -28,6 +28,7 @@
     "@mantine/core": "^7.17.4",
     "@mantine/hooks": "^7.17.4",
     "@tabler/icons-react": "^3.34.0",
+    "highlight.js": "^11.10.0",
     "langchain": "^1.3.0",
     "markdown-it": "^14.1.1",
     "react": "^19.2.5",
