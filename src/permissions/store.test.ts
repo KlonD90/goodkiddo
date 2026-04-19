@@ -94,4 +94,42 @@ describe("PermissionsStore", () => {
 		await store.setUserStatus("telegram:5", "active");
 		expect((await store.getUser("telegram", "5"))?.status).toBe("active");
 	});
+
+	test("getUserById returns user by composite id", async () => {
+		await store.upsertUser({
+			entrypoint: "telegram",
+			externalId: "42",
+			displayName: "Bob",
+		});
+		const user = await store.getUserById("telegram:42");
+		expect(user?.id).toBe("telegram:42");
+		expect(user?.displayName).toBe("Bob");
+	});
+
+	test("getUserById returns null for unknown id", async () => {
+		expect(await store.getUserById("telegram:999")).toBeNull();
+	});
+
+	test("listUsers returns all users in creation order", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "1" });
+		await store.upsertUser({ entrypoint: "cli", externalId: "a" });
+		const users = await store.listUsers();
+		expect(users).toHaveLength(2);
+		expect(users[0].id).toBe("telegram:1");
+		expect(users[1].id).toBe("cli:a");
+	});
+
+	test("ensureUser creates user on first call and returns existing on second", async () => {
+		const caller = {
+			entrypoint: "telegram" as const,
+			externalId: "7",
+			displayName: "Carol",
+			id: "telegram:7",
+		};
+		const first = await store.ensureUser(caller);
+		expect(first.id).toBe("telegram:7");
+		const second = await store.ensureUser(caller);
+		expect(second.id).toBe("telegram:7");
+		expect(await store.listUsers()).toHaveLength(1);
+	});
 });

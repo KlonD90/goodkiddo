@@ -112,6 +112,7 @@ export class PermissionsStore {
         ON tool_permissions(user_id, priority)
     `;
 		if (this.dialect === "sqlite") {
+			await db`PRAGMA foreign_keys = ON`;
 			await db`PRAGMA journal_mode = WAL`;
 		}
 	}

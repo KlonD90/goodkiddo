@@ -1,25 +1,26 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { AccessStore, MAX_TTL_MS, withinScope } from "./access_store";
 
-function createStore(now = 1_000_000) {
-	let current = now;
-	const db = new Bun.SQL(":memory:");
-	const store = new AccessStore({
-		db,
-		dialect: "sqlite",
-		now: () => current,
-	});
-	return {
-		store,
-		advance: (ms: number) => {
-			current += ms;
-		},
-	};
+let db: InstanceType<typeof Bun.SQL>;
+let store: AccessStore;
+let currentTime: number;
+
+function advance(ms: number) {
+	currentTime += ms;
 }
+
+beforeEach(() => {
+	currentTime = 1_000_000;
+	db = new Bun.SQL("sqlite://:memory:");
+	store = new AccessStore({ db, dialect: "sqlite", now: () => currentTime });
+});
+
+afterEach(async () => {
+	await db.close();
+});
 
 describe("AccessStore.issue", () => {
 	test("issues a root grant by default", async () => {
-		const { store } = createStore();
 		const grant = await store.issue("telegram:1");
 
 		expect(grant.linkUuid.length).toBeGreaterThan(10);
@@ -30,7 +31,6 @@ describe("AccessStore.issue", () => {
 	});
 
 	test("caps ttl at 24h", async () => {
-		const { store } = createStore(1_000_000);
 		const grant = await store.issue("telegram:1", {
 			ttlMs: MAX_TTL_MS * 10,
 		});
@@ -38,7 +38,6 @@ describe("AccessStore.issue", () => {
 	});
 
 	test("normalizes dir scope path", async () => {
-		const { store } = createStore();
 		const grant = await store.issue("telegram:1", {
 			scopePath: "/reports",
 			scopeKind: "dir",
@@ -48,7 +47,6 @@ describe("AccessStore.issue", () => {
 	});
 
 	test("normalizes file scope path", async () => {
-		const { store } = createStore();
 		const grant = await store.issue("telegram:1", {
 			scopePath: "/reports/q1.md",
 			scopeKind: "file",
@@ -56,11 +54,16 @@ describe("AccessStore.issue", () => {
 		expect(grant.scopePath).toBe("/reports/q1.md");
 		expect(grant.scopeKind).toBe("file");
 	});
+
+	test("rejects ttlMs <= 0", async () => {
+		await expect(store.issue("telegram:1", { ttlMs: 0 })).rejects.toThrow(
+			"ttlMs must be positive",
+		);
+	});
 });
 
 describe("AccessStore.resolveLink", () => {
 	test("returns grant for valid link", async () => {
-		const { store } = createStore();
 		const issued = await store.issue("telegram:1");
 		const resolved = await store.resolveLink(issued.linkUuid);
 		expect(resolved?.userId).toBe("telegram:1");
@@ -68,28 +71,24 @@ describe("AccessStore.resolveLink", () => {
 	});
 
 	test("returns null for expired link", async () => {
-		const { store, advance } = createStore();
 		const issued = await store.issue("telegram:1", { ttlMs: 60_000 });
 		advance(60_001);
 		expect(await store.resolveLink(issued.linkUuid)).toBeNull();
 	});
 
 	test("returns null for revoked link", async () => {
-		const { store } = createStore();
 		const issued = await store.issue("telegram:1");
 		await store.revokeByLink(issued.linkUuid);
 		expect(await store.resolveLink(issued.linkUuid)).toBeNull();
 	});
 
 	test("returns null for unknown link", async () => {
-		const { store } = createStore();
 		expect(await store.resolveLink("not-a-real-uuid")).toBeNull();
 	});
 });
 
 describe("AccessStore.resolveBearer", () => {
 	test("returns grant for valid bearer", async () => {
-		const { store } = createStore();
 		const issued = await store.issue("telegram:1", {
 			scopePath: "/reports/",
 			scopeKind: "dir",
@@ -101,12 +100,10 @@ describe("AccessStore.resolveBearer", () => {
 	});
 
 	test("returns null for empty bearer", async () => {
-		const { store } = createStore();
 		expect(await store.resolveBearer("")).toBeNull();
 	});
 
 	test("returns null for tampered bearer", async () => {
-		const { store } = createStore();
 		const issued = await store.issue("telegram:1");
 		expect(await store.resolveBearer(`${issued.bearerToken}x`)).toBeNull();
 	});
@@ -114,7 +111,6 @@ describe("AccessStore.resolveBearer", () => {
 
 describe("AccessStore.revokeByUser", () => {
 	test("revokes all active grants for a user", async () => {
-		const { store } = createStore();
 		const first = await store.issue("telegram:1");
 		const second = await store.issue("telegram:1");
 		const other = await store.issue("telegram:2");
@@ -128,9 +124,40 @@ describe("AccessStore.revokeByUser", () => {
 	});
 });
 
+describe("AccessStore.listActive", () => {
+	test("returns active grants for a user", async () => {
+		const g1 = await store.issue("telegram:1");
+		const g2 = await store.issue("telegram:1", {
+			scopePath: "/reports/",
+			scopeKind: "dir",
+		});
+		const grants = await store.listActive("telegram:1");
+		const uuids = grants.map((g) => g.linkUuid);
+		expect(uuids).toContain(g1.linkUuid);
+		expect(uuids).toContain(g2.linkUuid);
+	});
+
+	test("excludes grants from other users", async () => {
+		await store.issue("telegram:1");
+		const grants = await store.listActive("telegram:2");
+		expect(grants).toHaveLength(0);
+	});
+
+	test("excludes expired grants", async () => {
+		await store.issue("telegram:1", { ttlMs: 60_000 });
+		advance(60_001);
+		expect(await store.listActive("telegram:1")).toHaveLength(0);
+	});
+
+	test("excludes revoked grants", async () => {
+		const issued = await store.issue("telegram:1");
+		await store.revokeByLink(issued.linkUuid);
+		expect(await store.listActive("telegram:1")).toHaveLength(0);
+	});
+});
+
 describe("AccessStore.sweepExpired", () => {
 	test("deletes rows past their expiry", async () => {
-		const { store, advance } = createStore();
 		const shortLived = await store.issue("telegram:1", { ttlMs: 60_000 });
 		const longLived = await store.issue("telegram:1", { ttlMs: MAX_TTL_MS });
 
