@@ -1,6 +1,4 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname, posix as path } from "node:path";
+import { posix as path } from "node:path";
 import type {
 	BackendProtocol,
 	EditResult,
@@ -15,7 +13,8 @@ import type {
 import { createFilesystemMiddleware } from "deepagents";
 import { fileDataToString, formatReadResponse } from "../utils/filesystem";
 
-const DEFAULT_DB_PATH = "./.top-fedder/state.sqlite";
+type SQL = InstanceType<typeof Bun.SQL>;
+
 const DEFAULT_NAMESPACE = "default";
 const BINARY_CONTENT_PREFIX = "__top_fedder_binary__:";
 
@@ -27,7 +26,8 @@ type SqliteFileRow = {
 };
 
 export interface SqliteStateBackendOptions {
-	dbPath?: string;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 	namespace?: string;
 }
 
@@ -134,20 +134,21 @@ function relativeToDirectory(dirPath: string, filePath: string): string {
 }
 
 export class SqliteStateBackend implements BackendProtocol {
-	private readonly database: Database;
+	private readonly database: SQL;
+	private readonly dialect: "sqlite" | "postgres";
 	private readonly namespace: string;
+	private readonly _ready: Promise<void>;
 
-	constructor(options: SqliteStateBackendOptions = {}) {
-		const dbPath = options.dbPath ?? DEFAULT_DB_PATH;
-		if (dbPath !== ":memory:") {
-			mkdirSync(dirname(dbPath), { recursive: true });
-		}
-
-		this.database = new Database(dbPath, { create: true });
+	constructor(options: SqliteStateBackendOptions) {
+		this.database = options.db;
+		this.dialect = options.dialect;
 		this.namespace = options.namespace ?? DEFAULT_NAMESPACE;
+		this._ready = this._init();
+	}
 
-		this.database.exec(`
-      PRAGMA journal_mode = WAL;
+	private async _init(): Promise<void> {
+		const db = this.database;
+		await db`
       CREATE TABLE IF NOT EXISTS agent_files (
         namespace TEXT NOT NULL,
         path TEXT NOT NULL,
@@ -155,10 +156,15 @@ export class SqliteStateBackend implements BackendProtocol {
         created_at TEXT NOT NULL,
         modified_at TEXT NOT NULL,
         PRIMARY KEY (namespace, path)
-      );
+      )
+    `;
+		await db`
       CREATE INDEX IF NOT EXISTS idx_agent_files_namespace_path
-      ON agent_files(namespace, path);
-    `);
+      ON agent_files(namespace, path)
+    `;
+		if (this.dialect === "sqlite") {
+			await db`PRAGMA journal_mode = WAL`;
+		}
 	}
 
 	private mapRowToFileData(row: SqliteFileRow): FileData {
@@ -169,43 +175,50 @@ export class SqliteStateBackend implements BackendProtocol {
 		};
 	}
 
-	private getRow(filePath: string): SqliteFileRow | null {
+	private async getRow(filePath: string): Promise<SqliteFileRow | null> {
+		await this._ready;
 		const normalizedPath = normalizePath(filePath, "file");
-		const statement = this.database.query<SqliteFileRow, [string, string]>(`
+		const db = this.database;
+		const ns = this.namespace;
+		const rows = await db<SqliteFileRow[]>`
       SELECT path, content, created_at, modified_at
       FROM agent_files
-      WHERE namespace = ?1 AND path = ?2
-    `);
-
-		return statement.get(this.namespace, normalizedPath) ?? null;
+      WHERE namespace = ${ns} AND path = ${normalizedPath}
+    `;
+		return rows[0] ?? null;
 	}
 
-	private listRowsInDirectory(dirPath: string): SqliteFileRow[] {
+	private async listRowsInDirectory(
+		dirPath: string,
+	): Promise<SqliteFileRow[]> {
+		await this._ready;
 		const normalizedDir = normalizePath(dirPath, "dir");
-		const statement = this.database.query<SqliteFileRow, [string, string]>(`
+		const db = this.database;
+		const ns = this.namespace;
+		const prefix = `${normalizedDir}%`;
+		return db<SqliteFileRow[]>`
       SELECT path, content, created_at, modified_at
       FROM agent_files
-      WHERE namespace = ?1 AND path LIKE ?2
+      WHERE namespace = ${ns} AND path LIKE ${prefix}
       ORDER BY path ASC
-    `);
-
-		return statement.all(this.namespace, `${normalizedDir}%`);
+    `;
 	}
 
-	private listAllRows(): SqliteFileRow[] {
-		const statement = this.database.query<SqliteFileRow, [string]>(`
+	private async listAllRows(): Promise<SqliteFileRow[]> {
+		await this._ready;
+		const db = this.database;
+		const ns = this.namespace;
+		return db<SqliteFileRow[]>`
       SELECT path, content, created_at, modified_at
       FROM agent_files
-      WHERE namespace = ?1
+      WHERE namespace = ${ns}
       ORDER BY path ASC
-    `);
-
-		return statement.all(this.namespace);
+    `;
 	}
 
-	lsInfo(dirPath: string): FileInfo[] {
+	async lsInfo(dirPath: string): Promise<FileInfo[]> {
 		const normalizedDir = normalizePath(dirPath, "dir");
-		const rows = this.listRowsInDirectory(normalizedDir);
+		const rows = await this.listRowsInDirectory(normalizedDir);
 		const infos: FileInfo[] = [];
 		const subdirs = new Set<string>();
 
@@ -239,17 +252,17 @@ export class SqliteStateBackend implements BackendProtocol {
 		return infos.sort((left, right) => left.path.localeCompare(right.path));
 	}
 
-	read(filePath: string, offset = 0, limit = 500): string {
+	async read(filePath: string, offset = 0, limit = 500): Promise<string> {
 		try {
-			return formatReadResponse(this.readRaw(filePath), offset, limit);
+			return formatReadResponse(await this.readRaw(filePath), offset, limit);
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
 			return `Error: ${message}`;
 		}
 	}
 
-	readRaw(filePath: string): FileData {
-		const row = this.getRow(filePath);
+	async readRaw(filePath: string): Promise<FileData> {
+		const row = await this.getRow(filePath);
 		if (!row) {
 			const normalizedPath = normalizePath(filePath, "file");
 			throw new Error(`File '${normalizedPath}' not found`);
@@ -257,30 +270,24 @@ export class SqliteStateBackend implements BackendProtocol {
 		return this.mapRowToFileData(row);
 	}
 
-	write(filePath: string, content: string): WriteResult {
+	async write(filePath: string, content: string): Promise<WriteResult> {
 		try {
+			await this._ready;
 			const normalizedPath = normalizePath(filePath, "file");
-			if (this.getRow(normalizedPath)) {
+			if (await this.getRow(normalizedPath)) {
 				return {
 					error: `Cannot write to ${normalizedPath} because it already exists. Read and then make an edit, or write to a new path.`,
 				};
 			}
 
 			const fileData = createFileData(content);
-			const statement = this.database.query<
-				never,
-				[string, string, string, string, string]
-			>(`
+			const db = this.database;
+			const ns = this.namespace;
+			const contentStr = fileDataToString(fileData);
+			await db`
         INSERT INTO agent_files (namespace, path, content, created_at, modified_at)
-        VALUES (?1, ?2, ?3, ?4, ?5)
-      `);
-			statement.run(
-				this.namespace,
-				normalizedPath,
-				fileDataToString(fileData),
-				fileData.created_at,
-				fileData.modified_at,
-			);
+        VALUES (${ns}, ${normalizedPath}, ${contentStr}, ${fileData.created_at}, ${fileData.modified_at})
+      `;
 
 			return {
 				path: normalizedPath,
@@ -292,15 +299,16 @@ export class SqliteStateBackend implements BackendProtocol {
 		}
 	}
 
-	edit(
+	async edit(
 		filePath: string,
 		oldString: string,
 		newString: string,
 		replaceAll = false,
-	): EditResult {
+	): Promise<EditResult> {
 		try {
+			await this._ready;
 			const normalizedPath = normalizePath(filePath, "file");
-			const row = this.getRow(normalizedPath);
+			const row = await this.getRow(normalizedPath);
 			if (!row) return { error: `Error: File '${normalizedPath}' not found` };
 
 			const current = this.mapRowToFileData(row);
@@ -314,20 +322,14 @@ export class SqliteStateBackend implements BackendProtocol {
 
 			const [updatedContent, occurrences] = replacement;
 			const updated = updateFileData(current, updatedContent);
-			const statement = this.database.query<
-				never,
-				[string, string, string, string]
-			>(`
+			const db = this.database;
+			const ns = this.namespace;
+			const contentStr = fileDataToString(updated);
+			await db`
         UPDATE agent_files
-        SET content = ?3, modified_at = ?4
-        WHERE namespace = ?1 AND path = ?2
-      `);
-			statement.run(
-				this.namespace,
-				normalizedPath,
-				fileDataToString(updated),
-				updated.modified_at,
-			);
+        SET content = ${contentStr}, modified_at = ${updated.modified_at}
+        WHERE namespace = ${ns} AND path = ${normalizedPath}
+      `;
 
 			return {
 				path: normalizedPath,
@@ -340,11 +342,11 @@ export class SqliteStateBackend implements BackendProtocol {
 		}
 	}
 
-	grepRaw(
+	async grepRaw(
 		pattern: string,
 		searchPath: string | null = "/",
 		glob: string | null = null,
-	): GrepMatch[] {
+	): Promise<GrepMatch[]> {
 		const normalizedDir = normalizePath(searchPath ?? "/", "dir");
 		let matcher: RegExp;
 
@@ -354,7 +356,7 @@ export class SqliteStateBackend implements BackendProtocol {
 			return [];
 		}
 
-		return this.listAllRows()
+		return (await this.listAllRows())
 			.filter((row) => row.path.startsWith(normalizedDir))
 			.filter((row) => (glob ? basenameMatches(glob, row.path) : true))
 			.flatMap((row) =>
@@ -372,13 +374,15 @@ export class SqliteStateBackend implements BackendProtocol {
 			);
 	}
 
-	globInfo(pattern: string, searchPath = "/"): FileInfo[] {
+	async globInfo(pattern: string, searchPath = "/"): Promise<FileInfo[]> {
 		const normalizedDir = normalizePath(searchPath, "dir");
 		const glob = new Bun.Glob(pattern);
 
-		return this.listAllRows()
+		return (await this.listAllRows())
 			.filter((row) => row.path.startsWith(normalizedDir))
-			.filter((row) => glob.match(relativeToDirectory(normalizedDir, row.path)))
+			.filter((row) =>
+				glob.match(relativeToDirectory(normalizedDir, row.path)),
+			)
 			.sort((left, right) => right.modified_at.localeCompare(left.modified_at))
 			.map((row) => ({
 				path: row.path,
@@ -388,71 +392,71 @@ export class SqliteStateBackend implements BackendProtocol {
 			}));
 	}
 
-	uploadFiles(files: Array<[string, Uint8Array]>): FileUploadResponse[] {
-		const upsertStatement = this.database.query<
-			never,
-			[string, string, string, string, string]
-		>(`
-      INSERT INTO agent_files (namespace, path, content, created_at, modified_at)
-      VALUES (?1, ?2, ?3, ?4, ?5)
-      ON CONFLICT(namespace, path) DO UPDATE SET
-        content = excluded.content,
-        modified_at = excluded.modified_at
-    `);
+	async uploadFiles(
+		files: Array<[string, Uint8Array]>,
+	): Promise<FileUploadResponse[]> {
+		await this._ready;
+		const db = this.database;
+		const ns = this.namespace;
 
-		return files.map(([filePath, bytes]) => {
-			try {
-				const normalizedPath = normalizePath(filePath, "file");
-				const existing = this.getRow(normalizedPath);
-				const fileData = createFileData(
-					encodeStoredContent(bytes),
-					existing?.created_at,
-				);
-				upsertStatement.run(
-					this.namespace,
-					normalizedPath,
-					fileDataToString(fileData),
-					fileData.created_at,
-					fileData.modified_at,
-				);
-				return { path: normalizedPath, error: null };
-			} catch {
-				return { path: filePath, error: "invalid_path" };
-			}
-		});
+		return Promise.all(
+			files.map(async ([filePath, bytes]) => {
+				try {
+					const normalizedPath = normalizePath(filePath, "file");
+					const existing = await this.getRow(normalizedPath);
+					const fileData = createFileData(
+						encodeStoredContent(bytes),
+						existing?.created_at,
+					);
+					const contentStr = fileDataToString(fileData);
+					await db`
+            INSERT INTO agent_files (namespace, path, content, created_at, modified_at)
+            VALUES (${ns}, ${normalizedPath}, ${contentStr}, ${fileData.created_at}, ${fileData.modified_at})
+            ON CONFLICT(namespace, path) DO UPDATE SET
+              content = excluded.content,
+              modified_at = excluded.modified_at
+          `;
+					return { path: normalizedPath, error: null };
+				} catch {
+					return { path: filePath, error: "invalid_path" };
+				}
+			}),
+		);
 	}
 
-	downloadFiles(paths: string[]): FileDownloadResponse[] {
-		return paths.map((filePath) => {
-			try {
-				const normalizedPath = normalizePath(filePath, "file");
-				const row = this.getRow(normalizedPath);
-				if (!row)
+	async downloadFiles(paths: string[]): Promise<FileDownloadResponse[]> {
+		return Promise.all(
+			paths.map(async (filePath) => {
+				try {
+					const normalizedPath = normalizePath(filePath, "file");
+					const row = await this.getRow(normalizedPath);
+					if (!row)
+						return {
+							path: normalizedPath,
+							content: null,
+							error: "file_not_found",
+						};
+
 					return {
 						path: normalizedPath,
-						content: null,
-						error: "file_not_found",
+						content: decodeStoredContent(row.content),
+						error: null,
 					};
-
-				return {
-					path: normalizedPath,
-					content: decodeStoredContent(row.content),
-					error: null,
-				};
-			} catch {
-				return { path: filePath, content: null, error: "invalid_path" };
-			}
-		});
+				} catch {
+					return { path: filePath, content: null, error: "invalid_path" };
+				}
+			}),
+		);
 	}
 }
 
 export function createSqliteFilesystemMiddleware(
-	options: SqliteFilesystemMiddlewareOptions = {},
+	options: SqliteFilesystemMiddlewareOptions,
 ) {
-	const { dbPath, namespace, ...middlewareOptions } = options;
+	const { db, dialect, namespace, ...middlewareOptions } = options;
 
 	return createFilesystemMiddleware({
 		...middlewareOptions,
-		backend: new SqliteStateBackend({ dbPath, namespace }),
+		backend: new SqliteStateBackend({ db, dialect, namespace }),
 	});
 }

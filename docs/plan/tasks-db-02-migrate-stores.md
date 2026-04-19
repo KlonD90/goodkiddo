@@ -8,7 +8,7 @@ Assumes task list 01 is complete (`src/db/index.ts` exists, `AppConfig.databaseU
 
 ## Task list
 
-- [ ] **Rewrite `SqliteStateBackend` to use injected `Bun.SQL`** — remove `bun:sqlite`, make methods async
+- [x] **Rewrite `SqliteStateBackend` to use injected `Bun.SQL`** — remove `bun:sqlite`, make methods async
   - **Files:** `src/backends/sqlite_state_backend.ts`
   - **Context:** Replace `import { Database } from "bun:sqlite"` with no DB import. Change `SqliteStateBackendOptions` to accept `db: SQL; dialect: 'sqlite' | 'postgres'` instead of `dbPath?: string`. In the constructor, remove the `mkdirSync` and `new Database(...)` calls; assign the injected `db`. Run `CREATE TABLE IF NOT EXISTS agent_files ...` in the constructor — same DDL for both dialects (no BLOB columns here, content is TEXT). For SQLite dialect only, also run `` await db`PRAGMA journal_mode = WAL` ``. Convert all `this.database.query(...).get/all/run(...)` calls to `Bun.sql` tagged templates. All public methods (`read`, `write`, `edit`, `grepRaw`, `globInfo`, `lsInfo`, `uploadFiles`, `downloadFiles`) return `Promise<T>` — `BackendProtocol` uses `MaybePromise<T>` so this is safe. Keep `normalizePath` exported — it is imported by `access_store.ts` and `server/routes.ts`.
   - **Done when:** File compiles, `import { Database } from "bun:sqlite"` is gone, all methods are async.
