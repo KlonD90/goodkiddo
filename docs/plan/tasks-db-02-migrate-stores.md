@@ -27,7 +27,7 @@ Assumes task list 01 is complete (`src/db/index.ts` exists, `AppConfig.databaseU
   - **Context:** Replace `import { Database } from "bun:sqlite"` with no DB import. Change `AccessStoreOptions` to `{ db: SQL; dialect: 'sqlite' | 'postgres'; now?: () => number }`. Remove `mkdirSync`. DDL is all TEXT/INTEGER — same for both dialects; add `PRAGMA journal_mode = WAL` conditionally for SQLite. Convert all queries to `Bun.sql` tagged templates. `sweepExpired` and `revokeByUser` return counts — derive from result array length. `normalizePath` import from `../backends/sqlite_state_backend` stays valid for now (file not yet renamed).
   - **Done when:** File compiles, `import { Database } from "bun:sqlite"` is gone, all methods async.
 
-- [ ] **Rename backend file and fix all affected imports**
+- [x] **Rename backend file and fix all affected imports**
   - **Files:** `src/backends/sqlite_state_backend.ts` → `src/backends/state_backend.ts`, `src/backends/index.ts`, `src/server/access_store.ts`, `src/server/routes.ts`
   - **Context:** Rename `sqlite_state_backend.ts` to `state_backend.ts`. The class and factory function names can keep their names for now — renaming them is a separate concern. Update `src/backends/index.ts` to re-export from `./state_backend` instead of `./sqlite_state_backend`. Fix the `normalizePath` import in `src/server/access_store.ts` (currently `../backends/sqlite_state_backend`) and `src/server/routes.ts` (currently `../backends`). Update any other files that import directly from `sqlite_state_backend` by path.
   - **Done when:** `sqlite_state_backend.ts` no longer exists, `bun tsc --noEmit` produces no errors related to this rename. Type errors from instantiation sites (still passing `dbPath`) are expected and fixed in task list 03.

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { SqliteStateBackend } from "../backends/sqlite_state_backend";
+import { SqliteStateBackend } from "../backends/state_backend";
 import type {
 	BackendExecutionRequest,
 	BackendSession,

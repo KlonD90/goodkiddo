@@ -4,5 +4,5 @@ export {
 	type SqliteFilesystemMiddlewareOptions,
 	SqliteStateBackend,
 	type SqliteStateBackendOptions,
-} from "./sqlite_state_backend";
+} from "./state_backend";
 export type { WorkspaceBackend } from "./types";

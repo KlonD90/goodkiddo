@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { normalizePath } from "../backends/sqlite_state_backend";
+import { normalizePath } from "../backends/state_backend";
 
 type SQL = InstanceType<typeof Bun.SQL>;
 
