@@ -3,8 +3,10 @@ import { AccessStore, MAX_TTL_MS, withinScope } from "./access_store";
 
 function createStore(now = 1_000_000) {
 	let current = now;
+	const db = new Bun.SQL(":memory:");
 	const store = new AccessStore({
-		dbPath: ":memory:",
+		db,
+		dialect: "sqlite",
 		now: () => current,
 	});
 	return {
@@ -16,9 +18,9 @@ function createStore(now = 1_000_000) {
 }
 
 describe("AccessStore.issue", () => {
-	test("issues a root grant by default", () => {
+	test("issues a root grant by default", async () => {
 		const { store } = createStore();
-		const grant = store.issue("telegram:1");
+		const grant = await store.issue("telegram:1");
 
 		expect(grant.linkUuid.length).toBeGreaterThan(10);
 		expect(grant.bearerToken.length).toBeGreaterThan(20);
@@ -27,17 +29,17 @@ describe("AccessStore.issue", () => {
 		expect(grant.userId).toBe("telegram:1");
 	});
 
-	test("caps ttl at 24h", () => {
+	test("caps ttl at 24h", async () => {
 		const { store } = createStore(1_000_000);
-		const grant = store.issue("telegram:1", {
+		const grant = await store.issue("telegram:1", {
 			ttlMs: MAX_TTL_MS * 10,
 		});
 		expect(grant.expiresAt).toBe(1_000_000 + MAX_TTL_MS);
 	});
 
-	test("normalizes dir scope path", () => {
+	test("normalizes dir scope path", async () => {
 		const { store } = createStore();
-		const grant = store.issue("telegram:1", {
+		const grant = await store.issue("telegram:1", {
 			scopePath: "/reports",
 			scopeKind: "dir",
 		});
@@ -45,9 +47,9 @@ describe("AccessStore.issue", () => {
 		expect(grant.scopeKind).toBe("dir");
 	});
 
-	test("normalizes file scope path", () => {
+	test("normalizes file scope path", async () => {
 		const { store } = createStore();
-		const grant = store.issue("telegram:1", {
+		const grant = await store.issue("telegram:1", {
 			scopePath: "/reports/q1.md",
 			scopeKind: "file",
 		});
@@ -57,87 +59,87 @@ describe("AccessStore.issue", () => {
 });
 
 describe("AccessStore.resolveLink", () => {
-	test("returns grant for valid link", () => {
+	test("returns grant for valid link", async () => {
 		const { store } = createStore();
-		const issued = store.issue("telegram:1");
-		const resolved = store.resolveLink(issued.linkUuid);
+		const issued = await store.issue("telegram:1");
+		const resolved = await store.resolveLink(issued.linkUuid);
 		expect(resolved?.userId).toBe("telegram:1");
 		expect(resolved?.scopeKind).toBe("root");
 	});
 
-	test("returns null for expired link", () => {
+	test("returns null for expired link", async () => {
 		const { store, advance } = createStore();
-		const issued = store.issue("telegram:1", { ttlMs: 60_000 });
+		const issued = await store.issue("telegram:1", { ttlMs: 60_000 });
 		advance(60_001);
-		expect(store.resolveLink(issued.linkUuid)).toBeNull();
+		expect(await store.resolveLink(issued.linkUuid)).toBeNull();
 	});
 
-	test("returns null for revoked link", () => {
+	test("returns null for revoked link", async () => {
 		const { store } = createStore();
-		const issued = store.issue("telegram:1");
-		store.revokeByLink(issued.linkUuid);
-		expect(store.resolveLink(issued.linkUuid)).toBeNull();
+		const issued = await store.issue("telegram:1");
+		await store.revokeByLink(issued.linkUuid);
+		expect(await store.resolveLink(issued.linkUuid)).toBeNull();
 	});
 
-	test("returns null for unknown link", () => {
+	test("returns null for unknown link", async () => {
 		const { store } = createStore();
-		expect(store.resolveLink("not-a-real-uuid")).toBeNull();
+		expect(await store.resolveLink("not-a-real-uuid")).toBeNull();
 	});
 });
 
 describe("AccessStore.resolveBearer", () => {
-	test("returns grant for valid bearer", () => {
+	test("returns grant for valid bearer", async () => {
 		const { store } = createStore();
-		const issued = store.issue("telegram:1", {
+		const issued = await store.issue("telegram:1", {
 			scopePath: "/reports/",
 			scopeKind: "dir",
 		});
-		const resolved = store.resolveBearer(issued.bearerToken);
+		const resolved = await store.resolveBearer(issued.bearerToken);
 		expect(resolved?.userId).toBe("telegram:1");
 		expect(resolved?.scopePath).toBe("/reports/");
 		expect(resolved?.linkUuid).toBe(issued.linkUuid);
 	});
 
-	test("returns null for empty bearer", () => {
+	test("returns null for empty bearer", async () => {
 		const { store } = createStore();
-		expect(store.resolveBearer("")).toBeNull();
+		expect(await store.resolveBearer("")).toBeNull();
 	});
 
-	test("returns null for tampered bearer", () => {
+	test("returns null for tampered bearer", async () => {
 		const { store } = createStore();
-		const issued = store.issue("telegram:1");
-		expect(store.resolveBearer(`${issued.bearerToken}x`)).toBeNull();
+		const issued = await store.issue("telegram:1");
+		expect(await store.resolveBearer(`${issued.bearerToken}x`)).toBeNull();
 	});
 });
 
 describe("AccessStore.revokeByUser", () => {
-	test("revokes all active grants for a user", () => {
+	test("revokes all active grants for a user", async () => {
 		const { store } = createStore();
-		const first = store.issue("telegram:1");
-		const second = store.issue("telegram:1");
-		const other = store.issue("telegram:2");
+		const first = await store.issue("telegram:1");
+		const second = await store.issue("telegram:1");
+		const other = await store.issue("telegram:2");
 
-		const revoked = store.revokeByUser("telegram:1");
+		const revoked = await store.revokeByUser("telegram:1");
 
 		expect(revoked).toBe(2);
-		expect(store.resolveBearer(first.bearerToken)).toBeNull();
-		expect(store.resolveBearer(second.bearerToken)).toBeNull();
-		expect(store.resolveBearer(other.bearerToken)).not.toBeNull();
+		expect(await store.resolveBearer(first.bearerToken)).toBeNull();
+		expect(await store.resolveBearer(second.bearerToken)).toBeNull();
+		expect(await store.resolveBearer(other.bearerToken)).not.toBeNull();
 	});
 });
 
 describe("AccessStore.sweepExpired", () => {
-	test("deletes rows past their expiry", () => {
+	test("deletes rows past their expiry", async () => {
 		const { store, advance } = createStore();
-		const shortLived = store.issue("telegram:1", { ttlMs: 60_000 });
-		const longLived = store.issue("telegram:1", { ttlMs: MAX_TTL_MS });
+		const shortLived = await store.issue("telegram:1", { ttlMs: 60_000 });
+		const longLived = await store.issue("telegram:1", { ttlMs: MAX_TTL_MS });
 
 		advance(60_001);
-		const deleted = store.sweepExpired();
+		const deleted = await store.sweepExpired();
 
 		expect(deleted).toBe(1);
-		expect(store.resolveBearer(shortLived.bearerToken)).toBeNull();
-		expect(store.resolveBearer(longLived.bearerToken)).not.toBeNull();
+		expect(await store.resolveBearer(shortLived.bearerToken)).toBeNull();
+		expect(await store.resolveBearer(longLived.bearerToken)).not.toBeNull();
 	});
 });
 

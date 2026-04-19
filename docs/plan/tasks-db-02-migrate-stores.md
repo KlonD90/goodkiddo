@@ -22,7 +22,7 @@ Assumes task list 01 is complete (`src/db/index.ts` exists, `AppConfig.databaseU
     All methods become async. The `result.changes` pattern from `bun:sqlite` is not available in `Bun.sql`; use `SELECT changes()` (SQLite) or `RETURNING` / row counts from `Bun.sql` result. Alternatively, for the two methods that return a count (`deleteMatchingRules`, `deleteAllRulesForUser`), return the length of the `Bun.sql` result array.
   - **Done when:** File compiles, `import { Database } from "bun:sqlite"` is gone, all methods async.
 
-- [ ] **Rewrite `AccessStore` to use injected `Bun.SQL`** — straightforward, no BLOB or AUTOINCREMENT
+- [x] **Rewrite `AccessStore` to use injected `Bun.SQL`** — straightforward, no BLOB or AUTOINCREMENT
   - **Files:** `src/server/access_store.ts`
   - **Context:** Replace `import { Database } from "bun:sqlite"` with no DB import. Change `AccessStoreOptions` to `{ db: SQL; dialect: 'sqlite' | 'postgres'; now?: () => number }`. Remove `mkdirSync`. DDL is all TEXT/INTEGER — same for both dialects; add `PRAGMA journal_mode = WAL` conditionally for SQLite. Convert all queries to `Bun.sql` tagged templates. `sweepExpired` and `revokeByUser` return counts — derive from result array length. `normalizePath` import from `../backends/sqlite_state_backend` stays valid for now (file not yet renamed).
   - **Done when:** File compiles, `import { Database } from "bun:sqlite"` is gone, all methods async.

@@ -203,15 +203,15 @@ function serveAsset(bundle: FrontendBundle, assetName: string): Response {
 	return new Response("Not found", { status: 404 });
 }
 
-function handleDownload(
+async function handleDownload(
 	request: Request,
 	linkUuid: string,
 	access: AccessStore,
 	stateDbPath: string,
-): Response {
+): Promise<Response> {
 	const cookies = parseCookies(request.headers.get("cookie"));
 	const bearer = cookies.get(DOWNLOAD_COOKIE_NAME) ?? "";
-	const grant = access.resolveBearer(bearer);
+	const grant = await access.resolveBearer(bearer);
 	if (!grant || grant.linkUuid !== linkUuid) {
 		return new Response("Unauthorized", { status: 401 });
 	}
@@ -226,7 +226,7 @@ function handleDownload(
 	}
 
 	const workspace = openWorkspace(stateDbPath, grant.userId);
-	const [result] = workspace.downloadFiles([normalized]);
+	const [result] = await workspace.downloadFiles([normalized]);
 	if (!result || result.error === "file_not_found") {
 		return errorResponse("file_not_found", 404);
 	}
@@ -264,7 +264,7 @@ async function handleApi(
 
 	const bearer = requireBearer(request);
 	if (!bearer) return errorResponse("unauthorized", 401);
-	const grant = access.resolveBearer(bearer);
+	const grant = await access.resolveBearer(bearer);
 	if (!grant) return errorResponse("unauthorized", 401);
 
 	const body = await readJsonBody(request);
@@ -282,7 +282,7 @@ async function handleApi(
 			return errorResponse("out_of_scope", 403);
 		}
 		const workspace = openWorkspace(stateDbPath, grant.userId);
-		const entries = workspace.lsInfo(normalized);
+		const entries = await workspace.lsInfo(normalized);
 		return jsonResponse({ path: normalized, entries });
 	}
 
@@ -295,7 +295,7 @@ async function handleApi(
 		}
 		const workspace = openWorkspace(stateDbPath, grant.userId);
 		if (kind === "dir") {
-			const entries = workspace.lsInfo(normalized);
+			const entries = await workspace.lsInfo(normalized);
 			return jsonResponse({
 				path: normalized,
 				is_dir: true,
@@ -304,7 +304,7 @@ async function handleApi(
 				child_count: entries.length,
 			});
 		}
-		const [download] = workspace.downloadFiles([normalized]);
+		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
 		}
@@ -325,7 +325,7 @@ async function handleApi(
 			return errorResponse("out_of_scope", 403);
 		}
 		const workspace = openWorkspace(stateDbPath, grant.userId);
-		const [download] = workspace.downloadFiles([normalized]);
+		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
 		}
@@ -380,7 +380,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 
 		if (deepPath.startsWith("/_assets/")) {
 			const assetName = deepPath.slice("/_assets/".length);
-			const grant = access.resolveLink(linkUuid);
+			const grant = await access.resolveLink(linkUuid);
 			if (!grant) return new Response("Not found", { status: 404 });
 			return serveAsset(bundle, assetName);
 		}
@@ -396,7 +396,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			return errorResponse("method_not_allowed", 405);
 		}
 
-		const grant = access.resolveLink(linkUuid);
+		const grant = await access.resolveLink(linkUuid);
 		if (!grant) return new Response("Not found", { status: 404 });
 
 		return handleHtmlShell(grant, bundle, deepPath);

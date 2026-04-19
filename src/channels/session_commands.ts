@@ -62,7 +62,7 @@ async function handleOpenFs(
 		return `Error: ${error instanceof Error ? error.message : String(error)}`;
 	}
 
-	const grant = context.access.issue(context.callerId, {
+	const grant = await context.access.issue(context.callerId, {
 		scopePath: normalizedPath,
 		scopeKind: kind,
 	});
@@ -79,8 +79,8 @@ async function handleOpenFs(
 	].join("\n");
 }
 
-function handleRevokeFs(context: WebShareCommandContext): string {
-	const count = context.access.revokeByUser(context.callerId);
+async function handleRevokeFs(context: WebShareCommandContext): Promise<string> {
+	const count = await context.access.revokeByUser(context.callerId);
 	return count === 0
 		? "No active share links to revoke."
 		: `Revoked ${count} active share link${count === 1 ? "" : "s"}.`;
@@ -136,7 +136,7 @@ export async function maybeHandleSessionCommand(
 				reply: "Web share is not configured.",
 			};
 		}
-		return { handled: true, reply: handleRevokeFs(context.webShare) };
+		return { handled: true, reply: await handleRevokeFs(context.webShare) };
 	}
 
 	return { handled: false };
