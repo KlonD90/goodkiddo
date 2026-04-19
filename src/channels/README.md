@@ -34,7 +34,8 @@ Current pipeline:
 2. The Telegram channel parses it with `markdown-it`.
 3. Output is normalized to Telegram-safe HTML only.
 4. Unsupported structures are rewritten into Telegram-friendly text.
-5. The final rendered payload is chunked to stay under Telegram's message limit.
+5. The same renderer is used for text replies and attachment captions.
+6. The final rendered payload is chunked to stay under Telegram's message limit.
 
 Supported formatting:
 
@@ -51,6 +52,7 @@ Rules:
 
 - do not send raw model HTML through to Telegram
 - do not rely on unsupported Telegram tags like `<table>` or `<br>`
+- do not pass raw attachment captions straight into Telegram `parse_mode: HTML`
 - chunk by rendered Telegram payload, not just source Markdown length
 
 ## Telegram Tables
@@ -78,6 +80,8 @@ Behavior:
 
 - the bot sends `typing...` while the agent is working
 - partial output is flushed in readable chunks
+- short completed paragraphs can flush on a timer once they end with a blank-line paragraph break and the paragraph looks complete
+- if the buffered reply would exceed Telegram's limit before that, it is split early on safe whitespace boundaries with markdown structures kept closed
 - incomplete Markdown structures are buffered instead of being sent half-open
 - the final stream flush sends the full remaining buffer so table-aware chunking can run on the complete content
 
@@ -87,6 +91,7 @@ The stream chunker tracks:
 - inline code spans
 - paired emphasis delimiters like `**`, `__`, `~~`
 - trailing Markdown table context, including header and separator rows
+- overlapping or cumulative streamed text snapshots so partial output is not duplicated
 
 This avoids broken continuation chunks where later table rows appear without their headers.
 

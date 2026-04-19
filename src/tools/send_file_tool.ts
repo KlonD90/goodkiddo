@@ -94,7 +94,7 @@ export function createSendFileTool(options: CreateSendFileToolOptions) {
 					.max(SEND_FILE_MAX_CAPTION_LENGTH)
 					.optional()
 					.describe(
-						"Optional short caption shown alongside the attachment (HTML allowed on Telegram).",
+						"Optional short caption shown alongside the attachment. Write normal Markdown-ish text; the Telegram channel will render it safely.",
 					),
 			}),
 		},

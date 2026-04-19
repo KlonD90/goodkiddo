@@ -18,6 +18,10 @@ Requirements: `bun`, `docker`, model API access.
 
 If config is missing, the app starts an interactive setup wizard.
 
+## Plans
+
+- [`docs/plan/`](./docs/plan/) — feature plans and agent task lists
+
 ## Read Next
 
 - [`src/README.md`](./src/README.md) for the code map

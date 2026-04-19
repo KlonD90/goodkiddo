@@ -11,7 +11,11 @@ import {
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
 	maybeHandleTelegramApprovalReply,
+	mergeTelegramStreamText,
+	renderTelegramCaptionHtml,
 	renderTelegramHtml,
+	takeTelegramOverflowStreamChunks,
+	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
 } from "./telegram";
 
@@ -224,6 +228,62 @@ Quick verdict`;
 		expect(result.remainder).toBe("");
 	});
 
+	test("takeTelegramParagraphStreamChunks flushes short completed paragraphs", () => {
+		const result = takeTelegramParagraphStreamChunks(
+			"Short intro.\n\nStill buffering",
+		);
+
+		expect(result.chunks).toEqual(["Short intro."]);
+		expect(result.remainder).toBe("Still buffering");
+	});
+
+	test("takeTelegramParagraphStreamChunks does not flush on a single wrapped newline", () => {
+		const result = takeTelegramParagraphStreamChunks(
+			"Knowledge Gap Mapping: When working on a complex topic where you repeatedly reference different domains, I should identify what you have not\ntouched yet but will need later.",
+		);
+
+		expect(result.chunks).toEqual([]);
+		expect(result.remainder).toContain("have not\ntouched yet");
+	});
+
+	test("takeTelegramParagraphStreamChunks does not flush on an unfinished paragraph before a blank line", () => {
+		const result = takeTelegramParagraphStreamChunks(
+			"Knowledge Gap Mapping: When working on a complex topic where you repeatedly reference different domains, I should identify what you have not\n\ntouched yet but will need later.",
+		);
+
+		expect(result.chunks).toEqual([]);
+		expect(result.remainder).toContain("have not\n\ntouched yet");
+	});
+
+	test("takeTelegramOverflowStreamChunks flushes oversized unfinished text on safe boundaries", () => {
+		const text = Array.from(
+			{ length: 500 },
+			() => "**functional outcomes** over showing technical steps",
+		).join(" ");
+
+		const result = takeTelegramOverflowStreamChunks(text);
+
+		expect(result.chunks.length).toBeGreaterThan(0);
+		expect(
+			renderTelegramHtml(result.chunks[0] ?? "").length,
+		).toBeLessThanOrEqual(4096);
+		expect(renderTelegramHtml(result.chunks[0] ?? "")).toContain(
+			"<b>functional outcomes</b>",
+		);
+		expect(result.remainder.length).toBeGreaterThan(0);
+	});
+
+	test("mergeTelegramStreamText handles cumulative snapshots and overlaps", () => {
+		const first = mergeTelegramStreamText("", "Hello");
+		expect(first).toEqual({ fullText: "Hello", delta: "Hello" });
+
+		const second = mergeTelegramStreamText(first.fullText, "Hello world");
+		expect(second).toEqual({ fullText: "Hello world", delta: " world" });
+
+		const third = mergeTelegramStreamText(second.fullText, " world!");
+		expect(third).toEqual({ fullText: "Hello world!", delta: "!" });
+	});
+
 	test("renderTelegramHtml converts common markdown to Telegram-safe HTML", () => {
 		const rendered = renderTelegramHtml(
 			'**Opus** uses `markdown` safely.\n\n```ts\nconsole.log("<test>");\n```',
@@ -295,6 +355,12 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(rendered).toContain("• <b>Claude Opus</b> (Anthropic):");
 		expect(rendered).toContain("  • Long-document comprehension");
 		expect(rendered).toContain("• <b>ChatGPT 4o</b> (OpenAI):");
+	});
+
+	test("renderTelegramCaptionHtml converts markdown and escapes raw HTML", () => {
+		expect(renderTelegramCaptionHtml("**Report** <draft> & `code`")).toBe(
+			"<b>Report</b> &lt;draft&gt; &amp; <code>code</code>",
+		);
 	});
 
 	test("buildTelegramPhotoContent keeps caption text and image bytes", () => {

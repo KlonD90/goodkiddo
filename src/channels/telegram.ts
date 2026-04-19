@@ -27,12 +27,28 @@ import {
 import type { AppChannel, ChannelRunOptions } from "./types";
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
+const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
 const APPROVAL_TIMEOUT_MS = 120_000;
 const TELEGRAM_HTML_PARSE_MODE = "HTML";
 const TELEGRAM_TYPING_INTERVAL_MS = 4_000;
+const TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS = 2_500;
 const TELEGRAM_STREAM_CHUNK_MIN_LENGTH = 240;
 const TELEGRAM_STREAM_CHUNK_TARGET_LENGTH = 900;
 const TELEGRAM_STREAM_CHUNK_HARD_LENGTH = 1_600;
+const TELEGRAM_STREAM_DEFAULT_BOUNDARY_PATTERNS = [
+	/\n\n/g,
+	/\n/g,
+	/[.!?](?:\s|$)/g,
+	/[;:](?:\s|$)/g,
+	/, /g,
+	/ /g,
+] as const;
+const TELEGRAM_STREAM_PARAGRAPH_BOUNDARY_PATTERNS = [/\n\s*\n/g] as const;
+const TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS = [
+	/\n\s*\n/g,
+	/\n/g,
+	/\s+/g,
+] as const;
 const TELEGRAM_COMMANDS = [
 	{ command: "help", description: "Show available permission commands" },
 	{ command: "policy", description: "Show your current permission rules" },
@@ -187,22 +203,30 @@ function hasOpenTelegramMarkdownStructures(
 	);
 }
 
+function isSafeTelegramMarkdownChunk(text: string): boolean {
+	const context = scanTelegramMarkdownChunkContext(text);
+	return (
+		!hasOpenTelegramMarkdownStructures(context) &&
+		context.trailingTable === null
+	);
+}
+
 function findTelegramStreamBoundary(
 	text: string,
 	maxLength: number,
+	options?: {
+		minLength?: number;
+		boundaryPatterns?: readonly RegExp[];
+	},
 ): number | null {
 	const limited = text.slice(0, maxLength);
-	const boundaryPatterns = [
-		/\n\n/g,
-		/\n/g,
-		/[.!?](?:\s|$)/g,
-		/[;:](?:\s|$)/g,
-		/, /g,
-		/ /g,
-	];
+	const minLength = options?.minLength ?? TELEGRAM_STREAM_CHUNK_MIN_LENGTH;
+	const boundaryPatterns =
+		options?.boundaryPatterns ?? TELEGRAM_STREAM_DEFAULT_BOUNDARY_PATTERNS;
 	let boundary: number | null = null;
 
-	for (const pattern of boundaryPatterns) {
+	for (const sourcePattern of boundaryPatterns) {
+		const pattern = new RegExp(sourcePattern.source, sourcePattern.flags);
 		let match: RegExpExecArray | null = null;
 		while (true) {
 			const nextMatch = pattern.exec(limited);
@@ -212,7 +236,7 @@ function findTelegramStreamBoundary(
 		if (match !== null) {
 			const matchText = match[0] ?? "";
 			const candidate = match.index + matchText.length;
-			if (candidate >= TELEGRAM_STREAM_CHUNK_MIN_LENGTH) {
+			if (candidate >= minLength) {
 				boundary = Math.max(boundary ?? 0, candidate);
 				break;
 			}
@@ -280,6 +304,13 @@ function findTrailingMarkdownTableContext(
 export function takeTelegramStreamChunks(
 	text: string,
 	isFinal = false,
+	options?: {
+		minLength?: number;
+		targetLength?: number;
+		hardLength?: number;
+		boundaryPatterns?: readonly RegExp[];
+		requireBoundary?: boolean;
+	},
 ): { chunks: string[]; remainder: string } {
 	if (isFinal) {
 		const finalChunk = text.trim();
@@ -291,24 +322,39 @@ export function takeTelegramStreamChunks(
 
 	const chunks: string[] = [];
 	let remainder = text;
+	const minLength = options?.minLength ?? TELEGRAM_STREAM_CHUNK_MIN_LENGTH;
+	const targetLength =
+		options?.targetLength ?? TELEGRAM_STREAM_CHUNK_TARGET_LENGTH;
+	const hardLength = options?.hardLength ?? TELEGRAM_STREAM_CHUNK_HARD_LENGTH;
+	const boundaryPatterns =
+		options?.boundaryPatterns ?? TELEGRAM_STREAM_DEFAULT_BOUNDARY_PATTERNS;
+	const requireBoundary = options?.requireBoundary ?? false;
 
 	while (remainder !== "") {
-		if (!isFinal && remainder.length < TELEGRAM_STREAM_CHUNK_MIN_LENGTH) break;
+		if (!isFinal && remainder.length < minLength) break;
 
 		const preferredBoundary = findTelegramStreamBoundary(
 			remainder,
-			Math.min(remainder.length, TELEGRAM_STREAM_CHUNK_TARGET_LENGTH),
+			Math.min(remainder.length, targetLength),
+			{
+				minLength,
+				boundaryPatterns,
+			},
 		);
 		let boundary = preferredBoundary;
 
 		if (boundary === null) {
-			if (!isFinal && remainder.length < TELEGRAM_STREAM_CHUNK_HARD_LENGTH)
-				break;
+			if (!isFinal && requireBoundary) break;
+			if (!isFinal && remainder.length < hardLength) break;
 			boundary =
 				findTelegramStreamBoundary(
 					remainder,
-					Math.min(remainder.length, TELEGRAM_STREAM_CHUNK_HARD_LENGTH),
-				) ?? Math.min(remainder.length, TELEGRAM_STREAM_CHUNK_HARD_LENGTH);
+					Math.min(remainder.length, hardLength),
+					{
+						minLength,
+						boundaryPatterns,
+					},
+				) ?? Math.min(remainder.length, hardLength);
 		}
 
 		const candidate = remainder.slice(0, boundary);
@@ -336,6 +382,119 @@ export function takeTelegramStreamChunks(
 	}
 
 	return { chunks, remainder };
+}
+
+export function takeTelegramParagraphStreamChunks(text: string): {
+	chunks: string[];
+	remainder: string;
+} {
+	let boundary: number | null = null;
+
+	for (const sourcePattern of TELEGRAM_STREAM_PARAGRAPH_BOUNDARY_PATTERNS) {
+		const pattern = new RegExp(sourcePattern.source, sourcePattern.flags);
+		while (true) {
+			const nextMatch = pattern.exec(text);
+			if (nextMatch === null) break;
+			const candidate = nextMatch.index + (nextMatch[0] ?? "").length;
+			const prefix = text.slice(0, candidate);
+			const suffix = text.slice(candidate);
+			if (isLikelyTelegramCompletedParagraph(prefix, suffix)) {
+				boundary = candidate;
+			}
+		}
+	}
+
+	if (boundary === null) {
+		return { chunks: [], remainder: text };
+	}
+
+	const candidate = text.slice(0, boundary);
+	const candidateContext = scanTelegramMarkdownChunkContext(candidate);
+	if (
+		hasOpenTelegramMarkdownStructures(candidateContext) ||
+		candidateContext.trailingTable !== null
+	) {
+		return { chunks: [], remainder: text };
+	}
+
+	const chunk = candidate.trimEnd();
+	if (chunk === "") return { chunks: [], remainder: text };
+
+	return {
+		chunks: [chunk],
+		remainder: text.slice(boundary).replace(/^[ \t\r\n]+/, ""),
+	};
+}
+
+function findSafeTelegramOverflowBoundary(
+	text: string,
+	maxLength: number,
+	minLength = 1,
+): number | null {
+	const limitedMaxLength = Math.min(text.length, maxLength);
+
+	for (let boundary = limitedMaxLength; boundary >= minLength; boundary -= 1) {
+		const previousCharacter = text[boundary - 1] ?? "";
+		const nextCharacter = text[boundary] ?? "";
+		if (!/\s/.test(previousCharacter) && !/\s/.test(nextCharacter)) continue;
+
+		const candidate = text.slice(0, boundary);
+		const chunk = candidate.trimEnd();
+		if (chunk === "") continue;
+		if (!isSafeTelegramMarkdownChunk(candidate)) continue;
+		return boundary;
+	}
+
+	return null;
+}
+
+export function takeTelegramOverflowStreamChunks(text: string): {
+	chunks: string[];
+	remainder: string;
+} {
+	if (text.trim() === "") return { chunks: [], remainder: "" };
+	if (renderTelegramHtml(text).length <= TELEGRAM_MAX_MESSAGE_LENGTH) {
+		return { chunks: [], remainder: text };
+	}
+
+	const preferredSplit = takeTelegramStreamChunks(text, false, {
+		minLength: 1,
+		targetLength: TELEGRAM_STREAM_CHUNK_HARD_LENGTH,
+		hardLength: TELEGRAM_STREAM_CHUNK_HARD_LENGTH,
+		boundaryPatterns: TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS,
+		requireBoundary: true,
+	});
+	if (preferredSplit.chunks.length > 0) {
+		return preferredSplit;
+	}
+
+	const safeBoundary = findSafeTelegramOverflowBoundary(
+		text,
+		TELEGRAM_STREAM_CHUNK_HARD_LENGTH,
+	);
+	if (safeBoundary === null) return { chunks: [], remainder: text };
+
+	const chunk = text.slice(0, safeBoundary).trimEnd();
+	if (chunk === "") return { chunks: [], remainder: text };
+
+	return {
+		chunks: [chunk],
+		remainder: text.slice(safeBoundary).replace(/^[ \t\r\n]+/, ""),
+	};
+}
+
+function isLikelyTelegramCompletedParagraph(
+	prefix: string,
+	suffix: string,
+): boolean {
+	const normalizedPrefix = prefix.trimEnd();
+	if (normalizedPrefix === "") return false;
+	if (/[.!?…][\]")'`]*$/.test(normalizedPrefix)) return true;
+
+	const normalizedSuffix = suffix.trimStart();
+	if (normalizedSuffix === "") return true;
+
+	return /^(?:[-*•]\s|\d+\.\s|>\s|#{1,6}\s|```|\|)/.test(normalizedSuffix);
 }
 
 function chunkTelegramText(text: string, maxLength: number): string[] {
@@ -913,6 +1072,11 @@ export function renderTelegramHtml(text: string): string {
 	return rendered;
 }
 
+export function renderTelegramCaptionHtml(text: string): string | null {
+	const rendered = renderTelegramHtml(text).trim();
+	return rendered === "" ? null : rendered;
+}
+
 export function chunkRenderedTelegramMessages(text: string): string[] {
 	const pendingSources = [text];
 	const renderedChunks: string[] = [];
@@ -923,7 +1087,9 @@ export function chunkRenderedTelegramMessages(text: string): string[] {
 
 		const rendered = renderTelegramHtml(source);
 		if (rendered.length <= TELEGRAM_MAX_MESSAGE_LENGTH) {
-			renderedChunks.push(rendered);
+			if (rendered.trim() !== "") {
+				renderedChunks.push(rendered);
+			}
 			continue;
 		}
 
@@ -946,6 +1112,43 @@ export function chunkRenderedTelegramMessages(text: string): string[] {
 	}
 
 	return renderedChunks;
+}
+
+function findTelegramTextOverlap(previous: string, next: string): number {
+	const maxOverlap = Math.min(previous.length, next.length);
+	for (let length = maxOverlap; length > 0; length -= 1) {
+		if (previous.slice(-length) === next.slice(0, length)) {
+			return length;
+		}
+	}
+	return 0;
+}
+
+export function mergeTelegramStreamText(
+	previous: string,
+	next: string,
+): { fullText: string; delta: string } {
+	if (next === "") return { fullText: previous, delta: "" };
+	if (previous === "") return { fullText: next, delta: next };
+	if (next.startsWith(previous)) {
+		return {
+			fullText: next,
+			delta: next.slice(previous.length),
+		};
+	}
+	if (previous.endsWith(next)) {
+		return {
+			fullText: previous,
+			delta: "",
+		};
+	}
+
+	const overlap = findTelegramTextOverlap(previous, next);
+	const delta = next.slice(overlap);
+	return {
+		fullText: previous + delta,
+		delta,
+	};
 }
 
 export function extractTelegramCommandName(text: string): string | null {
@@ -1027,9 +1230,20 @@ export class TelegramOutboundChannel implements OutboundChannel {
 		);
 
 		try {
+			const caption =
+				typeof args.caption === "string" && args.caption !== ""
+					? renderTelegramCaptionHtml(args.caption)
+					: null;
+			if (caption !== null && caption.length > TELEGRAM_MAX_CAPTION_LENGTH) {
+				return {
+					ok: false,
+					error: `Rendered caption is too long (${caption.length} chars). Telegram captions are limited to ${TELEGRAM_MAX_CAPTION_LENGTH} characters after formatting.`,
+				};
+			}
+
 			await this.bot.api.sendDocument(chatId, new InputFile(buffer, filename), {
-				caption: args.caption,
-				parse_mode: args.caption ? TELEGRAM_HTML_PARSE_MODE : undefined,
+				caption: caption ?? undefined,
+				parse_mode: caption ? TELEGRAM_HTML_PARSE_MODE : undefined,
 			});
 			return { ok: true };
 		} catch (error) {
@@ -1299,18 +1513,62 @@ async function runAgentTurn(
 			},
 		);
 		let pendingReply = "";
+		let streamedReply = "";
 		let sentAnyReply = false;
+		const streamIterator = stream[Symbol.asyncIterator]();
+		const flushTick = Symbol("telegram-stream-flush-tick");
+		let nextChunk = streamIterator.next();
 
-		for await (const chunk of stream) {
+		while (true) {
+			const raced = await Promise.race([
+				nextChunk,
+				new Promise<typeof flushTick>((resolve) => {
+					setTimeout(
+						() => resolve(flushTick),
+						TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS,
+					);
+				}),
+			]);
+			if (raced === flushTick) {
+				const flushable = takeTelegramParagraphStreamChunks(pendingReply);
+				pendingReply = flushable.remainder;
+				for (const part of flushable.chunks) {
+					await sendTelegramMessage(bot, chatId, part);
+					sentAnyReply = true;
+				}
+
+				const overflowFlush = takeTelegramOverflowStreamChunks(pendingReply);
+				pendingReply = overflowFlush.remainder;
+				for (const part of overflowFlush.chunks) {
+					await sendTelegramMessage(bot, chatId, part);
+					sentAnyReply = true;
+				}
+				continue;
+			}
+
+			if (raced.done) break;
+			nextChunk = streamIterator.next();
+			const chunk = raced.value;
 			if (!Array.isArray(chunk) || chunk.length < 1) continue;
 			const message = chunk[0];
 			const text = extractTelegramStreamText(message);
 			if (text === "") continue;
 
-			pendingReply += text;
-			const flushable = takeTelegramStreamChunks(pendingReply);
+			const merged = mergeTelegramStreamText(streamedReply, text);
+			streamedReply = merged.fullText;
+			if (merged.delta === "") continue;
+
+			pendingReply += merged.delta;
+			const flushable = takeTelegramParagraphStreamChunks(pendingReply);
 			pendingReply = flushable.remainder;
 			for (const part of flushable.chunks) {
+				await sendTelegramMessage(bot, chatId, part);
+				sentAnyReply = true;
+			}
+
+			const overflowFlush = takeTelegramOverflowStreamChunks(pendingReply);
+			pendingReply = overflowFlush.remainder;
+			for (const part of overflowFlush.chunks) {
 				await sendTelegramMessage(bot, chatId, part);
 				sentAnyReply = true;
 			}
