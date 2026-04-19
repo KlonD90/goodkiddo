@@ -2,6 +2,7 @@ import { extname } from "node:path";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
 import type { AppConfig } from "../config";
+import { createDb, detectDialect } from "../db/index";
 import {
 	type ApprovalBroker,
 	type ApprovalOutcome,
@@ -1175,11 +1176,11 @@ export function formatUnknownTelegramCommandReply(command: string): string {
 	return `Unknown command: /${command}\nAvailable commands: ${knownCommands}`;
 }
 
-export function getTelegramCaller(
+export async function getTelegramCaller(
 	store: PermissionsStore,
 	chatId: string,
-): Caller | null {
-	const user = store.getUser("telegram", chatId);
+): Promise<Caller | null> {
+	const user = await store.getUser("telegram", chatId);
 	if (!user || user.status === "suspended") return null;
 	return {
 		id: user.id,
@@ -1721,7 +1722,7 @@ async function handleTelegramControlInput(
 			return true;
 		}
 
-		const command = maybeHandleCommand(commandText, caller, store);
+		const command = await maybeHandleCommand(commandText, caller, store);
 		if (command.handled) {
 			await sendTelegramMessage(bot, chatId, command.reply);
 			return true;
@@ -1773,7 +1774,8 @@ export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const store = new PermissionsStore({ dbPath: config.stateDbPath });
+		const db = createDb(config.databaseUrl);
+		const store = new PermissionsStore({ db, dialect: detectDialect(config.databaseUrl) });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
 		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
@@ -1826,7 +1828,7 @@ export const telegramChannel: AppChannel = {
 			if (text === "") return;
 
 			const chatIdString = String(chatId);
-			const caller = getTelegramCaller(store, chatIdString);
+			const caller = await getTelegramCaller(store, chatIdString);
 			if (!caller) {
 				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return;
@@ -1857,7 +1859,7 @@ export const telegramChannel: AppChannel = {
 
 		bot.on("message:photo", async (ctx) => {
 			const chatIdString = String(ctx.chat.id);
-			const caller = getTelegramCaller(store, chatIdString);
+			const caller = await getTelegramCaller(store, chatIdString);
 			if (!caller) {
 				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return;

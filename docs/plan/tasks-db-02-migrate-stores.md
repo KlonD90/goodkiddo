@@ -13,7 +13,7 @@ Assumes task list 01 is complete (`src/db/index.ts` exists, `AppConfig.databaseU
   - **Context:** Replace `import { Database } from "bun:sqlite"` with no DB import. Change `SqliteStateBackendOptions` to accept `db: SQL; dialect: 'sqlite' | 'postgres'` instead of `dbPath?: string`. In the constructor, remove the `mkdirSync` and `new Database(...)` calls; assign the injected `db`. Run `CREATE TABLE IF NOT EXISTS agent_files ...` in the constructor — same DDL for both dialects (no BLOB columns here, content is TEXT). For SQLite dialect only, also run `` await db`PRAGMA journal_mode = WAL` ``. Convert all `this.database.query(...).get/all/run(...)` calls to `Bun.sql` tagged templates. All public methods (`read`, `write`, `edit`, `grepRaw`, `globInfo`, `lsInfo`, `uploadFiles`, `downloadFiles`) return `Promise<T>` — `BackendProtocol` uses `MaybePromise<T>` so this is safe. Keep `normalizePath` exported — it is imported by `access_store.ts` and `server/routes.ts`.
   - **Done when:** File compiles, `import { Database } from "bun:sqlite"` is gone, all methods are async.
 
-- [ ] **Rewrite `PermissionsStore` to use injected `Bun.SQL`** — handle two DDL differences
+- [x] **Rewrite `PermissionsStore` to use injected `Bun.SQL`** — handle two DDL differences
   - **Files:** `src/permissions/store.ts`
   - **Context:** Replace `import { Database } from "bun:sqlite"` with no DB import. Change `PermissionsStoreOptions` to `{ db: SQL; dialect: 'sqlite' | 'postgres' }`. Remove `mkdirSync`. DDL differences to handle:
     - `tool_permissions.id`: SQLite → `INTEGER PRIMARY KEY AUTOINCREMENT`, PostgreSQL → `SERIAL PRIMARY KEY`

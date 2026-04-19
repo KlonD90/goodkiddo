@@ -58,7 +58,7 @@ export async function persistAlwaysRule(
 	decision: "allow" | "deny",
 ): Promise<void> {
 	const matcher = deriveArgMatcherForAlways(args);
-	store.upsertRule(caller.id, {
+	await store.upsertRule(caller.id, {
 		priority: 100,
 		toolName,
 		args: matcher,

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { tool } from "langchain";
 import { z } from "zod";
 import type {
@@ -26,6 +26,7 @@ const caller: Caller = {
 	externalId: "test",
 };
 
+let db: InstanceType<typeof Bun.SQL>;
 let store: PermissionsStore;
 
 const sampleTool = () =>
@@ -35,9 +36,14 @@ const sampleTool = () =>
 		schema: z.object({ value: z.string() }),
 	});
 
-beforeEach(() => {
-	store = new PermissionsStore({ dbPath: ":memory:" });
-	store.upsertUser({ entrypoint: "cli", externalId: "test" });
+beforeEach(async () => {
+	db = new Bun.SQL("sqlite://:memory:");
+	store = new PermissionsStore({ db, dialect: "sqlite" });
+	await store.upsertUser({ entrypoint: "cli", externalId: "test" });
+});
+
+afterEach(async () => {
+	await db.close();
 });
 
 describe("wrapToolWithGuard", () => {
@@ -57,7 +63,7 @@ describe("wrapToolWithGuard", () => {
 	});
 
 	test("allow rule passes through", async () => {
-		store.upsertRule(caller.id, {
+		await store.upsertRule(caller.id, {
 			priority: 100,
 			toolName: "sample",
 			args: null,
@@ -78,7 +84,7 @@ describe("wrapToolWithGuard", () => {
 	});
 
 	test("deny rule blocks without consulting broker", async () => {
-		store.upsertRule(caller.id, {
+		await store.upsertRule(caller.id, {
 			priority: 100,
 			toolName: "sample",
 			args: null,
