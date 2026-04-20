@@ -48,11 +48,9 @@ export async function startWebServer(
 	});
 
 	const sweepTimer = setInterval(() => {
-		try {
-			access.sweepExpired();
-		} catch (error) {
+		access.sweepExpired().catch((error) => {
 			console.warn("AccessStore sweep failed:", error);
-		}
+		});
 	}, SWEEP_INTERVAL_MS);
 
 	console.log(
