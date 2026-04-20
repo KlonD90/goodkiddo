@@ -17,9 +17,9 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - [x] Add tests for create, read-latest, and caller/thread isolation behavior.
 
 ### Task 2: Define structured checkpoint summaries
-- [ ] Implement a checkpoint summary shape that captures current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts.
-- [ ] Reuse the existing summarization path where possible, but make the output structured enough for runtime loading.
-- [ ] Add tests proving summary generation preserves key operational state across compaction.
+- [x] Implement a checkpoint summary shape that captures current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts.
+- [x] Reuse the existing summarization path where possible, but make the output structured enough for runtime loading.
+- [x] Add tests proving summary generation preserves key operational state across compaction.
 
 ### Task 3: Build compact runtime context assembly
 - [ ] Add a runtime-context builder that assembles prompt input from the latest checkpoint summary, unresolved active items, the last 2 turns, and the current user input.

@@ -15,7 +15,7 @@ const SUMMARY_SYSTEM = [
 	"Be terse. No preamble. No conclusion. Bullets only.",
 ].join(" ");
 
-function renderTranscript(messages: ThreadMessage[]): string {
+export function renderTranscript(messages: ThreadMessage[]): string {
 	return messages
 		.filter((msg) => msg.content.trim().length > 0)
 		.map((msg) => `${msg.role.toUpperCase()}: ${msg.content.trim()}`)
