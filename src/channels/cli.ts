@@ -3,6 +3,7 @@ import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
+import { readThreadMessages } from "../memory/rotate_thread";
 import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
@@ -13,7 +14,13 @@ import type {
 	OutboundSendResult,
 } from "./outbound";
 import { maybeHandleSessionCommand } from "./session_commands";
-import { createChannelAgentSession, extractAgentReply } from "./shared";
+import {
+	buildInvokeMessages,
+	createChannelAgentSession,
+	extractAgentReply,
+	maybeAutoCompactAndSeed,
+	seedFromCheckpoint,
+} from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
@@ -96,6 +103,19 @@ export const cliChannel: AppChannel = {
 			webShare,
 		});
 
+		// Session resume: if a checkpoint exists for this thread (e.g. bot was
+		// restarted after a previous compaction), seed the first turn with it.
+		if (session.compactionConfig) {
+			const existingCheckpoint = await session.compactionConfig.store.readLatest(
+				session.compactionConfig.caller,
+				baseThreadId,
+			);
+			if (existingCheckpoint) {
+				const messages = await readThreadMessages(session.agent, session.threadId);
+				seedFromCheckpoint(session, existingCheckpoint.summaryPayload, messages);
+			}
+		}
+
 		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;
 
 		const rl = readline.createInterface({ input, output });
@@ -127,6 +147,12 @@ export const cliChannel: AppChannel = {
 				model: session.model,
 				backend: session.workspace,
 				mintThreadId,
+				compaction: session.compactionConfig
+					? {
+							caller: session.compactionConfig.caller,
+							store: session.compactionConfig.store,
+						}
+					: undefined,
 				webShare: webShare
 					? {
 							access: webShare.access,
@@ -158,8 +184,17 @@ export const cliChannel: AppChannel = {
 
 			try {
 				await session.refreshAgent();
+				const currentMessages = await readThreadMessages(
+					session.agent,
+					session.threadId,
+				);
+				await maybeAutoCompactAndSeed(session, currentMessages, mintThreadId);
+				const invokeMessages = buildInvokeMessages(session, {
+					role: "user",
+					content: userInput,
+				});
 				const result = await session.agent.invoke(
-					{ messages: [{ role: "user", content: userInput }] },
+					{ messages: invokeMessages },
 					{ configurable: { thread_id: session.threadId } },
 				);
 				const reply = extractAgentReply(result);

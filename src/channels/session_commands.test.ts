@@ -236,6 +236,141 @@ describe("maybeHandleSessionCommand — /new_thread with compaction", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Pending compaction seed after /new_thread
+// ---------------------------------------------------------------------------
+describe("maybeHandleSessionCommand — pending compaction seed", () => {
+	test("sets pendingCompactionSeed on the session after /new_thread with compaction", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("thread-seed-test", [
+			{ role: "user", content: "step 1" },
+			{ role: "assistant", content: "done 1" },
+			{ role: "user", content: "step 2" },
+			{ role: "assistant", content: "done 2" },
+		]);
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "new-seeded-thread",
+			compaction: { caller: "seeder", store },
+		};
+
+		await maybeHandleSessionCommand("/new_thread", ctx);
+
+		expect(session.pendingCompactionSeed).toBeDefined();
+		expect(session.pendingCompactionSeed!.summary.current_goal).toBe("test goal");
+		// last 2 turns from 4 messages = 4 messages
+		expect(session.pendingCompactionSeed!.recentTurns).toHaveLength(4);
+		await close();
+	});
+
+	test("seed summary contains the generated checkpoint content", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("thread-content-check", [
+			{ role: "user", content: "build the feature" },
+			{ role: "assistant", content: "building..." },
+		]);
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "thread-after",
+			compaction: { caller: "dev", store },
+		};
+
+		await maybeHandleSessionCommand("/new_thread", ctx);
+
+		const seed = session.pendingCompactionSeed;
+		expect(seed).toBeDefined();
+		expect(typeof seed!.summary.current_goal).toBe("string");
+		expect(Array.isArray(seed!.summary.decisions)).toBe(true);
+		await close();
+	});
+
+	test("does NOT set pendingCompactionSeed when no compaction context", async () => {
+		const session = createStubSession("thread-no-compact", [
+			{ role: "user", content: "hi" },
+		]);
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "new-no-compact",
+		};
+
+		await maybeHandleSessionCommand("/new_thread", ctx);
+		expect(session.pendingCompactionSeed).toBeUndefined();
+	});
+
+	test("recentTurns in seed only includes last 2 turns from old thread", async () => {
+		const { store, close } = createTempStore();
+		// 3 full turns = 6 messages; last 2 turns = 4 messages
+		const session = createStubSession("thread-long", [
+			{ role: "user", content: "early" },
+			{ role: "assistant", content: "early-reply" },
+			{ role: "user", content: "middle" },
+			{ role: "assistant", content: "middle-reply" },
+			{ role: "user", content: "recent" },
+			{ role: "assistant", content: "recent-reply" },
+		]);
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "thread-next",
+			compaction: { caller: "alice", store },
+		};
+
+		await maybeHandleSessionCommand("/new_thread", ctx);
+
+		const recentTurns = session.pendingCompactionSeed!.recentTurns;
+		expect(recentTurns).toHaveLength(4); // last 2 turns = 4 messages
+		const contents = recentTurns.map((m) => m.content);
+		expect(contents).not.toContain("early");
+		expect(contents).toContain("middle");
+		expect(contents).toContain("recent");
+		await close();
+	});
+
+	test("thread is rotated AND seed is set in the same /new_thread call", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("thread-rotate-and-seed", [
+			{ role: "user", content: "work item" },
+			{ role: "assistant", content: "in progress" },
+		]);
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "rotated-thread",
+			compaction: { caller: "bob", store },
+		};
+
+		const result = await maybeHandleSessionCommand("/new_thread", ctx);
+
+		expect(result.handled).toBe(true);
+		expect(session.threadId).toBe("rotated-thread");
+		expect(session.pendingCompactionSeed).toBeDefined();
+		await close();
+	});
+});
+
+// ---------------------------------------------------------------------------
 // Non-session commands pass through
 // ---------------------------------------------------------------------------
 describe("maybeHandleSessionCommand — passthrough", () => {

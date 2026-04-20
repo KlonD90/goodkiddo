@@ -5,7 +5,9 @@ import {
 	type CompactionContext,
 } from "../checkpoints/compaction_trigger";
 import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
+import { extractRecentTurns } from "../memory/runtime_context";
 import type { AccessStore, ScopeKind } from "../server/access_store";
 import { buildShareUrl } from "../tools/share_tools";
 import type { ChannelAgentSession } from "./shared";
@@ -124,7 +126,16 @@ export async function maybeHandleSessionCommand(
 				model: context.model,
 				store: context.compaction.store,
 			};
-			await runCompaction(compactionCtx, "new_thread");
+			const checkpoint = await runCompaction(compactionCtx, "new_thread");
+
+			// Seed the first turn in the new thread with the checkpoint context
+			// so the model has operational continuity without replaying full history.
+			const recentTurns = extractRecentTurns(messages, 2);
+			const summaryObj = deserializeCheckpointSummary(checkpoint.summaryPayload);
+			context.session.pendingCompactionSeed = {
+				summary: summaryObj,
+				recentTurns,
+			};
 		}
 
 		const { summary, newThreadId } = await rotateThread({

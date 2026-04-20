@@ -35,10 +35,10 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - [x] Add tests proving compaction fires only at defined boundaries.
 
 ### Task 5: Integrate channels with compacted context loading
-- [ ] Update channel/session flow so fresh turns load compacted runtime context rather than all historical messages.
-- [ ] Preserve the last 2 turns as the recent-turn window after compaction.
-- [ ] Keep `/new_thread` behavior compatible with existing thread rotation while switching runtime loading to checkpoints.
-- [ ] Add tests covering long-running conversations, resumed sessions, and post-`/new_thread` turns.
+- [x] Update channel/session flow so fresh turns load compacted runtime context rather than all historical messages.
+- [x] Preserve the last 2 turns as the recent-turn window after compaction.
+- [x] Keep `/new_thread` behavior compatible with existing thread rotation while switching runtime loading to checkpoints.
+- [x] Add tests covering long-running conversations, resumed sessions, and post-`/new_thread` turns.
 
 ### Task 6: Update docs
 - [ ] Keep the high-level feature description in `docs/plan/feature-forced-checkpoints-and-conversation-compaction.md`.

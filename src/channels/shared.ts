@@ -1,8 +1,20 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import { type AppAgentBundle, createAppAgent } from "../app";
+import {
+	type CompactionThresholds,
+	maybeCompactByThresholds,
+	runCompaction,
+} from "../checkpoints/compaction_trigger";
+import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createPersistentCheckpointer } from "../checkpoints/sql_saver";
 import type { AppConfig } from "../config";
+import {
+	deserializeCheckpointSummary,
+	type CheckpointSummary,
+} from "../memory/checkpoint_compaction";
+import { buildRuntimeContext, extractRecentTurns } from "../memory/runtime_context";
+import type { ThreadMessage } from "../memory/summarize";
 import type { ApprovalBroker } from "../permissions/approval";
 import { FileAuditLogger } from "../permissions/audit";
 import type { PermissionsStore } from "../permissions/store";
@@ -12,12 +24,27 @@ import type { OutboundChannel } from "./outbound";
 
 export type AgentInstance = AppAgentBundle["agent"];
 
+export type PendingCompactionSeed = {
+	summary: CheckpointSummary;
+	recentTurns: ThreadMessage[];
+};
+
+export type CompactionSessionConfig = {
+	caller: string;
+	store: ForcedCheckpointStore;
+	thresholds?: CompactionThresholds;
+};
+
 export type ChannelAgentSession = {
 	agent: AgentInstance;
 	threadId: string;
 	workspace: BackendProtocol;
 	model: BaseChatModel;
 	refreshAgent: () => Promise<void>;
+	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
+	pendingCompactionSeed?: PendingCompactionSeed;
+	/** When set, auto-compaction is checked before each turn. */
+	compactionConfig?: CompactionSessionConfig;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -37,6 +64,9 @@ export async function createChannelAgentSession(
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
 	const checkpointer = createPersistentCheckpointer(options.db, options.dialect);
+	const forcedCheckpointStore = new ForcedCheckpointStore(options.db);
+	await forcedCheckpointStore.ready();
+
 	const makeBundle = () =>
 		createAppAgent(config, {
 			db: options.db,
@@ -62,9 +92,108 @@ export async function createChannelAgentSession(
 			session.workspace = bundle.workspace;
 			session.model = bundle.model;
 		},
+		compactionConfig: {
+			caller: options.caller.id,
+			store: forcedCheckpointStore,
+		},
 	};
 
 	return session;
+}
+
+/**
+ * Seed the session's first turn with a checkpoint from a previously stored
+ * compaction record. Call this after session creation when resuming an
+ * existing conversation that has at least one forced checkpoint.
+ *
+ * `allMessages` should be the current thread's stored messages (may be empty
+ * for a just-rotated thread). The last 2 turns are extracted and included
+ * alongside the checkpoint summary.
+ */
+export function seedFromCheckpoint(
+	session: ChannelAgentSession,
+	checkpointPayload: string,
+	allMessages: ThreadMessage[],
+): void {
+	const summary = deserializeCheckpointSummary(checkpointPayload);
+	const recentTurns = extractRecentTurns(allMessages, 2);
+	session.pendingCompactionSeed = { summary, recentTurns };
+}
+
+/**
+ * Build the messages array to pass to agent.invoke() / agent.stream().
+ *
+ * - If the session has a pending compaction seed, this returns
+ *   [checkpoint_system_msg, ...recentTurns, currentUserMessage] and clears
+ *   the seed so it only fires once.
+ * - Otherwise returns [currentUserMessage].
+ *
+ * The `currentUserMessage.content` is passed through unchanged, so multimodal
+ * content (image blocks, etc.) is preserved.
+ */
+export function buildInvokeMessages(
+	session: ChannelAgentSession,
+	currentUserMessage: { role: "user"; content: unknown },
+): Array<{ role: string; content: unknown }> {
+	if (!session.pendingCompactionSeed) {
+		return [currentUserMessage];
+	}
+
+	const { summary, recentTurns } = session.pendingCompactionSeed;
+	session.pendingCompactionSeed = undefined;
+
+	const ctx = buildRuntimeContext({
+		checkpoint: summary,
+		allMessages: recentTurns,
+		currentInput:
+			typeof currentUserMessage.content === "string"
+				? currentUserMessage.content
+				: "[multimodal input]",
+	});
+
+	// Replace the last message (built by buildRuntimeContext as plain string)
+	// with the original currentUserMessage so multimodal content is preserved.
+	const seedMessages = ctx.messages.slice(0, -1);
+	return [...seedMessages, currentUserMessage];
+}
+
+/**
+ * Check message/token thresholds and, when exceeded, create a forced
+ * checkpoint, rotate to a new thread, and set a pending compaction seed so
+ * the next turn starts with compacted context.
+ *
+ * `messages` must be the current thread's stored messages, read before this
+ * call (e.g. via readThreadMessages from memory/rotate_thread).
+ *
+ * Returns true when a threshold fired and the thread was rotated.
+ */
+export async function maybeAutoCompactAndSeed(
+	session: ChannelAgentSession,
+	messages: ThreadMessage[],
+	mintThreadId: () => string,
+): Promise<boolean> {
+	if (!session.compactionConfig) return false;
+	const { caller, store, thresholds } = session.compactionConfig;
+
+	const checkpoint = await maybeCompactByThresholds(
+		{
+			caller,
+			threadId: session.threadId,
+			messages,
+			model: session.model,
+			store,
+		},
+		thresholds,
+	);
+
+	if (!checkpoint) return false;
+
+	const recentTurns = extractRecentTurns(messages, 2);
+	const summary = deserializeCheckpointSummary(checkpoint.summaryPayload);
+
+	session.threadId = mintThreadId();
+	session.pendingCompactionSeed = { summary, recentTurns };
+	return true;
 }
 
 export const extractTextFromContent = (content: unknown): string => {

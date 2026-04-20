@@ -20,12 +20,16 @@ import type {
 } from "./outbound";
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
+	buildInvokeMessages,
 	type ChannelAgentSession,
 	createChannelAgentSession,
 	extractAgentReply,
 	extractTextFromContent,
+	maybeAutoCompactAndSeed,
+	seedFromCheckpoint,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
+import { readThreadMessages } from "../memory/rotate_thread";
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
@@ -1487,6 +1491,19 @@ async function ensureTelegramSession(
 		outbound,
 		webShare,
 	});
+
+	// Session resume: if a checkpoint exists for this thread, seed first turn.
+	if (session.compactionConfig) {
+		const existingCheckpoint = await session.compactionConfig.store.readLatest(
+			session.compactionConfig.caller,
+			baseThreadId,
+		);
+		if (existingCheckpoint) {
+			const messages = await readThreadMessages(session.agent, session.threadId);
+			seedFromCheckpoint(session, existingCheckpoint.summaryPayload, messages);
+		}
+	}
+
 	const telegramSession: TelegramAgentSession = {
 		...session,
 		running: false,
@@ -1510,8 +1527,21 @@ async function runAgentTurn(
 	const stopTyping = startTelegramTypingLoop(bot, chatId);
 	try {
 		await session.refreshAgent();
+		const currentMessages = await readThreadMessages(
+			session.agent,
+			session.threadId,
+		);
+		await maybeAutoCompactAndSeed(
+			session,
+			currentMessages,
+			() => mintTelegramThreadId(chatId),
+		);
+		const invokeMessages = buildInvokeMessages(session, {
+			role: "user",
+			content: userInput,
+		});
 		const stream = await session.agent.stream(
-			{ messages: [{ role: "user", content: userInput }] },
+			{ messages: invokeMessages },
 			{
 				configurable: { thread_id: session.threadId },
 				streamMode: "messages",
@@ -1713,6 +1743,12 @@ async function handleTelegramControlInput(
 			model: session.model,
 			backend: session.workspace,
 			mintThreadId: () => mintTelegramThreadId(chatId),
+			compaction: session.compactionConfig
+				? {
+						caller: session.compactionConfig.caller,
+						store: session.compactionConfig.store,
+					}
+				: undefined,
 			webShare: webShare
 				? {
 						access: webShare.access,
