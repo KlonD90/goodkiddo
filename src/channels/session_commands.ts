@@ -148,6 +148,7 @@ export async function maybeHandleSessionCommand(
 			mintThreadId: context.mintThreadId,
 		});
 		context.session.pendingCompactionSeed = pendingSeed;
+		context.session.pendingTaskCheck = true;
 		return {
 			handled: true,
 			reply: [

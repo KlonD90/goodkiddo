@@ -5,16 +5,23 @@ import { join } from "node:path";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import type { AppConfig } from "../config";
 import { createDb } from "../db/index";
 import type { CheckpointSummary } from "../memory/checkpoint_compaction";
 import type { ThreadMessage } from "../memory/summarize";
+import type { ApprovalBroker } from "../permissions/approval";
+import { PermissionsStore } from "../permissions/store";
+import { TaskStore } from "../tasks/store";
 import type { ChannelAgentSession } from "./shared";
 import {
 	buildInvokeMessages,
 	clearPendingCompactionSeed,
+	clearPendingTaskCheckContext,
+	createChannelAgentSession,
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
+	maybeRunPendingTaskCheck,
 	maybeResumeCompactAndSeed,
 	recoverPendingSeedForEmptyThread,
 	seedFromCheckpoint,
@@ -54,6 +61,27 @@ const SAMPLE_SUMMARY: CheckpointSummary = {
 	important_artifacts: ["src/deploy.ts"],
 };
 
+const TEST_CONFIG: AppConfig = {
+	aiApiKey: "test-key",
+	aiBaseUrl: "",
+	aiType: "openai",
+	aiModelName: "gpt-4o-mini",
+	appEntrypoint: "cli",
+	telegramBotToken: "",
+	telegramAllowedChatId: "",
+	usingMode: "single",
+	blockedUserMessage: "blocked",
+	permissionsMode: "disabled",
+	databaseUrl: "sqlite://:memory:",
+	enableExecute: false,
+	webPort: 8083,
+	webPublicBaseUrl: "http://localhost:8083",
+};
+
+const NOOP_BROKER: ApprovalBroker = {
+	requestApproval: async () => "deny-once",
+};
+
 function makeMessages(...pairs: Array<[string, string]>): ThreadMessage[] {
 	return pairs.flatMap(([u, a]) => [
 		{ role: "user" as const, content: u },
@@ -86,6 +114,74 @@ function stubSession(
 		...overrides,
 	};
 }
+
+describe("channel task-check state", () => {
+	test("createChannelAgentSession enables pendingTaskCheck for a new session", async () => {
+		const db = createDb("sqlite://:memory:");
+		try {
+			const store = new PermissionsStore({ db, dialect: "sqlite" });
+			const session = await createChannelAgentSession(TEST_CONFIG, {
+				db,
+				dialect: "sqlite",
+				caller: {
+					id: "cli:tester",
+					entrypoint: "cli",
+					externalId: "tester",
+					displayName: "Tester",
+				},
+				store,
+				broker: NOOP_BROKER,
+				threadId: "cli-tester",
+			});
+
+			expect(session.pendingTaskCheck).toBe(true);
+			expect(session.taskCheckConfig?.caller).toBe("cli:tester");
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("maybeRunPendingTaskCheck consumes the boundary flag and adds one-turn context for obvious completions", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			await store.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Ship release notes",
+			});
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: true,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(
+				session,
+				"I finished ship release notes.",
+			);
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: true,
+			});
+			expect(session.pendingTaskCheck).toBe(false);
+			expect(session.pendingTaskCheckContext).toContain(
+				"Automatically completed active task",
+			);
+			expect(await store.listActiveTasks("cli:tester")).toHaveLength(0);
+
+			clearPendingTaskCheckContext(session);
+			expect(session.pendingTaskCheckContext).toBeUndefined();
+		} finally {
+			await db.close();
+		}
+	});
+});
 
 // ---------------------------------------------------------------------------
 // buildInvokeMessages

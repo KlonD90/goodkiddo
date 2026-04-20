@@ -26,13 +26,13 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - [x] Extend prompt building to inject a compact active-task snapshot from SQL on every agent build.
 
 ### Task 3: Add boundary-based task reconciliation
-- [ ] Extend channel session state with a `pendingTaskCheck` flag.
-- [ ] Set `pendingTaskCheck = true` on initial channel-session creation.
-- [ ] Set `pendingTaskCheck = true` after `/new_thread`.
-- [ ] Implement a preflight reconciliation step over active tasks plus the current user message.
-- [ ] Allow auto-complete only for exact or high-confidence single-task matches.
-- [ ] Leave ambiguous or low-confidence matches unchanged.
-- [ ] Detect dismiss candidates but convert them into confirmation prompts instead of automatic state changes.
+- [x] Extend channel session state with a `pendingTaskCheck` flag.
+- [x] Set `pendingTaskCheck = true` on initial channel-session creation.
+- [x] Set `pendingTaskCheck = true` after `/new_thread`.
+- [x] Implement a preflight reconciliation step over active tasks plus the current user message.
+- [x] Allow auto-complete only for exact or high-confidence single-task matches.
+- [x] Leave ambiguous or low-confidence matches unchanged.
+- [x] Detect dismiss candidates but convert them into confirmation prompts instead of automatic state changes.
 
 ### Task 4: Extend `/new_thread` task surfacing
 - [ ] Update the `/new_thread` reply to include the previous-thread summary.

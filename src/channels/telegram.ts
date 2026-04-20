@@ -23,11 +23,13 @@ import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
 	clearPendingCompactionSeed,
+	clearPendingTaskCheckContext,
 	type ChannelAgentSession,
 	createChannelAgentSession,
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
+	maybeRunPendingTaskCheck,
 	maybeResumeCompactAndSeed,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
@@ -1520,6 +1522,7 @@ async function runAgentTurn(
 			session.agent,
 			session.threadId,
 		);
+		let needsRefresh = false;
 		const resumed = await maybeResumeCompactAndSeed(
 			session,
 			currentMessages,
@@ -1532,10 +1535,16 @@ async function runAgentTurn(
 				userInput,
 				() => mintTelegramThreadId(chatId),
 			);
-			if (compacted) {
-				await session.refreshAgent();
-			}
+			needsRefresh = compacted;
 		} else {
+			needsRefresh = true;
+		}
+		const taskCheck = await maybeRunPendingTaskCheck(session, userInput);
+		if (taskCheck.handled) {
+			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
+			return;
+		}
+		if (needsRefresh || taskCheck.needsRefresh) {
 			await session.refreshAgent();
 		}
 		const invokeMessages = buildInvokeMessages(session, {
@@ -1633,6 +1642,7 @@ async function runAgentTurn(
 			);
 		}
 		clearPendingCompactionSeed(session);
+		clearPendingTaskCheckContext(session);
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "Unknown Telegram bot error";

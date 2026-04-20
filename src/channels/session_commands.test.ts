@@ -318,6 +318,25 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		expect(session.pendingCompactionSeed).toBeUndefined();
 	});
 
+	test("sets pendingTaskCheck for the next substantive turn after /new_thread", async () => {
+		const session = createStubSession("thread-task-check", [
+			{ role: "user", content: "hi" },
+		]);
+		session.pendingTaskCheck = false;
+		const model = createStubModel();
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "thread-task-check-next",
+		};
+
+		await maybeHandleSessionCommand("/new_thread", ctx);
+		expect(session.pendingTaskCheck).toBe(true);
+	});
+
 	test("recentTurns in seed only includes last 2 turns from old thread", async () => {
 		const { store, close } = createTempStore();
 		// 3 full turns = 6 messages; last 2 turns = 4 messages

@@ -17,9 +17,11 @@ import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
 	clearPendingCompactionSeed,
+	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeAutoCompactAndSeed,
+	maybeRunPendingTaskCheck,
 	maybeResumeCompactAndSeed,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
@@ -176,6 +178,7 @@ export const cliChannel: AppChannel = {
 					session.agent,
 					session.threadId,
 				);
+				let needsRefresh = false;
 				const resumed = await maybeResumeCompactAndSeed(
 					session,
 					currentMessages,
@@ -188,10 +191,18 @@ export const cliChannel: AppChannel = {
 						userInput,
 						mintThreadId,
 					);
-					if (compacted) {
-						await session.refreshAgent();
-					}
+					needsRefresh = compacted;
 				} else {
+					needsRefresh = true;
+				}
+				const taskCheck = await maybeRunPendingTaskCheck(session, userInput);
+				if (taskCheck.handled) {
+					clearInterval(spinner);
+					process.stdout.write("\rAssistant: ");
+					console.log(`${taskCheck.reply ?? ""}\n`);
+					continue;
+				}
+				if (needsRefresh || taskCheck.needsRefresh) {
 					await session.refreshAgent();
 				}
 				const invokeMessages = buildInvokeMessages(session, {
@@ -203,6 +214,7 @@ export const cliChannel: AppChannel = {
 					{ configurable: { thread_id: session.threadId } },
 				);
 				clearPendingCompactionSeed(session);
+				clearPendingTaskCheckContext(session);
 				const reply = extractAgentReply(result);
 
 				clearInterval(spinner);

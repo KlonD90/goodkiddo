@@ -24,6 +24,7 @@ export interface CreateAppAgentOptions {
 	db: SQL;
 	dialect: "sqlite" | "postgres";
 	threadId: string;
+	taskStore?: TaskStore;
 	checkpointer?: BaseCheckpointSaver;
 	outbound?: OutboundChannel;
 	runtimeContextBlock?: string;
@@ -59,10 +60,12 @@ export const createAppAgent = async (
 	});
 
 	await ensureMemoryBootstrapped(workspace);
-	const taskStore = new TaskStore({
-		db: options.db,
-		dialect: options.dialect,
-	});
+	const taskStore =
+		options.taskStore ??
+		new TaskStore({
+			db: options.db,
+			dialect: options.dialect,
+		});
 	const activeTaskSnapshot = await taskStore.composeActiveTaskSnapshot(
 		options.caller.id,
 	);

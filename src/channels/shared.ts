@@ -27,6 +27,8 @@ import type { ApprovalBroker } from "../permissions/approval";
 import { FileAuditLogger } from "../permissions/audit";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { reconcileActiveTasksAtBoundary } from "../tasks/reconcile";
+import { TaskStore } from "../tasks/store";
 import type { WebShareOptions } from "../tools/factory";
 import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
@@ -44,6 +46,11 @@ export type CompactionSessionConfig = {
 	thresholds?: CompactionThresholds;
 };
 
+export type TaskCheckSessionConfig = {
+	caller: string;
+	store: TaskStore;
+};
+
 export type ChannelAgentSession = {
 	agent: AgentInstance;
 	threadId: string;
@@ -53,10 +60,16 @@ export type ChannelAgentSession = {
 	persistThreadId?: (threadId: string) => Promise<void>;
 	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
 	pendingCompactionSeed?: PendingCompactionSeed;
+	/** True for the first substantive turn after session creation or /new_thread. */
+	pendingTaskCheck?: boolean;
+	/** One-turn runtime context emitted by boundary-based task reconciliation. */
+	pendingTaskCheckContext?: string;
 	/** True for the first turn after a persisted thread is resumed. */
 	needsResumeCompaction?: boolean;
 	/** When set, auto-compaction is checked before each turn. */
 	compactionConfig?: CompactionSessionConfig;
+	/** When set, boundary task reconciliation is checked before the next turn. */
+	taskCheckConfig?: TaskCheckSessionConfig;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -81,6 +94,10 @@ export async function createChannelAgentSession(
 	);
 	const forcedCheckpointStore = new ForcedCheckpointStore(options.db);
 	const activeThreadStore = new ActiveThreadStore(options.db);
+	const taskStore = new TaskStore({
+		db: options.db,
+		dialect: options.dialect,
+	});
 	await forcedCheckpointStore.ready();
 	await activeThreadStore.ready();
 
@@ -95,13 +112,9 @@ export async function createChannelAgentSession(
 			audit,
 			checkpointer,
 			threadId: session?.threadId ?? options.threadId,
+			taskStore,
 			outbound: options.outbound,
-			runtimeContextBlock: session?.pendingCompactionSeed
-				? renderCompactionPromptContext({
-						checkpoint: session.pendingCompactionSeed.summary,
-						recentTurns: session.pendingCompactionSeed.recentTurns,
-					})
-				: undefined,
+			runtimeContextBlock: renderSessionRuntimeContext(session),
 			webShare: options.webShare,
 		});
 	let bundle = await makeBundle();
@@ -119,9 +132,14 @@ export async function createChannelAgentSession(
 		},
 		persistThreadId: (threadId: string) =>
 			activeThreadStore.setActiveThread(options.caller.id, threadId),
+		pendingTaskCheck: true,
 		compactionConfig: {
 			caller: options.caller.id,
 			store: forcedCheckpointStore,
+		},
+		taskCheckConfig: {
+			caller: options.caller.id,
+			store: taskStore,
 		},
 	};
 	session = createdSession;
@@ -183,6 +201,12 @@ export function buildInvokeMessages(
 
 export function clearPendingCompactionSeed(session: ChannelAgentSession): void {
 	session.pendingCompactionSeed = undefined;
+}
+
+export function clearPendingTaskCheckContext(
+	session: ChannelAgentSession,
+): void {
+	session.pendingTaskCheckContext = undefined;
 }
 
 async function rotateSessionThread(
@@ -287,6 +311,41 @@ export async function maybeAutoCompactAndSeed(
 	return true;
 }
 
+export async function maybeRunPendingTaskCheck(
+	session: ChannelAgentSession,
+	currentUserContent: unknown,
+): Promise<{ handled: boolean; reply?: string; needsRefresh: boolean }> {
+	if (!session.pendingTaskCheck || !session.taskCheckConfig) {
+		return { handled: false, needsRefresh: false };
+	}
+
+	session.pendingTaskCheck = false;
+	session.pendingTaskCheckContext = undefined;
+
+	const messageText = extractTextFromContent(currentUserContent);
+	const result = await reconcileActiveTasksAtBoundary({
+		store: session.taskCheckConfig.store,
+		userId: session.taskCheckConfig.caller,
+		threadId: session.threadId,
+		messageText,
+	});
+
+	if (result.kind === "dismiss_confirmation") {
+		return {
+			handled: true,
+			reply: result.reply,
+			needsRefresh: false,
+		};
+	}
+
+	if (result.kind === "completed") {
+		session.pendingTaskCheckContext = result.agentContext;
+		return { handled: false, needsRefresh: true };
+	}
+
+	return { handled: false, needsRefresh: false };
+}
+
 export const extractTextFromContent = (content: unknown): string => {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
@@ -297,6 +356,25 @@ export const extractTextFromContent = (content: unknown): string => {
 	}
 	return extractContentText(content);
 };
+
+function renderSessionRuntimeContext(
+	session: ChannelAgentSession | undefined,
+): string | undefined {
+	if (!session) return undefined;
+	const blocks: string[] = [];
+	if (session.pendingCompactionSeed) {
+		blocks.push(
+			renderCompactionPromptContext({
+				checkpoint: session.pendingCompactionSeed.summary,
+				recentTurns: session.pendingCompactionSeed.recentTurns,
+			}),
+		);
+	}
+	if (session.pendingTaskCheckContext) {
+		blocks.push(session.pendingTaskCheckContext.trim());
+	}
+	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+}
 
 function isAssistantMessage(message: unknown): boolean {
 	if (typeof message !== "object" || message === null) return false;

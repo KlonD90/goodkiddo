@@ -16,6 +16,7 @@ CLI and Telegram sessions share the same LangGraph checkpoint flow:
 - the active thread id per caller is persisted in `active_threads`, so `/new_thread` and compaction-triggered rotations survive restarts
 - checkpoints are handled by the SQL-backed saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts)
 - forced checkpoint summaries are stored separately in [`src/checkpoints/forced_checkpoint_store.ts`](../checkpoints/forced_checkpoint_store.ts)
+- `pendingTaskCheck` marks the next substantive turn after session start or `/new_thread` so boundary-only task reconciliation runs once
 - the checkpointer, permission store, workspace backend, and web access store share one injected `Bun.SQL` connection created in [`src/bin/bot.ts`](../bin/bot.ts)
 - rebuilding the agent between turns refreshes the system prompt without losing thread history
 
@@ -36,6 +37,8 @@ Forced checkpoints are created at defined boundaries — `/new_thread`, session 
 The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
 
 `/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start.
+
+The same boundary flow also runs task reconciliation once per session boundary. On the first substantive turn after session start or `/new_thread`, active SQL tasks are compared against the current user message. Exact single-task completion matches may be auto-completed; ambiguous matches are left unchanged; likely dismissals are converted into explicit confirmation prompts instead of automatic state changes.
 
 If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
 
