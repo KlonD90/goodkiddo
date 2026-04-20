@@ -53,6 +53,11 @@ export interface ActiveTaskSnapshotOptions {
 	limit?: number;
 }
 
+export interface RecentCompletedTaskOptions {
+	completedSince: number;
+	limit?: number;
+}
+
 function compactInline(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
@@ -356,6 +361,38 @@ export class TaskStore {
 
 	async listActiveTasks(userId: string, limit = 100): Promise<TaskRecord[]> {
 		return this.listTasksForUser(userId, { status: "active", limit });
+	}
+
+	async listRecentlyCompletedTasks(
+		userId: string,
+		options: RecentCompletedTaskOptions,
+	): Promise<TaskRecord[]> {
+		await this._ready;
+		const limit = options.limit ?? 100;
+		const rows = await this.db<TaskRow[]>`
+			SELECT
+				id,
+				user_id,
+				thread_id_created,
+				thread_id_completed,
+				list_name,
+				title,
+				note,
+				status,
+				status_reason,
+				created_at,
+				updated_at,
+				completed_at,
+				dismissed_at
+			FROM tasks
+			WHERE user_id = ${userId}
+				AND status = 'completed'
+				AND completed_at IS NOT NULL
+				AND completed_at >= ${options.completedSince}
+			ORDER BY completed_at DESC, id DESC
+			LIMIT ${limit}
+		`;
+		return rows.map(rowToTask);
 	}
 
 	async composeActiveTaskSnapshot(

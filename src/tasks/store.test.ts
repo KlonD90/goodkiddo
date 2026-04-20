@@ -213,6 +213,53 @@ describe("TaskStore", () => {
 		});
 	});
 
+	test("lists recently completed tasks by caller and recency window", async () => {
+		currentTime = 10_000;
+		const recentTask = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-recent",
+			listName: "today",
+			title: "Recent completion",
+		});
+		await store.completeTask({
+			taskId: recentTask.id,
+			userId: "telegram:1",
+			threadIdCompleted: "thread-recent-done",
+		});
+
+		currentTime = 2_000;
+		const staleTask = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-stale",
+			listName: "backlog",
+			title: "Stale completion",
+		});
+		await store.completeTask({
+			taskId: staleTask.id,
+			userId: "telegram:1",
+			threadIdCompleted: "thread-stale-done",
+		});
+
+		currentTime = 11_000;
+		const otherCallerTask = await store.addTask({
+			userId: "telegram:2",
+			threadIdCreated: "thread-other",
+			listName: "today",
+			title: "Other caller completion",
+		});
+		await store.completeTask({
+			taskId: otherCallerTask.id,
+			userId: "telegram:2",
+			threadIdCompleted: "thread-other-done",
+		});
+
+		const recentTasks = await store.listRecentlyCompletedTasks("telegram:1", {
+			completedSince: 9_000,
+		});
+		expect(recentTasks.map((task) => task.title)).toEqual(["Recent completion"]);
+		expect(recentTasks[0]?.threadIdCompleted).toBe("thread-recent-done");
+	});
+
 	test("renders a compact active-task snapshot", async () => {
 		await store.addTask({
 			userId: "telegram:1",

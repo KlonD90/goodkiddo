@@ -36,7 +36,7 @@ Forced checkpoints are created at defined boundaries — `/new_thread`, session 
 
 The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
 
-`/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start.
+`/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start. The immediate `/new_thread` reply includes the previous-thread summary, the caller's current active tasks, and recently completed tasks from the last 7 days.
 
 The same boundary flow also runs task reconciliation once per session boundary. On the first substantive turn after session start or `/new_thread`, active SQL tasks are compared against the current user message. Exact single-task completion matches may be auto-completed; ambiguous matches are left unchanged; likely dismissals are converted into explicit confirmation prompts instead of automatic state changes.
 

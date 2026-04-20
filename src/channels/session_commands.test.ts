@@ -7,7 +7,9 @@ import type { BackendProtocol } from "deepagents";
 import { SqliteStateBackend } from "../backends";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createDb, detectDialect } from "../db";
+import { TaskStore } from "../tasks/store";
 import {
+	NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
 	maybeHandleSessionCommand,
 	type SessionCommandContext,
 } from "./session_commands";
@@ -38,6 +40,19 @@ function createBackend(namespace: string) {
 	const db = createDb("sqlite://:memory:");
 	const dialect = detectDialect("sqlite://:memory:");
 	return new SqliteStateBackend({ db, dialect, namespace });
+}
+
+function createTaskStore(now?: () => number): {
+	store: TaskStore;
+	close: () => Promise<void>;
+} {
+	const db = new Bun.SQL("sqlite://:memory:");
+	const store = new TaskStore({
+		db,
+		dialect: "sqlite",
+		now,
+	});
+	return { store, close: () => db.close() };
 }
 
 function createStubModel(summaryResponse = "- done"): BaseChatModel {
@@ -112,6 +127,93 @@ describe("maybeHandleSessionCommand — /new_thread without compaction", () => {
 			expect(result.reply).toContain("- archived hello");
 		}
 		expect(session.threadId).toBe("thread-2");
+	});
+
+	test("includes the summary, active tasks, and recent completed tasks in one reply", async () => {
+		const fixedNow = 1_700_000_000_000;
+		let taskNow = fixedNow - 10_000;
+		const { store, close } = createTaskStore(() => taskNow++);
+		try {
+			const activeTask = await store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-1",
+				listName: "today",
+				title: "Ship /new_thread reply",
+				note: "Include task sections",
+			});
+			const recentTask = await store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-1",
+				listName: "today",
+				title: "Write regression coverage",
+			});
+			await store.completeTask({
+				taskId: recentTask.id,
+				userId: "telegram:1",
+				threadIdCompleted: "thread-1",
+			});
+
+			taskNow = fixedNow - NEW_THREAD_RECENT_COMPLETED_WINDOW_MS - 10_000;
+			const staleTask = await store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-older",
+				listName: "backlog",
+				title: "Ancient completion",
+			});
+			await store.completeTask({
+				taskId: staleTask.id,
+				userId: "telegram:1",
+				threadIdCompleted: "thread-older",
+			});
+
+			taskNow = fixedNow - 5_000;
+			const otherCallerTask = await store.addTask({
+				userId: "telegram:2",
+				threadIdCreated: "thread-other",
+				listName: "today",
+				title: "Other caller completion",
+			});
+			await store.completeTask({
+				taskId: otherCallerTask.id,
+				userId: "telegram:2",
+				threadIdCompleted: "thread-other",
+			});
+
+			const session = createStubSession("thread-1", [
+				{ role: "user", content: "hello" },
+			]);
+			session.taskCheckConfig = { caller: "telegram:1", store };
+			const model = createStubModel("- archived hello");
+			const backend = session.workspace;
+
+			const ctx: SessionCommandContext = {
+				session,
+				model,
+				backend,
+				mintThreadId: () => "thread-2",
+				now: () => fixedNow,
+			};
+
+			const result = await maybeHandleSessionCommand("/new_thread", ctx);
+			expect(result.handled).toBe(true);
+			if (!result.handled) {
+				throw new Error("Expected /new_thread to be handled");
+			}
+
+			expect(result.reply).toContain("Previous thread summary");
+			expect(result.reply).toContain("- archived hello");
+			expect(result.reply).toContain("Current active tasks:");
+			expect(result.reply).toContain("Ship /new_thread reply");
+			expect(result.reply).toContain("Recently completed tasks");
+			expect(result.reply).toContain("Write regression coverage");
+			expect(result.reply).not.toContain("Ancient completion");
+			expect(result.reply).not.toContain("Other caller completion");
+			expect(result.reply).toContain("Include task sections");
+			expect(session.threadId).toBe("thread-2");
+			expect(activeTask.id).toBeGreaterThan(0);
+		} finally {
+			await close();
+		}
 	});
 
 	test("handles /new-thread alias", async () => {

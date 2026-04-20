@@ -35,11 +35,11 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - [x] Detect dismiss candidates but convert them into confirmation prompts instead of automatic state changes.
 
 ### Task 4: Extend `/new_thread` task surfacing
-- [ ] Update the `/new_thread` reply to include the previous-thread summary.
-- [ ] Include current active tasks in the same reply.
-- [ ] Include recently completed tasks in the same reply.
-- [ ] Ensure recently completed tasks are filtered correctly by caller and recency.
-- [ ] Keep normal turn behavior unchanged outside defined boundary checks.
+- [x] Update the `/new_thread` reply to include the previous-thread summary.
+- [x] Include current active tasks in the same reply.
+- [x] Include recently completed tasks in the same reply.
+- [x] Ensure recently completed tasks are filtered correctly by caller and recency.
+- [x] Keep normal turn behavior unchanged outside defined boundary checks.
 
 ### Task 5: Add tests for boundary behavior
 - [ ] Add coverage for the first substantive user turn of a new session.
