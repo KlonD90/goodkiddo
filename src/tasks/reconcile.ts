@@ -1,4 +1,4 @@
-import { type TaskRecord, type TaskStore } from "./store";
+import type { TaskRecord, TaskStore } from "./store";
 
 type MatchKind = "id" | "title_phrase" | "title_tokens" | "note_phrase";
 

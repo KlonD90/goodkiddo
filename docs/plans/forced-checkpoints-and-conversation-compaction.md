@@ -7,7 +7,7 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - `bun tsc --noEmit`
 - `bun test src/memory/rotate_thread.test.ts src/memory/session_loader.test.ts`
 - `bun test src/channels/shared.test.ts src/channels/session_commands.test.ts`
-- `bun test src/checkpoints/sql_saver.test.ts`
+- `bun test src/checkpoints/compaction_trigger.test.ts src/checkpoints/sql_saver.test.ts`
 - `bun test src/memory/checkpoint_compaction.test.ts src/memory/runtime_context.test.ts`
 
 ### Task 1: Define checkpoint storage and retrieval

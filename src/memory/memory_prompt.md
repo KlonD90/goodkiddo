@@ -74,7 +74,7 @@ Use these tools:
   `/memory/log.md`.
 - `task_add` — create actionable work that should remain open across turns.
 - `task_complete` — close an active task once the work is done.
-- `task_dismiss` — drop an active task that is no longer relevant.
+- `task_dismiss` — drop an active task only after the user explicitly confirms the dismissal in the current turn.
 - `task_list_active` — read the latest SQL-backed active-task list on demand.
 
 Use the task tools for actionable work. Use `memory_write` and `skill_write`

@@ -10,7 +10,11 @@ import {
 	createTaskListActiveTool,
 } from "./task_tools";
 
-function createTaskContext(namespace: string, callerId = "telegram:1") {
+function createTaskContext(
+	namespace: string,
+	callerId = "telegram:1",
+	currentUserText?: string,
+) {
 	const db = createDb("sqlite://:memory:");
 	const dialect = detectDialect("sqlite://:memory:");
 	return {
@@ -20,6 +24,7 @@ function createTaskContext(namespace: string, callerId = "telegram:1") {
 		workspace: new SqliteStateBackend({ db, dialect, namespace }),
 		callerId,
 		threadId: "thread-active",
+		currentUserText,
 	};
 }
 
@@ -46,6 +51,19 @@ describe("task tools", () => {
 		await ctx.db.close();
 	});
 
+	test("task_add rejects whitespace-only required fields", async () => {
+		const ctx = createTaskContext("task-add-invalid");
+		const tool = createTaskAddTool(ctx);
+
+		await expect(
+			tool.invoke({
+				listName: "   ",
+				title: "Ship task tools",
+			}),
+		).rejects.toThrow();
+		await ctx.db.close();
+	});
+
 	test("task_complete closes only the caller's active task", async () => {
 		const ctx = createTaskContext("task-complete");
 		const task = await ctx.store.addTask({
@@ -67,8 +85,8 @@ describe("task tools", () => {
 		await ctx.db.close();
 	});
 
-	test("task_dismiss records a dismissal reason", async () => {
-		const ctx = createTaskContext("task-dismiss");
+	test("task_dismiss requires explicit confirmation in the current turn", async () => {
+		const ctx = createTaskContext("task-dismiss-unconfirmed");
 		const task = await ctx.store.addTask({
 			userId: ctx.callerId,
 			threadIdCreated: "thread-old",
@@ -76,6 +94,35 @@ describe("task tools", () => {
 			title: "Drop stale work",
 		});
 		const tool = createTaskDismissTool(ctx);
+		const result = await tool.invoke({
+			taskId: task.id,
+			reason: "superseded",
+		});
+
+		expect(result).toContain("was not dismissed");
+		expect(result).toContain("Explicit confirmation is required");
+		expect(await ctx.store.getTask(task.id, ctx.callerId)).toMatchObject({
+			status: "active",
+		});
+		await ctx.db.close();
+	});
+
+	test("task_dismiss records a dismissal reason after explicit confirmation", async () => {
+		const ctx = createTaskContext(
+			"task-dismiss",
+			"telegram:1",
+			"yes, dismiss task 1",
+		);
+		const task = await ctx.store.addTask({
+			userId: ctx.callerId,
+			threadIdCreated: "thread-old",
+			listName: "backlog",
+			title: "Drop stale work",
+		});
+		const tool = createTaskDismissTool({
+			...ctx,
+			currentUserText: `yes, dismiss task ${task.id}`,
+		});
 
 		const result = await tool.invoke({
 			taskId: task.id,
@@ -113,6 +160,26 @@ describe("task tools", () => {
 		expect(result).toContain("## Active tasks");
 		expect(result).toContain("backlog: Second task");
 		expect(result).toContain("1 more active task");
+		await ctx.db.close();
+	});
+
+	test("task_list_active uses the default compact limit", async () => {
+		const ctx = createTaskContext("task-list-default");
+		for (let index = 1; index <= 14; index += 1) {
+			await ctx.store.addTask({
+				userId: ctx.callerId,
+				threadIdCreated: `thread-${index}`,
+				listName: "today",
+				title: `Task ${index}`,
+			});
+		}
+		const tool = createTaskListActiveTool(ctx);
+
+		const result = await tool.invoke({});
+		expect(result.split("\n").filter((line) => line.startsWith("- ["))).toHaveLength(
+			12,
+		);
+		expect(result).toContain("2 more active task(s).");
 		await ctx.db.close();
 	});
 });

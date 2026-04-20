@@ -49,6 +49,7 @@ export interface CreateExecutionToolsetOptions {
 	enableExecute?: boolean;
 	callerId?: string;
 	threadId?: string;
+	currentUserText?: string;
 	taskStore?: TaskStore;
 	outbound?: OutboundChannel;
 	webShare?: WebShareOptions;
@@ -99,21 +100,25 @@ export async function createExecutionToolset(
 						store: options.taskStore,
 						callerId: options.callerId,
 						threadId: options.threadId,
+						currentUserText: options.currentUserText,
 					}),
 					createTaskCompleteTool({
 						store: options.taskStore,
 						callerId: options.callerId,
 						threadId: options.threadId,
+						currentUserText: options.currentUserText,
 					}),
 					createTaskDismissTool({
 						store: options.taskStore,
 						callerId: options.callerId,
 						threadId: options.threadId,
+						currentUserText: options.currentUserText,
 					}),
 					createTaskListActiveTool({
 						store: options.taskStore,
 						callerId: options.callerId,
 						threadId: options.threadId,
+						currentUserText: options.currentUserText,
 					}),
 				]
 			: [];

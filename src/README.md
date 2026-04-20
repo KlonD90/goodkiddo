@@ -10,6 +10,7 @@ Source root for the harness.
 - `permissions/` — multi-tenant permissions (DB-backed, allow/ask/deny)
 - `tools/` — LangChain tools (FS + sandbox execution)
 - `memory/` — per-caller memory wiki (notes, skills, log)
+- `tasks/` — SQL-backed active task storage, prompt snapshots, and boundary reconciliation helpers
 - `db/` — `Bun.SQL` factory (`createDb`) and dialect detector (`detectDialect`)
 - `backends/` — virtual filesystem backend (SQLite or PostgreSQL via injected `Bun.SQL`)
 - `execution/` — sandbox-side manifest validation + orchestration

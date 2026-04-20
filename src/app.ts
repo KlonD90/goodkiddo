@@ -24,6 +24,7 @@ export interface CreateAppAgentOptions {
 	db: SQL;
 	dialect: "sqlite" | "postgres";
 	threadId: string;
+	currentUserText?: string;
 	taskStore?: TaskStore;
 	checkpointer?: BaseCheckpointSaver;
 	outbound?: OutboundChannel;
@@ -93,6 +94,7 @@ export const createAppAgent = async (
 		enableExecute: config.enableExecute,
 		callerId: options.caller.id,
 		threadId: options.threadId,
+		currentUserText: options.currentUserText,
 		taskStore,
 		outbound: options.outbound,
 		webShare: options.webShare,

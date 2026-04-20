@@ -30,7 +30,7 @@ Layout per caller:
 
 Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools.
 
-Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
+Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. Dismissals require an explicit user confirmation turn before `task_dismiss` is allowed to mutate state. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
 
 Conversation state is split into two layers:
 

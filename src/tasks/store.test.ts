@@ -125,6 +125,37 @@ describe("TaskStore", () => {
 		expect(otherCallerTasks[0].title).toBe("Other caller task");
 	});
 
+	test("normalizes required task fields and drops blank optional fields", async () => {
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "  today  ",
+			title: "  Ship task store  ",
+			note: "   ",
+		});
+
+		expect(task.listName).toBe("today");
+		expect(task.title).toBe("Ship task store");
+		expect(task.note).toBeNull();
+
+		await expect(
+			store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-b",
+				listName: "   ",
+				title: "Valid title",
+			}),
+		).rejects.toThrow("Task list name cannot be empty.");
+		await expect(
+			store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-c",
+				listName: "today",
+				title: "   ",
+			}),
+		).rejects.toThrow("Task title cannot be empty.");
+	});
+
 	test("completes active tasks for the owning caller only", async () => {
 		const task = await store.addTask({
 			userId: "telegram:1",
@@ -213,6 +244,35 @@ describe("TaskStore", () => {
 		});
 	});
 
+	test("normalizes dismissal reasons", async () => {
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "backlog",
+			title: "Drop stale work",
+		});
+
+		const dismissed = await store.dismissTask({
+			taskId: task.id,
+			userId: "telegram:1",
+			reason: "  superseded by new scope  ",
+		});
+		expect(dismissed?.statusReason).toBe("superseded by new scope");
+
+		const second = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-b",
+			listName: "backlog",
+			title: "Blank reason task",
+		});
+		const blankReason = await store.dismissTask({
+			taskId: second.id,
+			userId: "telegram:1",
+			reason: "   ",
+		});
+		expect(blankReason?.statusReason).toBeNull();
+	});
+
 	test("lists recently completed tasks by caller and recency window", async () => {
 		currentTime = 10_000;
 		const recentTask = await store.addTask({
@@ -283,5 +343,23 @@ describe("TaskStore", () => {
 		expect(snapshot).toContain("1 more active task");
 
 		expect(formatActiveTaskSnapshot([])).toBe("## Active tasks\n- None.");
+	});
+
+	test("uses the default compact limit and reports overflow", async () => {
+		for (let index = 1; index <= 14; index += 1) {
+			await store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: `thread-${index}`,
+				listName: "today",
+				title: `Task ${index}`,
+			});
+		}
+
+		const snapshot = await store.composeActiveTaskSnapshot("telegram:1");
+		const taskLines = snapshot
+			.split("\n")
+			.filter((line) => line.startsWith("- ["));
+		expect(taskLines).toHaveLength(12);
+		expect(snapshot).toContain("2 more active task(s).");
 	});
 });

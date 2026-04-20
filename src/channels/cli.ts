@@ -173,6 +173,7 @@ export const cliChannel: AppChannel = {
 			}, 80);
 
 			try {
+				session.currentUserText = userInput;
 				await session.refreshAgent();
 				const currentMessages = await readThreadMessages(
 					session.agent,
@@ -226,6 +227,8 @@ export const cliChannel: AppChannel = {
 					error instanceof Error ? error.message : "Unknown CLI error";
 				process.stdout.write("\rAssistant: ");
 				console.log(`Request failed: ${message}\n`);
+			} finally {
+				session.currentUserText = undefined;
 			}
 		}
 

@@ -51,6 +51,7 @@ export interface AddTaskInput {
 export interface ActiveTaskSnapshotOptions {
 	heading?: string;
 	limit?: number;
+	totalCount?: number;
 }
 
 export interface RecentCompletedTaskOptions {
@@ -60,6 +61,20 @@ export interface RecentCompletedTaskOptions {
 
 function compactInline(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
+}
+
+function requireCompactField(value: string, label: string): string {
+	const compacted = compactInline(value);
+	if (compacted === "") {
+		throw new Error(`${label} cannot be empty.`);
+	}
+	return compacted;
+}
+
+function compactOptionalField(value?: string | null): string | null {
+	if (value == null) return null;
+	const compacted = compactInline(value);
+	return compacted === "" ? null : compacted;
 }
 
 function rowToTask(row: TaskRow): TaskRecord {
@@ -87,6 +102,7 @@ export function formatActiveTaskSnapshot(
 	const heading = options.heading ?? "## Active tasks";
 	const limit = options.limit ?? tasks.length;
 	const visibleTasks = tasks.slice(0, limit);
+	const totalCount = options.totalCount ?? tasks.length;
 	const lines = [heading];
 
 	if (visibleTasks.length === 0) {
@@ -100,8 +116,8 @@ export function formatActiveTaskSnapshot(
 		lines.push(`- [${task.id}] ${task.listName}: ${title}${note}`);
 	}
 
-	if (tasks.length > visibleTasks.length) {
-		lines.push(`- ... ${tasks.length - visibleTasks.length} more active task(s).`);
+	if (totalCount > visibleTasks.length) {
+		lines.push(`- ... ${totalCount - visibleTasks.length} more active task(s).`);
 	}
 
 	return lines.join("\n");
@@ -180,6 +196,9 @@ export class TaskStore {
 
 	async addTask(input: AddTaskInput): Promise<TaskRecord> {
 		await this._ready;
+		const listName = requireCompactField(input.listName, "Task list name");
+		const title = requireCompactField(input.title, "Task title");
+		const note = compactOptionalField(input.note);
 		const now = this.now();
 		const rows = await this.db<TaskRow[]>`
 			INSERT INTO tasks (
@@ -199,9 +218,9 @@ export class TaskStore {
 				${input.userId},
 				${input.threadIdCreated},
 				NULL,
-				${input.listName},
-				${input.title},
-				${input.note ?? null},
+				${listName},
+				${title},
+				${note},
 				'active',
 				NULL,
 				${now},
@@ -363,6 +382,50 @@ export class TaskStore {
 		return this.listTasksForUser(userId, { status: "active", limit });
 	}
 
+	async countTasksForUser(
+		userId: string,
+		options: {
+			status?: TaskStatus;
+			listName?: string;
+		} = {},
+	): Promise<number> {
+		await this._ready;
+		if (options.status && options.listName) {
+			const rows = await this.db<Array<{ count: number | bigint }>>`
+				SELECT COUNT(*) AS count
+				FROM tasks
+				WHERE user_id = ${userId}
+					AND status = ${options.status}
+					AND list_name = ${options.listName}
+			`;
+			return Number(rows[0]?.count ?? 0);
+		}
+		if (options.status) {
+			const rows = await this.db<Array<{ count: number | bigint }>>`
+				SELECT COUNT(*) AS count
+				FROM tasks
+				WHERE user_id = ${userId}
+					AND status = ${options.status}
+			`;
+			return Number(rows[0]?.count ?? 0);
+		}
+		if (options.listName) {
+			const rows = await this.db<Array<{ count: number | bigint }>>`
+				SELECT COUNT(*) AS count
+				FROM tasks
+				WHERE user_id = ${userId}
+					AND list_name = ${options.listName}
+			`;
+			return Number(rows[0]?.count ?? 0);
+		}
+		const rows = await this.db<Array<{ count: number | bigint }>>`
+			SELECT COUNT(*) AS count
+			FROM tasks
+			WHERE user_id = ${userId}
+		`;
+		return Number(rows[0]?.count ?? 0);
+	}
+
 	async listRecentlyCompletedTasks(
 		userId: string,
 		options: RecentCompletedTaskOptions,
@@ -400,8 +463,15 @@ export class TaskStore {
 		options: ActiveTaskSnapshotOptions = {},
 	): Promise<string> {
 		const limit = options.limit ?? 12;
-		const tasks = await this.listActiveTasks(userId, limit + 1);
-		return formatActiveTaskSnapshot(tasks, options);
+		const [tasks, totalCount] = await Promise.all([
+			this.listActiveTasks(userId, limit),
+			this.countTasksForUser(userId, { status: "active" }),
+		]);
+		return formatActiveTaskSnapshot(tasks, {
+			...options,
+			limit,
+			totalCount,
+		});
 	}
 
 	async completeTask(params: {
@@ -447,12 +517,13 @@ export class TaskStore {
 		reason?: string | null;
 	}): Promise<TaskRecord | null> {
 		await this._ready;
+		const reason = compactOptionalField(params.reason);
 		const now = this.now();
 		const rows = await this.db<TaskRow[]>`
 			UPDATE tasks
 			SET
 				status = 'dismissed',
-				status_reason = ${params.reason ?? null},
+				status_reason = ${reason},
 				updated_at = ${now},
 				completed_at = NULL,
 				dismissed_at = ${now}

@@ -32,7 +32,7 @@ After a forced checkpoint is created, channel sessions load compacted runtime co
 2. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
 3. Current user input
 
-Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by `src/memory/checkpoint_compaction.ts` writing to `ForcedCheckpointStore`. The runtime context is then assembled by `src/memory/runtime_context.ts`.
+Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by [`src/checkpoints/compaction_trigger.ts`](../checkpoints/compaction_trigger.ts). That trigger layer decides which boundary fired, calls [`src/memory/checkpoint_compaction.ts`](../memory/checkpoint_compaction.ts) to build the structured summary, persists it through `ForcedCheckpointStore`, and uses [`src/memory/runtime_context.ts`](../memory/runtime_context.ts) to render the runtime-only prompt context.
 
 The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
 

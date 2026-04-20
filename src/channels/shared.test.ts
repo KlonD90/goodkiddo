@@ -306,6 +306,60 @@ describe("channel task-check state", () => {
 		}
 	});
 
+	test("keeps the boundary flag for whitespace-only turns", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: true,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(session, "   \n\t  ");
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: false,
+			});
+			expect(session.pendingTaskCheck).toBe(true);
+			expect(session.pendingTaskCheckContext).toBeUndefined();
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("keeps the boundary flag for image-only turns", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: true,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(session, [
+				{ type: "image", mimeType: "image/png", data: new Uint8Array([1]) },
+			]);
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: false,
+			});
+			expect(session.pendingTaskCheck).toBe(true);
+			expect(session.pendingTaskCheckContext).toBeUndefined();
+		} finally {
+			await db.close();
+		}
+	});
+
 	test("does not run reconciliation on non-boundary turns", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		try {

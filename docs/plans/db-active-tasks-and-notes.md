@@ -6,8 +6,8 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 ## Validation Commands
 - `bun tsc --noEmit`
 - `bun test src/memory/session_loader.test.ts src/memory/rotate_thread.test.ts`
-- `bun test src/channels/session_commands.test.ts`
-- `bun test src/tools/memory_tools.test.ts`
+- `bun test src/channels/shared.test.ts src/channels/session_commands.test.ts`
+- `bun test src/tools/memory_tools.test.ts src/tools/task_tools.test.ts`
 - `bun test src/tasks/store.test.ts src/tasks/reconcile.test.ts`
 
 ### Task 1: Add SQL task store

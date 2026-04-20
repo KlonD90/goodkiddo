@@ -56,6 +56,7 @@ export type ChannelAgentSession = {
 	threadId: string;
 	workspace: BackendProtocol;
 	model: BaseChatModel;
+	currentUserText?: string;
 	refreshAgent: () => Promise<void>;
 	persistThreadId?: (threadId: string) => Promise<void>;
 	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
@@ -112,6 +113,7 @@ export async function createChannelAgentSession(
 			audit,
 			checkpointer,
 			threadId: session?.threadId ?? options.threadId,
+			currentUserText: session?.currentUserText,
 			taskStore,
 			outbound: options.outbound,
 			runtimeContextBlock: renderSessionRuntimeContext(session),
@@ -319,10 +321,13 @@ export async function maybeRunPendingTaskCheck(
 		return { handled: false, needsRefresh: false };
 	}
 
+	const messageText = extractTextFromContent(currentUserContent).trim();
+	if (messageText === "") {
+		return { handled: false, needsRefresh: false };
+	}
+
 	session.pendingTaskCheck = false;
 	session.pendingTaskCheckContext = undefined;
-
-	const messageText = extractTextFromContent(currentUserContent);
 	const result = await reconcileActiveTasksAtBoundary({
 		store: session.taskCheckConfig.store,
 		userId: session.taskCheckConfig.caller,

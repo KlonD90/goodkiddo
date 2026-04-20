@@ -1517,6 +1517,7 @@ async function runAgentTurn(
 ): Promise<void> {
 	const stopTyping = startTelegramTypingLoop(bot, chatId);
 	try {
+		session.currentUserText = extractTextFromContent(userInput);
 		await session.refreshAgent();
 		const currentMessages = await readThreadMessages(
 			session.agent,
@@ -1648,6 +1649,7 @@ async function runAgentTurn(
 			error instanceof Error ? error.message : "Unknown Telegram bot error";
 		await sendTelegramMessage(bot, chatId, `Request failed: ${message}`);
 	} finally {
+		session.currentUserText = undefined;
 		stopTyping();
 	}
 }

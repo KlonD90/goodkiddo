@@ -29,6 +29,25 @@ function compactText(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
 
+function normalizeTurnText(value: string | undefined): string {
+	return value
+		?.toLowerCase()
+		.replace(/['’]/g, "")
+		.replace(/[^a-z0-9]+/g, " ")
+		.trim() ?? "";
+}
+
+function hasDismissConfirmation(
+	currentUserText: string | undefined,
+	taskId: number,
+): boolean {
+	const normalized = normalizeTurnText(currentUserText);
+	if (normalized === "") return false;
+	return new RegExp(`\\b(?:yes|confirm|confirmed)\\b.*\\bdismiss\\b.*\\btask\\s+${taskId}\\b`).test(
+		normalized,
+	);
+}
+
 function formatTaskLine(task: {
 	id: number;
 	listName: string;
@@ -43,6 +62,7 @@ export interface TaskToolContext {
 	store: TaskStore;
 	callerId: string;
 	threadId: string;
+	currentUserText?: string;
 }
 
 export function createTaskAddTool(contextValue: TaskToolContext) {
@@ -79,14 +99,17 @@ export function createTaskAddTool(contextValue: TaskToolContext) {
 			schema: z.object({
 				listName: z
 					.string()
+					.trim()
 					.min(1)
 					.describe("Task list name, such as today, backlog, or follow-up."),
 				title: z
 					.string()
+					.trim()
 					.min(1)
 					.describe("Short actionable task title."),
 				note: z
 					.string()
+					.trim()
 					.min(1)
 					.optional()
 					.describe("Optional implementation detail or reminder."),
@@ -130,6 +153,12 @@ export function createTaskDismissTool(contextValue: TaskToolContext) {
 	return tool(
 		async ({ taskId, reason }: { taskId: number; reason?: string }) => {
 			try {
+				if (!hasDismissConfirmation(contextValue.currentUserText, taskId)) {
+					return [
+						`Task ${taskId} was not dismissed.`,
+						'Explicit confirmation is required. Ask the user to reply with "yes, dismiss task <id>" before using task_dismiss.',
+					].join("\n");
+				}
 				const task = await contextValue.store.dismissTask({
 					taskId,
 					userId: contextValue.callerId,
@@ -158,6 +187,7 @@ export function createTaskDismissTool(contextValue: TaskToolContext) {
 				taskId: z.number().int().positive().describe("Active task id to dismiss."),
 				reason: z
 					.string()
+					.trim()
 					.min(1)
 					.optional()
 					.describe("Optional short reason for dismissal."),
@@ -171,13 +201,19 @@ export function createTaskListActiveTool(contextValue: TaskToolContext) {
 		async ({ limit }: { limit?: number }) => {
 			try {
 				const resolvedLimit = limit ?? 12;
-				const tasks = await contextValue.store.listActiveTasks(
-					contextValue.callerId,
-					resolvedLimit + 1,
-				);
+				const [tasks, totalCount] = await Promise.all([
+					contextValue.store.listActiveTasks(
+						contextValue.callerId,
+						resolvedLimit,
+					),
+					contextValue.store.countTasksForUser(contextValue.callerId, {
+						status: "active",
+					}),
+				]);
 				return formatActiveTaskSnapshot(tasks, {
 					heading: "## Active tasks",
 					limit: resolvedLimit,
+					totalCount,
 				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
