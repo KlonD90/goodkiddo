@@ -36,3 +36,27 @@ Conversation state is split into two layers:
 - Short-term thread history lives in LangGraph checkpoints stored by the SQL saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts) and wired through [`src/channels/shared.ts`](../channels/shared.ts).
 
 Both layers persist across bot restarts. `/new-thread` rotates the active thread id and summarizes the previous thread into `log.md`, but it does not erase long-term memory.
+
+## Conversation compaction
+
+`full_history != runtime_context`. Full turn history is stored in the SQL saver permanently for audit and recovery. The model-facing working context is rebuilt from a compact checkpoint plus a small recent-turn window — it does not replay the entire stored history on each turn.
+
+Key invariant: stored history grows indefinitely; model context stays bounded.
+
+**Forced checkpoints** (`src/checkpoints/forced_checkpoint_store.ts`) store a structured snapshot of operational state at defined compaction boundaries:
+
+- `/new_thread` command
+- first message after session resume
+- message or token budget threshold exceeded
+
+Each checkpoint captures: current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts. The snapshot is a JSON payload persisted in the `forced_checkpoints` table.
+
+**Checkpoint summary generation** (`checkpoint_compaction.ts`) prompts the model to produce the structured `CheckpointSummary` JSON. The resulting snapshot is serialized and stored in `ForcedCheckpointStore`.
+
+**Runtime context builder** (`runtime_context.ts`) assembles the model-facing prompt from:
+
+1. Latest checkpoint summary (rendered as a `[Conversation Checkpoint]` system message)
+2. Last 2 user-initiated turns (not last 2 messages — turns include all interleaved assistant/tool messages)
+3. Current user input
+
+When no checkpoint exists yet, the builder falls back to replaying full stored history. `RuntimeContext.hasCompaction` indicates which path was taken.
