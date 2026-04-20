@@ -1,7 +1,7 @@
 # Tasks: Interchangeable Databases — 02 Migrate Stores
 
 > Feature plan: [feature-interchangeable-databases.md](feature-interchangeable-databases.md)
-> Previous: [tasks-db-01-foundation.md](tasks-db-01-foundation.md)
+> Previous: [tasks-db-01-foundation.md](completed/tasks-db-01-foundation.md)
 > Next: [tasks-db-03-checkpoint-and-wiring.md](tasks-db-03-checkpoint-and-wiring.md)
 
 Assumes task list 01 is complete (`src/db/index.ts` exists, `AppConfig.databaseUrl` exists).

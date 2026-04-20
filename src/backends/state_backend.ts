@@ -47,7 +47,7 @@ export function normalizePath(input: string, kind: "file" | "dir"): string {
 	let normalized = path.normalize(raw.startsWith("/") ? raw : `/${raw}`);
 	if (!normalized.startsWith("/")) normalized = `/${normalized}`;
 
-	if (normalized.split("/").includes("..") || normalized.includes("~")) {
+	if (normalized.includes("~")) {
 		throw new Error("Path traversal or forbidden characters detected");
 	}
 	if (kind === "dir")

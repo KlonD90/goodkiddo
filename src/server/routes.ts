@@ -131,10 +131,6 @@ async function readJsonBody(
 	}
 }
 
-function resolveScopeEntryPath(grant: ResolvedGrant): string {
-	return grant.scopeKind === "file" ? grant.scopePath : grant.scopePath;
-}
-
 function inferRequestedPathKind(rawPath: string): "file" | "dir" {
 	return rawPath.endsWith("/") ? "dir" : "file";
 }
@@ -146,7 +142,7 @@ function handleHtmlShell(
 ): Response {
 	let initialPath: string;
 	if (deepPath === "" || deepPath === "/") {
-		initialPath = resolveScopeEntryPath(grant);
+		initialPath = grant.scopePath;
 	} else {
 		const kind: "file" | "dir" = deepPath.endsWith("/") ? "dir" : "file";
 		const normalized = tryNormalizeRequestedPath(deepPath, kind);

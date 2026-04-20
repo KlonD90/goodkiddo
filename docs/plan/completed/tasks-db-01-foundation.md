@@ -1,7 +1,7 @@
 # Tasks: Interchangeable Databases — 01 Foundation
 
 > Feature plan: [feature-interchangeable-databases.md](feature-interchangeable-databases.md)
-> Next: [tasks-db-02-migrate-stores.md](tasks-db-02-migrate-stores.md)
+> Next: [tasks-db-02-migrate-stores.md](../tasks-db-02-migrate-stores.md)
 
 ## Task list
 
