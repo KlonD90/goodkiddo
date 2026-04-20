@@ -71,7 +71,7 @@ type ResolveConfigOptions = {
 	selectValue?: WizardSelect;
 	envFilePath?: string;
 };
-type PersistedEnvValues = Partial<Record<ConfigIssueField | "STATE_DB_PATH", string>>;
+type PersistedEnvValues = Partial<Record<ConfigIssueField, string>>;
 
 const SUPPORTED_USING_MODES: readonly UsingMode[] = ["single", "multi"];
 const DEFAULT_AI_TYPE: SupportedAiTypes = "anthropic";
@@ -169,14 +169,7 @@ export const readConfigFromEnv = (
 			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
 			DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode,
-		databaseUrl: (() => {
-			const explicitUrl = getEnv("DATABASE_URL", persistedValues);
-			if (explicitUrl) return explicitUrl;
-			const legacyPath =
-				process.env["STATE_DB_PATH"] || persistedValues["STATE_DB_PATH"];
-			if (legacyPath) return `sqlite://${legacyPath}`;
-			return DEFAULT_DATABASE_URL;
-		})(),
+		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
@@ -637,13 +630,13 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
 		}
 
-		const key = match[1] as ConfigIssueField | "STATE_DB_PATH";
+		const key = match[1] as ConfigIssueField;
 		persistedValues[key] = parseEnvAssignmentValue(match[2]);
 	}
 

@@ -3,7 +3,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CheckpointMetadata, emptyCheckpoint } from "@langchain/langgraph";
-import { BunSqliteSaver } from "./bun_sqlite_saver";
+import { createDb, detectDialect } from "../db";
+import { SqlSaver } from "./sql_saver";
 
 const tempDirs: string[] = [];
 
@@ -14,10 +15,10 @@ afterEach(() => {
 	}
 });
 
-function createTempDbPath(): string {
-	const dir = mkdtempSync(join(tmpdir(), "bun-saver-"));
+function createTempDbUrl(): string {
+	const dir = mkdtempSync(join(tmpdir(), "sql-saver-"));
 	tempDirs.push(dir);
-	return join(dir, "checkpoints.sqlite");
+	return `sqlite://${join(dir, "checkpoints.sqlite")}`;
 }
 
 function createMetadata(step: number): CheckpointMetadata {
@@ -28,11 +29,12 @@ function createMetadata(step: number): CheckpointMetadata {
 	};
 }
 
-describe("BunSqliteSaver", () => {
+describe("SqlSaver", () => {
 	test("persists checkpoints across saver instances", async () => {
-		const dbPath = createTempDbPath();
+		const dbUrl = createTempDbUrl();
 		const threadConfig = { configurable: { thread_id: "thread-1" } };
-		const first = new BunSqliteSaver(dbPath);
+		const firstDb = createDb(dbUrl);
+		const first = new SqlSaver(firstDb, detectDialect(dbUrl));
 
 		const checkpoint = emptyCheckpoint();
 		checkpoint.channel_values = {
@@ -45,14 +47,14 @@ describe("BunSqliteSaver", () => {
 			threadConfig,
 			checkpoint,
 			createMetadata(1),
-			{},
 		);
-		first.close();
+		await firstDb.close();
 
-		const second = new BunSqliteSaver(dbPath);
+		const secondDb = createDb(dbUrl);
+		const second = new SqlSaver(secondDb, detectDialect(dbUrl));
 		const tuple = await second.getTuple(threadConfig);
 		const explicitTuple = await second.getTuple(writtenConfig);
-		second.close();
+		await secondDb.close();
 
 		expect(tuple?.checkpoint.id).toBe(checkpoint.id);
 		expect(tuple?.checkpoint.channel_values.messages).toEqual([
@@ -63,14 +65,14 @@ describe("BunSqliteSaver", () => {
 	});
 
 	test("round-trips pending writes and deleteThread removes them", async () => {
-		const dbPath = createTempDbPath();
-		const saver = new BunSqliteSaver(dbPath);
+		const dbUrl = createTempDbUrl();
+		const db = createDb(dbUrl);
+		const saver = new SqlSaver(db, detectDialect(dbUrl));
 		const checkpoint = emptyCheckpoint();
 		const writeConfig = await saver.put(
 			{ configurable: { thread_id: "thread-2" } },
 			checkpoint,
 			createMetadata(2),
-			{},
 		);
 
 		await saver.putWrites(
@@ -96,7 +98,7 @@ describe("BunSqliteSaver", () => {
 		const deleted = await saver.getTuple({
 			configurable: { thread_id: "thread-2" },
 		});
-		saver.close();
+		await db.close();
 
 		expect(deleted).toBeUndefined();
 	});

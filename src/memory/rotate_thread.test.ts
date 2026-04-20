@@ -1,13 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import type { ChannelAgentSession } from "../channels/shared";
 import { readOrEmpty } from "./fs";
 import { MEMORY_LOG_PATH } from "./layout";
 import { rotateThread } from "./rotate_thread";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 function createStubModel(response: string) {

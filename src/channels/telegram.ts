@@ -1464,6 +1464,8 @@ async function ensureTelegramSession(
 	chatId: string,
 	caller: Caller,
 	config: AppConfig,
+	db: InstanceType<typeof Bun.SQL>,
+	dialect: "sqlite" | "postgres",
 	store: PermissionsStore,
 	bot: Bot,
 	sessions: Map<string, TelegramAgentSession>,
@@ -1476,6 +1478,8 @@ async function ensureTelegramSession(
 	const broker = new TelegramApprovalBroker(bot, sessions, chatId, store);
 	const baseThreadId = `telegram-${chatId}`;
 	const session = await createChannelAgentSession(config, {
+		db,
+		dialect,
 		caller,
 		store,
 		broker,
@@ -1774,8 +1778,9 @@ export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const db = createDb(config.databaseUrl);
-		const store = new PermissionsStore({ db, dialect: detectDialect(config.databaseUrl) });
+		const db = options?.db ?? createDb(config.databaseUrl);
+		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
+		const store = new PermissionsStore({ db, dialect });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
 		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
@@ -1815,7 +1820,7 @@ export const telegramChannel: AppChannel = {
 					outcome === "deny-once" ||
 					outcome === "deny-always")
 			) {
-				session.pendingApprovals.delete(promptId);
+				session?.pendingApprovals.delete(promptId);
 				await pending.resolve(outcome);
 			}
 
@@ -1834,13 +1839,15 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
-			const session = await ensureTelegramSession(
-				chatIdString,
-				caller,
-				config,
-				store,
-				bot,
-				sessions,
+				const session = await ensureTelegramSession(
+					chatIdString,
+					caller,
+					config,
+					db,
+					dialect,
+					store,
+					bot,
+					sessions,
 				outbound,
 				webShare,
 			);
@@ -1865,13 +1872,15 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
-			const session = await ensureTelegramSession(
-				chatIdString,
-				caller,
-				config,
-				store,
-				bot,
-				sessions,
+				const session = await ensureTelegramSession(
+					chatIdString,
+					caller,
+					config,
+					db,
+					dialect,
+					store,
+					bot,
+					sessions,
 				outbound,
 				webShare,
 			);
@@ -1934,5 +1943,8 @@ export const telegramChannel: AppChannel = {
 				console.log(`Telegram bot connected as @${botInfo.username}`);
 			},
 		});
+		if (!options?.db) {
+			await db.close();
+		}
 	},
 };

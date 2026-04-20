@@ -119,7 +119,7 @@ export function createGrantFsAccessTool(options: GrantFsAccessOptions) {
 			);
 			const ttlMs = Math.floor(hours * 60 * 60 * 1000);
 
-			const grant = options.access.issue(options.callerId, {
+			const grant = await options.access.issue(options.callerId, {
 				ttlMs,
 				scopePath: classification.scopePath,
 				scopeKind: classification.scopeKind,

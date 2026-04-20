@@ -76,8 +76,9 @@ export const cliChannel: AppChannel = {
 	entrypoint: "cli",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const db = createDb(config.databaseUrl);
-		const store = new PermissionsStore({ db, dialect: detectDialect(config.databaseUrl) });
+		const db = options?.db ?? createDb(config.databaseUrl);
+		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
+		const store = new PermissionsStore({ db, dialect });
 		const caller = resolveCliCaller();
 		await seedCliUser(store, caller);
 
@@ -85,6 +86,8 @@ export const cliChannel: AppChannel = {
 		const outbound = new CliOutboundChannel();
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
+			db,
+			dialect,
 			caller,
 			store,
 			broker,
@@ -174,5 +177,8 @@ export const cliChannel: AppChannel = {
 		}
 
 		rl.close();
+		if (!options?.db) {
+			await db.close();
+		}
 	},
 };

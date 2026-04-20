@@ -69,6 +69,7 @@ export class PermissionsStore {
 		this.database = options.db;
 		this.dialect = options.dialect;
 		this._ready = this._init();
+		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
 	}
 
 	private async _init(): Promise<void> {

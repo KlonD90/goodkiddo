@@ -3,32 +3,36 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import { AccessStore } from "./access_store";
 import { makeStubBundle } from "./frontend_build";
 import { createWebHandler, type WebHandler } from "./routes";
 
 function createHarness() {
 	const dir = mkdtempSync(join(tmpdir(), "top-fedder-routes-"));
-	const accessDbPath = join(dir, "access.db");
-	const stateDbPath = join(dir, "state.db");
-	const access = new AccessStore({ dbPath: accessDbPath });
+	const accessDbUrl = `sqlite://${join(dir, "access.db")}`;
+	const databaseUrl = `sqlite://${join(dir, "state.db")}`;
+	const db = createDb(databaseUrl);
+	const dialect = detectDialect(databaseUrl);
+	const access = new AccessStore({
+		db: createDb(accessDbUrl),
+		dialect: detectDialect(accessDbUrl),
+	});
 	const bundle = makeStubBundle();
 	const handler: WebHandler = createWebHandler({
 		access,
-		stateDbPath,
+		db,
+		dialect,
 		bundle,
 		publicBaseUrl: "http://localhost:8787",
 	});
 
-	const seedWorkspace = (userId: string) => {
-		const ws = new SqliteStateBackend({
-			dbPath: stateDbPath,
-			namespace: userId,
-		});
-		ws.write("/reports/q1.md", "# Q1 report\n\nHello world.");
-		ws.write("/reports/q2.md", "# Q2 report");
-		ws.write("/notes.txt", "Some notes.");
-		ws.uploadFiles([["/image.png", new Uint8Array([137, 80, 78, 71])]]);
+	const seedWorkspace = async (userId: string) => {
+		const ws = new SqliteStateBackend({ db, dialect, namespace: userId });
+		await ws.write("/reports/q1.md", "# Q1 report\n\nHello world.");
+		await ws.write("/reports/q2.md", "# Q2 report");
+		await ws.write("/notes.txt", "Some notes.");
+		await ws.uploadFiles([["/image.png", new Uint8Array([137, 80, 78, 71])]]);
 		return ws;
 	};
 
@@ -36,10 +40,11 @@ function createHarness() {
 		try {
 			access.close();
 		} catch {}
+		void db.close();
 		rmSync(dir, { recursive: true, force: true });
 	};
 
-	return { access, handler, seedWorkspace, stateDbPath, cleanup };
+	return { access, handler, seedWorkspace, databaseUrl, cleanup };
 }
 
 function extractBoot(html: string): {
@@ -57,8 +62,8 @@ function extractBoot(html: string): {
 describe("GET /{linkUuid}/", () => {
 	test("serves the HTML shell for a root grant and injects boot payload", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		const res = await handler(
 			new Request(`http://localhost/${grant.linkUuid}/`),
 		);
@@ -78,8 +83,8 @@ describe("GET /{linkUuid}/", () => {
 
 	test("deep-link carries initialPath", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		const res = await handler(
 			new Request(`http://localhost/${grant.linkUuid}/reports/q1.md`),
 		);
@@ -91,8 +96,8 @@ describe("GET /{linkUuid}/", () => {
 
 	test("deep-link out of scope returns 404", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1", {
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1", {
 			scopePath: "/reports/",
 			scopeKind: "dir",
 		});
@@ -123,10 +128,11 @@ describe("GET /{linkUuid}/", () => {
 		const { cleanup } = createHarness();
 		// Create an access store whose clock advances
 		const store = new AccessStore({
-			dbPath: ":memory:",
+			db: createDb("sqlite://:memory:"),
+			dialect: detectDialect("sqlite://:memory:"),
 			now: () => 1_000_000,
 		});
-		const issued = store.issue("u1", { ttlMs: 1000 });
+		const issued = await store.issue("u1", { ttlMs: 1000 });
 		// Advance by building a second store instance? Not sharing. Instead use sweepExpired at a later time:
 		// Use the issued grant but assert we can craft a bad uuid case since :memory: per-test won't let us advance across handler.
 		// Skip advanced expiry assertion here; covered in access_store tests.
@@ -138,8 +144,8 @@ describe("GET /{linkUuid}/", () => {
 describe("POST /api/fs/*", () => {
 	test("ls returns directory entries for valid bearer", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		const res = await handler(
 			new Request("http://localhost/api/fs/ls", {
 				method: "POST",
@@ -174,8 +180,8 @@ describe("POST /api/fs/*", () => {
 
 	test("preview returns base64 content", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		const res = await handler(
 			new Request("http://localhost/api/fs/preview", {
 				method: "POST",
@@ -199,9 +205,9 @@ describe("POST /api/fs/*", () => {
 
 	test("dir-scoped grant can ls its dir but not a sibling", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		seedWorkspace("u2");
-		const grant = access.issue("u1", {
+		await seedWorkspace("u1");
+		await seedWorkspace("u2");
+		const grant = await access.issue("u1", {
 			scopePath: "/reports/",
 			scopeKind: "dir",
 		});
@@ -232,8 +238,8 @@ describe("POST /api/fs/*", () => {
 
 	test("file-scoped grant rejects ls and rejects preview of other file", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1", {
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1", {
 			scopePath: "/reports/q1.md",
 			scopeKind: "file",
 		});
@@ -275,9 +281,9 @@ describe("POST /api/fs/*", () => {
 
 	test("user B's bearer cannot read user A's files (namespace isolation)", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		seedWorkspace("u2");
-		const grantB = access.issue("u2");
+		await seedWorkspace("u1");
+		await seedWorkspace("u2");
+		const grantB = await access.issue("u2");
 		const res = await handler(
 			new Request("http://localhost/api/fs/ls", {
 				method: "POST",
@@ -310,8 +316,8 @@ describe("POST /api/fs/*", () => {
 
 	test("path traversal cannot escape user's virtual namespace", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		// Normalize collapses `..` to /etc/passwd which doesn't exist in the
 		// user's virtual FS; namespaces isolate each user so there's no host
 		// file system to escape to.
@@ -333,8 +339,8 @@ describe("POST /api/fs/*", () => {
 describe("GET /{linkUuid}/_dl", () => {
 	test("download requires cookie, returns file with correct headers", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
 		const noCookie = await handler(
 			new Request(`http://localhost/${grant.linkUuid}/_dl?path=/reports/q1.md`),
 		);
@@ -358,9 +364,9 @@ describe("GET /{linkUuid}/_dl", () => {
 
 	test("cookie bound to different uuid is rejected", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grantA = access.issue("u1");
-		const grantB = access.issue("u1");
+		await seedWorkspace("u1");
+		const grantA = await access.issue("u1");
+		const grantB = await access.issue("u1");
 		const crossRes = await handler(
 			new Request(
 				`http://localhost/${grantA.linkUuid}/_dl?path=/reports/q1.md`,
@@ -385,8 +391,8 @@ describe("GET /{linkUuid}/_dl", () => {
 
 	test("out of scope download returns 403", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1", {
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1", {
 			scopePath: "/reports/",
 			scopeKind: "dir",
 		});
@@ -403,9 +409,9 @@ describe("GET /{linkUuid}/_dl", () => {
 describe("revocation and expiry", () => {
 	test("revoked grant returns 404 on HTML and 401 on API", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		seedWorkspace("u1");
-		const grant = access.issue("u1");
-		access.revokeByLink(grant.linkUuid);
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
+		await access.revokeByLink(grant.linkUuid);
 
 		const htmlRes = await handler(
 			new Request(`http://localhost/${grant.linkUuid}/`),

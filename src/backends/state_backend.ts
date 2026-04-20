@@ -144,6 +144,7 @@ export class SqliteStateBackend implements BackendProtocol {
 		this.dialect = options.dialect;
 		this.namespace = options.namespace ?? DEFAULT_NAMESPACE;
 		this._ready = this._init();
+		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
 	}
 
 	private async _init(): Promise<void> {

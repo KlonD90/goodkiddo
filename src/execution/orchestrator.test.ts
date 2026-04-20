@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends/state_backend";
+import { createDb, detectDialect } from "../db";
 import type {
 	BackendExecutionRequest,
 	BackendSession,
@@ -82,8 +83,8 @@ describe("ExecutionOrchestrator", () => {
 	test("loads workspace files before execution", async () => {
 		const backend = new FakeBackend();
 		const orchestrator = new ExecutionOrchestrator({ backend });
-		const workspace = new SqliteStateBackend({ dbPath: ":memory:" });
-		workspace.write("/src/main.ts", "console.log('workspace');");
+		const workspace = new SqliteStateBackend({ db: createDb("sqlite://:memory:"), dialect: detectDialect("sqlite://:memory:") });
+		await workspace.write("/src/main.ts", "console.log('workspace');");
 
 		const result = await orchestrator.executeWorkspace(
 			{

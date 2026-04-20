@@ -405,12 +405,12 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		const result = await fetchTelegramFileBytes(
 			{ file_path: "photos/file_1.png" },
 			"token-123",
-			async (input) => {
+			(async (input) => {
 				expect(String(input)).toBe(
 					"https://api.telegram.org/file/bottoken-123/photos/file_1.png",
 				);
 				return new Response(Uint8Array.from([7, 8, 9]), { status: 200 });
-			},
+			}) as typeof fetch,
 		);
 
 		expect(result).toEqual({
@@ -495,6 +495,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			running: false,
 			queue: [],
 			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -533,6 +536,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			running: false,
 			queue: [],
 			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
 			pendingApprovals: new Map(),
 		};
 
@@ -576,6 +582,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			running: false,
 			queue: [],
 			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
 			pendingApprovals: new Map([
 				[
 					"prompt-1",

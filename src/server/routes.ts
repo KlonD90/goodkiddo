@@ -8,9 +8,12 @@ import {
 } from "./access_store";
 import type { FrontendBundle } from "./frontend_build";
 
+type SQL = InstanceType<typeof Bun.SQL>;
+
 export interface WebHandlerOptions {
 	access: AccessStore;
-	stateDbPath: string;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 	bundle: FrontendBundle;
 	publicBaseUrl: string;
 }
@@ -111,10 +114,11 @@ function requireBearer(request: Request): string | null {
 }
 
 function openWorkspace(
-	stateDbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 	userId: string,
 ): SqliteStateBackend {
-	return new SqliteStateBackend({ dbPath: stateDbPath, namespace: userId });
+	return new SqliteStateBackend({ db, dialect, namespace: userId });
 }
 
 async function readJsonBody(
@@ -203,7 +207,8 @@ async function handleDownload(
 	request: Request,
 	linkUuid: string,
 	access: AccessStore,
-	stateDbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 ): Promise<Response> {
 	const cookies = parseCookies(request.headers.get("cookie"));
 	const bearer = cookies.get(DOWNLOAD_COOKIE_NAME) ?? "";
@@ -221,7 +226,7 @@ async function handleDownload(
 		return errorResponse("out_of_scope", 403);
 	}
 
-	const workspace = openWorkspace(stateDbPath, grant.userId);
+	const workspace = openWorkspace(db, dialect, grant.userId);
 	const [result] = await workspace.downloadFiles([normalized]);
 	if (!result || result.error === "file_not_found") {
 		return errorResponse("file_not_found", 404);
@@ -249,7 +254,8 @@ async function handleDownload(
 async function handleApi(
 	request: Request,
 	access: AccessStore,
-	stateDbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const route = url.pathname.replace(/^\/api\/fs\//, "");
@@ -277,7 +283,7 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
+		const workspace = openWorkspace(db, dialect, grant.userId);
 		const entries = await workspace.lsInfo(normalized);
 		return jsonResponse({ path: normalized, entries });
 	}
@@ -289,7 +295,7 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
+		const workspace = openWorkspace(db, dialect, grant.userId);
 		if (kind === "dir") {
 			const entries = await workspace.lsInfo(normalized);
 			return jsonResponse({
@@ -320,7 +326,7 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
+		const workspace = openWorkspace(db, dialect, grant.userId);
 		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
@@ -350,14 +356,14 @@ const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createWebHandler(options: WebHandlerOptions): WebHandler {
-	const { access, stateDbPath, bundle } = options;
+	const { access, db, dialect, bundle } = options;
 
 	return async function handler(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
 
 		if (pathname.startsWith("/api/fs/")) {
-			return handleApi(request, access, stateDbPath);
+			return handleApi(request, access, db, dialect);
 		}
 
 		if (pathname === "/" || pathname === "") {
@@ -385,7 +391,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			if (request.method !== "GET") {
 				return errorResponse("method_not_allowed", 405);
 			}
-			return handleDownload(request, linkUuid, access, stateDbPath);
+			return handleDownload(request, linkUuid, access, db, dialect);
 		}
 
 		if (request.method !== "GET") {

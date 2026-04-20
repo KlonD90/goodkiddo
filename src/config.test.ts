@@ -116,6 +116,22 @@ describe("config", () => {
 		});
 	});
 
+	test("ignores legacy STATE_DB_PATH and uses DATABASE_URL only", () => {
+		const previousStateDbPath = process.env.STATE_DB_PATH;
+		delete process.env.DATABASE_URL;
+		process.env.STATE_DB_PATH = "./legacy.db";
+
+		try {
+			expect(readConfigFromEnv().databaseUrl).toBe("sqlite://./state.db");
+		} finally {
+			if (previousStateDbPath === undefined) {
+				delete process.env.STATE_DB_PATH;
+			} else {
+				process.env.STATE_DB_PATH = previousStateDbPath;
+			}
+		}
+	});
+
 	test("requires telegram token when telegram entrypoint is selected", async () => {
 		await withEnv(
 			{

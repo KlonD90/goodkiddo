@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
@@ -8,7 +9,9 @@ import type {
 import { createSendFileTool, SEND_FILE_MAX_BYTES } from "./send_file_tool";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 class RecordingOutbound implements OutboundChannel {
@@ -26,7 +29,7 @@ const CALLER_ID = "telegram:12345";
 describe("createSendFileTool", () => {
 	test("sends a text file with detected mime type", async () => {
 		const backend = createBackend("send-text");
-		backend.write("/notes.md", "# hello");
+		await backend.write("/notes.md", "# hello");
 		const outbound = new RecordingOutbound();
 		const tool = createSendFileTool({
 			workspace: backend,
@@ -50,7 +53,7 @@ describe("createSendFileTool", () => {
 	test("sends binary content round-trip", async () => {
 		const backend = createBackend("send-bin");
 		const bytes = Uint8Array.from([1, 2, 3, 4, 5]);
-		backend.uploadFiles([["/blob.bin", bytes]]);
+		await backend.uploadFiles([["/blob.bin", bytes]]);
 		const outbound = new RecordingOutbound();
 		const tool = createSendFileTool({
 			workspace: backend,
@@ -66,7 +69,7 @@ describe("createSendFileTool", () => {
 
 	test("normalizes path without leading slash", async () => {
 		const backend = createBackend("send-slash");
-		backend.write("/notes.txt", "ok");
+		await backend.write("/notes.txt", "ok");
 		const outbound = new RecordingOutbound();
 		const tool = createSendFileTool({
 			workspace: backend,
@@ -97,7 +100,7 @@ describe("createSendFileTool", () => {
 	test("rejects files over 20MB", async () => {
 		const backend = createBackend("send-oversized");
 		const oversized = new Uint8Array(SEND_FILE_MAX_BYTES + 1);
-		backend.uploadFiles([["/big.bin", oversized]]);
+		await backend.uploadFiles([["/big.bin", oversized]]);
 		const outbound = new RecordingOutbound();
 		const tool = createSendFileTool({
 			workspace: backend,
@@ -114,7 +117,7 @@ describe("createSendFileTool", () => {
 
 	test("surfaces outbound failures to the model", async () => {
 		const backend = createBackend("send-fail");
-		backend.write("/notes.txt", "hi");
+		await backend.write("/notes.txt", "hi");
 		const outbound = new RecordingOutbound();
 		outbound.result = { ok: false, error: "telegram offline" };
 		const tool = createSendFileTool({
@@ -130,7 +133,7 @@ describe("createSendFileTool", () => {
 
 	test("passes caption through", async () => {
 		const backend = createBackend("send-caption");
-		backend.write("/notes.txt", "hi");
+		await backend.write("/notes.txt", "hi");
 		const outbound = new RecordingOutbound();
 		const tool = createSendFileTool({
 			workspace: backend,

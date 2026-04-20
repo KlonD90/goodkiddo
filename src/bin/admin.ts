@@ -2,10 +2,7 @@ import { createDb, detectDialect } from "../db/index";
 import { PermissionsStore } from "../permissions/store";
 import { EntrypointSchema } from "../permissions/types";
 
-const DB_URL = process.env.DATABASE_URL ||
-	(process.env.STATE_DB_PATH
-		? `sqlite://${process.env.STATE_DB_PATH}`
-		: "sqlite://./state.db");
+const DATABASE_URL = process.env.DATABASE_URL || "sqlite://./state.db";
 const USAGE = `Usage:
   bun src/bin/admin.ts add-user <entrypoint> <externalId> [displayName]
   bun src/bin/admin.ts list-users
@@ -20,9 +17,9 @@ async function main(): Promise<void> {
 		process.exit(1);
 	}
 
-	const dbUrl = DB_URL;
-	const db = createDb(dbUrl);
-	const store = new PermissionsStore({ db, dialect: detectDialect(dbUrl) });
+	const db = createDb(DATABASE_URL);
+	const dialect = detectDialect(DATABASE_URL);
+	const store = new PermissionsStore({ db, dialect });
 
 	switch (command) {
 		case "add-user": {
@@ -93,6 +90,7 @@ async function main(): Promise<void> {
 	}
 
 	store.close();
+	await db.close();
 }
 
 main();

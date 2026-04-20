@@ -12,6 +12,8 @@ Security-aware AI agent harness built with TypeScript and Bun.
 
 Requirements: `bun`, `docker`, model API access.
 
+Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
+
 ```bash
 ./dev.sh
 ```
