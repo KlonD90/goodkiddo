@@ -11,10 +11,12 @@ import type { ThreadMessage } from "../memory/summarize";
 import type { ChannelAgentSession } from "./shared";
 import {
 	buildInvokeMessages,
+	clearPendingCompactionSeed,
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
 	maybeResumeCompactAndSeed,
+	recoverPendingSeedForEmptyThread,
 	seedFromCheckpoint,
 } from "./shared";
 
@@ -131,7 +133,7 @@ describe("buildInvokeMessages — with pending seed", () => {
 		expect(result[3]).toMatchObject({ role: "user", content: "next question" });
 	});
 
-	test("clears pendingCompactionSeed after use", () => {
+	test("keeps pendingCompactionSeed until the caller explicitly clears it", () => {
 		const session = stubSession({
 			pendingCompactionSeed: {
 				summary: SAMPLE_SUMMARY,
@@ -140,15 +142,16 @@ describe("buildInvokeMessages — with pending seed", () => {
 		});
 
 		buildInvokeMessages(session, { role: "user", content: "first" });
-		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(session.pendingCompactionSeed).toBeDefined();
 	});
 
-	test("subsequent call (seed cleared) returns only current user message", () => {
+	test("subsequent call after clear returns only current user message", () => {
 		const session = stubSession({
 			pendingCompactionSeed: { summary: SAMPLE_SUMMARY, recentTurns: [] },
 		});
 
 		buildInvokeMessages(session, { role: "user", content: "first" });
+		clearPendingCompactionSeed(session);
 		const second = buildInvokeMessages(session, {
 			role: "user",
 			content: "second",
@@ -242,6 +245,73 @@ describe("seedFromCheckpoint", () => {
 			{ role: "user", content: "latest question" },
 			{ role: "assistant", content: "latest answer" },
 		]);
+	});
+});
+
+describe("recoverPendingSeedForEmptyThread", () => {
+	test("recovers the latest checkpoint for callers whose rotated thread is still empty", async () => {
+		const { store, close } = createTempStore();
+		await store.create({
+			caller: "recover-user",
+			threadId: "old-thread",
+			sourceBoundary: "new_thread",
+			summaryPayload: JSON.stringify(SAMPLE_SUMMARY),
+		});
+
+		const session = stubSession({
+			threadId: "new-empty-thread",
+			agent: {
+				async getState(config: { configurable: { thread_id: string } }) {
+					if (config.configurable.thread_id === "old-thread") {
+						return {
+							values: {
+								messages: makeMessages(
+									["older", "older-reply"],
+									["recent", "recent-reply"],
+								),
+							},
+						};
+					}
+					return { values: { messages: [] } };
+				},
+			} as unknown as ChannelAgentSession["agent"],
+		});
+
+		const recovered = await recoverPendingSeedForEmptyThread(
+			session,
+			"recover-user",
+			store,
+		);
+
+		expect(recovered).toBe(true);
+		expect(session.pendingCompactionSeed?.summary.current_goal).toBe(
+			"Deploy the service",
+		);
+		expect(session.pendingCompactionSeed?.recentTurns).toEqual(
+			makeMessages(["older", "older-reply"], ["recent", "recent-reply"]),
+		);
+		await close();
+	});
+
+	test("does not recover when the latest checkpoint already belongs to the active thread", async () => {
+		const { store, close } = createTempStore();
+		await store.create({
+			caller: "recover-user",
+			threadId: "same-thread",
+			sourceBoundary: "message_limit",
+			summaryPayload: JSON.stringify(SAMPLE_SUMMARY),
+		});
+		const session = stubSession({ threadId: "same-thread" });
+
+		const recovered = await recoverPendingSeedForEmptyThread(
+			session,
+			"recover-user",
+			store,
+		);
+
+		expect(recovered).toBe(false);
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		await close();
 	});
 });
 

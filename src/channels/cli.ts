@@ -16,6 +16,7 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	clearPendingCompactionSeed,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeAutoCompactAndSeed,
@@ -196,6 +197,7 @@ export const cliChannel: AppChannel = {
 					{ messages: invokeMessages },
 					{ configurable: { thread_id: session.threadId } },
 				);
+				clearPendingCompactionSeed(session);
 				const reply = extractAgentReply(result);
 
 				clearInterval(spinner);

@@ -18,6 +18,18 @@ type AgentWithState = {
 	}) => Promise<{ values?: { messages?: unknown[] } }>;
 };
 
+const CHECKPOINT_SYSTEM_HEADER = "[Conversation Checkpoint]";
+
+function isSyntheticCheckpointSystemMessage(
+	role: ThreadMessage["role"],
+	content: string,
+): boolean {
+	return (
+		role === "system" &&
+		content.trimStart().startsWith(CHECKPOINT_SYSTEM_HEADER)
+	);
+}
+
 function toThreadMessage(raw: unknown): ThreadMessage | null {
 	if (raw === null || typeof raw !== "object") return null;
 	const obj = raw as Record<string, unknown>;
@@ -28,7 +40,9 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 		if (["user", "assistant", "system", "tool"].includes(obj.role)) {
 			const content = extractContentText(obj.content);
 			if (content.trim().length === 0) return null;
-			return { role: obj.role as ThreadMessage["role"], content };
+			const role = obj.role as ThreadMessage["role"];
+			if (isSyntheticCheckpointSystemMessage(role, content)) return null;
+			return { role, content };
 		}
 	}
 
@@ -57,6 +71,7 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 
 	const content = extractContentText(obj.content);
 	if (content.trim().length === 0) return null;
+	if (isSyntheticCheckpointSystemMessage(role, content)) return null;
 	return { role, content };
 }
 

@@ -138,6 +138,24 @@ export class ForcedCheckpointStore {
 		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
 	}
 
+	async readLatestForCaller(caller: string): Promise<ForcedCheckpoint | null> {
+		await this._ready;
+		const rows = await this.db<RawRow[]>`
+			SELECT
+				id,
+				caller,
+				thread_id,
+				created_at,
+				source_boundary,
+				summary_payload
+			FROM forced_checkpoints
+			WHERE caller = ${caller}
+			ORDER BY created_at DESC
+			LIMIT 1
+		`;
+		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
+	}
+
 	async listForThread(
 		caller: string,
 		threadId: string,

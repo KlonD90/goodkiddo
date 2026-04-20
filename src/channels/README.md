@@ -35,6 +35,8 @@ Forced checkpoints are created at defined boundaries — `/new_thread`, session 
 
 `/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start.
 
+If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
+
 When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
 
 ## Telegram Formatting

@@ -59,4 +59,6 @@ Each checkpoint captures: current goal, decisions, constraints, unfinished work,
 2. Last 2 user-initiated turns (not last 2 messages — turns include all interleaved assistant/tool messages)
 3. Current user input
 
+Synthetic `[Conversation Checkpoint]` seed messages are treated as runtime-only scaffolding: they seed the next compacted turn, but they are filtered back out when thread history is reread for later summaries or checkpoint generation so the system does not recursively summarize old summaries.
+
 When no checkpoint exists yet, the builder falls back to replaying full stored history. `RuntimeContext.hasCompaction` indicates which path was taken.

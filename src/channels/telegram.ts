@@ -22,6 +22,7 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	clearPendingCompactionSeed,
 	type ChannelAgentSession,
 	createChannelAgentSession,
 	extractAgentReply,
@@ -1623,6 +1624,7 @@ async function runAgentTurn(
 				"The agent completed the task but did not return a text response.",
 			);
 		}
+		clearPendingCompactionSeed(session);
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "Unknown Telegram bot error";

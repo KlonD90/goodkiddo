@@ -85,4 +85,43 @@ describe("rotateThread", () => {
 		expect(log).toContain("thread_closed");
 		expect(log).toContain("- captured");
 	});
+
+	test("ignores synthetic checkpoint system messages when summarizing a rotated thread", async () => {
+		const backend = createBackend("rotate-ignores-checkpoint-system");
+		const { model, seen } = createStubModel("- summarized");
+		const session = {
+			threadId: "thread-with-checkpoint",
+			agent: {
+				async getState() {
+					return {
+						values: {
+							messages: [
+								{
+									role: "system",
+									content:
+										"[Conversation Checkpoint]\nGoal: Continue previous work",
+								},
+								{ role: "user", content: "Continue with the fix" },
+								{ role: "assistant", content: "Working on it." },
+							],
+						},
+					};
+				},
+			},
+			workspace: backend,
+			model,
+			refreshAgent: async () => undefined,
+		} as unknown as ChannelAgentSession;
+
+		await rotateThread({
+			session,
+			model,
+			backend,
+			mintThreadId: () => "thread-next",
+		});
+
+		expect(seen[1]?.content).toContain("USER: Continue with the fix");
+		expect(seen[1]?.content).toContain("ASSISTANT: Working on it.");
+		expect(seen[1]?.content).not.toContain("[Conversation Checkpoint]");
+	});
 });

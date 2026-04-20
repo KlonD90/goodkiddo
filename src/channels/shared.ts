@@ -121,7 +121,15 @@ export async function createChannelAgentSession(
 		session.agent,
 		session.threadId,
 	);
-	session.needsResumeCompaction = existingMessages.length > 0;
+	if (existingMessages.length > 0) {
+		session.needsResumeCompaction = true;
+	} else {
+		await recoverPendingSeedForEmptyThread(
+			session,
+			options.caller.id,
+			forcedCheckpointStore,
+		);
+	}
 
 	return session;
 }
@@ -149,8 +157,8 @@ export function seedFromCheckpoint(
  * Build the messages array to pass to agent.invoke() / agent.stream().
  *
  * - If the session has a pending compaction seed, this returns
- *   [checkpoint_system_msg, ...recentTurns, currentUserMessage] and clears
- *   the seed so it only fires once.
+ *   [checkpoint_system_msg, ...recentTurns, currentUserMessage].
+ *   The caller must clear the seed only after the seeded turn succeeds.
  * - Otherwise returns [currentUserMessage].
  *
  * The `currentUserMessage.content` is passed through unchanged, so multimodal
@@ -165,7 +173,6 @@ export function buildInvokeMessages(
 	}
 
 	const { summary, recentTurns } = session.pendingCompactionSeed;
-	session.pendingCompactionSeed = undefined;
 
 	const ctx = buildRuntimeContext({
 		checkpoint: summary,
@@ -180,6 +187,10 @@ export function buildInvokeMessages(
 	// with the original currentUserMessage so multimodal content is preserved.
 	const seedMessages = ctx.messages.slice(0, -1);
 	return [...seedMessages, currentUserMessage];
+}
+
+export function clearPendingCompactionSeed(session: ChannelAgentSession): void {
+	session.pendingCompactionSeed = undefined;
 }
 
 async function rotateSessionThread(
@@ -214,6 +225,21 @@ export async function maybeResumeCompactAndSeed(
 		summary: deserializeCheckpointSummary(checkpoint.summaryPayload),
 		recentTurns: extractRecentTurns(messages, 2),
 	};
+	return true;
+}
+
+export async function recoverPendingSeedForEmptyThread(
+	session: ChannelAgentSession,
+	caller: string,
+	store: ForcedCheckpointStore,
+): Promise<boolean> {
+	const checkpoint = await store.readLatestForCaller(caller);
+	if (!checkpoint || checkpoint.threadId === session.threadId) {
+		return false;
+	}
+
+	const priorMessages = await readThreadMessages(session.agent, checkpoint.threadId);
+	seedFromCheckpoint(session, checkpoint.summaryPayload, priorMessages);
 	return true;
 }
 
