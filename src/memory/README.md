@@ -11,7 +11,7 @@ Per-caller agent memory: long-term notes, procedural skills, append-only log, pl
 - `lint.ts` — pure health check over the subtrees (stale, orphan, duplicate, over-budget); findings surface in the system prompt, not as a tool
 - `session_loader.ts` — `buildSystemPrompt({ identityPrompt, backend, activeTaskSnapshot? })` composes identity + memory rules + MEMORY/USER/SKILLS snapshot + active-task snapshot + maintenance block (if any)
 - `memory_prompt.md` — identity-agnostic memory-usage rules injected between identity and snapshot
-- `summarize.ts` — `summarizeThread(model, messages)` for the `/new-thread` command
+- `summarize.ts` — `summarizeThread(model, messages)` for the `/new_thread` command
 - `rotate_thread.ts` — `rotateThread` summarizes the current thread into log.md and rotates `session.threadId`
 - `../checkpoints/sql_saver.ts` — SQL-backed LangGraph checkpointer persisted via the shared `DATABASE_URL` connection
 
@@ -30,14 +30,14 @@ Layout per caller:
 
 Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools.
 
-Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed.
+Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
 
 Conversation state is split into two layers:
 
 - Long-term memory lives in the per-caller `/memory/` and `/skills/` files.
 - Short-term thread history lives in LangGraph checkpoints stored by the SQL saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts) and wired through [`src/channels/shared.ts`](../channels/shared.ts).
 
-Both layers persist across bot restarts. `/new-thread` rotates the active thread id and summarizes the previous thread into `log.md`, but it does not erase long-term memory.
+Both layers persist across bot restarts. `/new_thread` rotates the active thread id and summarizes the previous thread into `log.md`, but it does not erase long-term memory. The follow-up boundary check then uses the active-task store, not the memory wiki, to reconcile obvious completions or prompt for dismissals.
 
 ## Conversation compaction
 

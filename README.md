@@ -3,7 +3,7 @@
 Security-aware AI agent harness built with TypeScript and Bun.
 
 - Agent with file tools, sandboxed execution, and per-user state
-- Per-caller memory wiki (notes, skills, log) with `/new-thread` rotation
+- Per-caller memory wiki (notes, skills, log) plus SQL-backed active tasks, with `/new_thread` rotation and boundary-based task reconciliation
 - Persistent conversation state in `DATABASE_URL`: full LangGraph history for audit/recovery, plus forced checkpoints that compact runtime context at `/new_thread`, session-resume, and prompt-budget boundaries
 - Docker sandbox today, Firecracker path where supported
 - CLI and Telegram entrypoints, including Telegram photo messages for multimodal models
@@ -23,7 +23,7 @@ If config is missing, the app starts an interactive setup wizard.
 ## Plans
 
 - [`docs/plan/`](./docs/plan/) — high-level feature plans
-- [`docs/plans/`](./docs/plans/) — execution-ready RALPHEX-aligned implementation plans
+- [`docs/plans/`](./docs/plans/) — execution-ready RALPHEX-aligned implementation plans, consumed one task section at a time
 
 ## Read Next
 
