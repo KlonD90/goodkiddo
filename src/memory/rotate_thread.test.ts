@@ -161,4 +161,37 @@ describe("rotateThread", () => {
 		const log = await readOrEmpty(backend, MEMORY_LOG_PATH);
 		expect(log).not.toContain("thread_closed");
 	});
+
+	test("keeps the current thread active when persisting the rotated thread id fails", async () => {
+		const backend = createBackend("rotate-persist-failure");
+		const { model } = createStubModel("- summarized");
+		const session = {
+			threadId: "thread-before",
+			agent: {
+				async getState() {
+					return {
+						values: {
+							messages: [{ role: "user", content: "Continue with the fix" }],
+						},
+					};
+				},
+			},
+			workspace: backend,
+			model,
+			refreshAgent: async () => undefined,
+			persistThreadId: async () => {
+				throw new Error("persist failed");
+			},
+		} as unknown as ChannelAgentSession;
+
+		await expect(
+			rotateThread({
+				session,
+				model,
+				backend,
+				mintThreadId: () => "thread-after",
+			}),
+		).rejects.toThrow("persist failed");
+		expect(session.threadId).toBe("thread-before");
+	});
 });

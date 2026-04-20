@@ -486,6 +486,34 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 		expect(checkpoint?.sourceBoundary).toBe("message_limit");
 		await close();
 	});
+
+	test("preserves the original thread when persisting the rotated thread id fails", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			model: {
+				async invoke() {
+					return { content: JSON.stringify(SAMPLE_SUMMARY) };
+				},
+			} as unknown as BaseChatModel,
+			persistThreadId: async () => {
+				throw new Error("persist failed");
+			},
+			compactionConfig: {
+				caller: "user-5",
+				store,
+				thresholds: { messageLimit: 2, tokenBudget: 1_000_000 },
+			},
+		});
+
+		await expect(
+			maybeAutoCompactAndSeed(session, makeMessages(["q1", "a1"]), "next", () =>
+				"rotated-thread",
+			),
+		).rejects.toThrow("persist failed");
+		expect(session.threadId).toBe("test-thread");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		await close();
+	});
 });
 
 describe("maybeResumeCompactAndSeed", () => {
@@ -564,6 +592,35 @@ describe("maybeResumeCompactAndSeed", () => {
 		await expect(
 			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () => "unused"),
 		).rejects.toThrow("LLM unavailable");
+		expect(session.threadId).toBe("test-thread");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(session.needsResumeCompaction).toBe(true);
+		await close();
+	});
+
+	test("preserves resume-compaction state when persisting the rotated thread id fails", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			model: {
+				async invoke() {
+					return { content: JSON.stringify(SAMPLE_SUMMARY) };
+				},
+			} as unknown as BaseChatModel,
+			needsResumeCompaction: true,
+			persistThreadId: async () => {
+				throw new Error("persist failed");
+			},
+			compactionConfig: {
+				caller: "resume-user",
+				store,
+			},
+		});
+
+		await expect(
+			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () =>
+				"rotated-thread",
+			),
+		).rejects.toThrow("persist failed");
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 		expect(session.needsResumeCompaction).toBe(true);

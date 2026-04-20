@@ -114,6 +114,9 @@ export async function maybeHandleSessionCommand(
 		.split("@", 1)[0];
 
 	if (command === "new-thread" || command === "new_thread") {
+		let pendingSeed:
+			| ChannelAgentSession["pendingCompactionSeed"]
+			| undefined;
 		if (context.compaction) {
 			const messages = await readThreadMessages(
 				context.session.agent,
@@ -132,7 +135,7 @@ export async function maybeHandleSessionCommand(
 			// so the model has operational continuity without replaying full history.
 			const recentTurns = extractRecentTurns(messages, 2);
 			const summaryObj = deserializeCheckpointSummary(checkpoint.summaryPayload);
-			context.session.pendingCompactionSeed = {
+			pendingSeed = {
 				summary: summaryObj,
 				recentTurns,
 			};
@@ -144,6 +147,7 @@ export async function maybeHandleSessionCommand(
 			backend: context.backend,
 			mintThreadId: context.mintThreadId,
 		});
+		context.session.pendingCompactionSeed = pendingSeed;
 		return {
 			handled: true,
 			reply: [

@@ -376,6 +376,51 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		expect(session.pendingCompactionSeed).toBeDefined();
 		await close();
 	});
+
+	test("does not leave a pending seed behind when rotation fails after checkpoint creation", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("thread-rotation-failure", [
+			{ role: "user", content: "work item" },
+			{ role: "assistant", content: "still open" },
+		]);
+		const model = {
+			async invoke(messages: Array<{ role: string; content: string }>) {
+				const systemPrompt = messages[0]?.content ?? "";
+				if (systemPrompt.includes("compacted into a checkpoint")) {
+					return {
+						content: JSON.stringify({
+							current_goal: "test goal",
+							decisions: [],
+							constraints: [],
+							unfinished_work: [],
+							pending_approvals: [],
+							important_artifacts: [],
+						}),
+					};
+				}
+				throw new Error("rotation summary failed");
+			},
+		} as unknown as BaseChatModel;
+		const backend = session.workspace;
+
+		const ctx: SessionCommandContext = {
+			session,
+			model,
+			backend,
+			mintThreadId: () => "unused-thread",
+			compaction: { caller: "dora", store },
+		};
+
+		await expect(maybeHandleSessionCommand("/new_thread", ctx)).rejects.toThrow(
+			"rotation summary failed",
+		);
+		expect(session.threadId).toBe("thread-rotation-failure");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+
+		const checkpoint = await store.readLatest("dora", "thread-rotation-failure");
+		expect(checkpoint?.sourceBoundary).toBe("new_thread");
+		await close();
+	});
 });
 
 // ---------------------------------------------------------------------------

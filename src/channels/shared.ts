@@ -197,9 +197,9 @@ async function rotateSessionThread(
 	session: ChannelAgentSession,
 	newThreadId: string,
 ): Promise<void> {
+	await session.persistThreadId?.(newThreadId);
 	session.threadId = newThreadId;
 	session.needsResumeCompaction = false;
-	await session.persistThreadId?.(newThreadId);
 }
 
 export async function maybeResumeCompactAndSeed(

@@ -138,9 +138,9 @@ export async function rotateThread(options: {
 	await appendLog(backend, "thread_closed", summary);
 
 	const newThreadId = mintThreadId();
+	await session.persistThreadId?.(newThreadId);
 	session.threadId = newThreadId;
 	session.needsResumeCompaction = false;
-	await session.persistThreadId?.(newThreadId);
 
 	return { summary, previousThreadId, newThreadId };
 }
