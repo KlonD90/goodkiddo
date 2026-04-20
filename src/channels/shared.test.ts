@@ -141,6 +141,51 @@ describe("channel task-check state", () => {
 		}
 	});
 
+	test("runs reconciliation on the first substantive turn of a new session", async () => {
+		const db = createDb("sqlite://:memory:");
+		try {
+			const store = new PermissionsStore({ db, dialect: "sqlite" });
+			const session = await createChannelAgentSession(TEST_CONFIG, {
+				db,
+				dialect: "sqlite",
+				caller: {
+					id: "cli:tester",
+					entrypoint: "cli",
+					externalId: "tester",
+					displayName: "Tester",
+				},
+				store,
+				broker: NOOP_BROKER,
+				threadId: "cli-tester",
+			});
+			const taskStore = session.taskCheckConfig?.store;
+			if (!taskStore) throw new Error("Expected task-check store");
+			await taskStore.addTask({
+				userId: "cli:tester",
+				threadIdCreated: session.threadId,
+				listName: "today",
+				title: "Review task boundary tests",
+			});
+
+			const result = await maybeRunPendingTaskCheck(
+				session,
+				"I finished review task boundary tests.",
+			);
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: true,
+			});
+			expect(session.pendingTaskCheck).toBe(false);
+			expect(session.pendingTaskCheckContext).toContain(
+				"Automatically completed active task",
+			);
+			expect(await taskStore.listActiveTasks("cli:tester")).toHaveLength(0);
+		} finally {
+			await db.close();
+		}
+	});
+
 	test("maybeRunPendingTaskCheck consumes the boundary flag and adds one-turn context for obvious completions", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		try {
@@ -177,6 +222,122 @@ describe("channel task-check state", () => {
 
 			clearPendingTaskCheckContext(session);
 			expect(session.pendingTaskCheckContext).toBeUndefined();
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("leaves ambiguous completion candidates unchanged on boundary turns", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			await store.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Fix webhook bug",
+			});
+			await store.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Fix checkout bug",
+			});
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: true,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(session, "I fixed the bug.");
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: false,
+			});
+			expect(session.pendingTaskCheck).toBe(false);
+			expect(session.pendingTaskCheckContext).toBeUndefined();
+			expect(await store.listActiveTasks("cli:tester")).toHaveLength(2);
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("returns a confirmation prompt for dismiss candidates on boundary turns", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			const task = await store.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "backlog",
+				title: "Draft migration plan",
+			});
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: true,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(
+				session,
+				"We don't need draft migration plan anymore.",
+			);
+
+			expect(result).toEqual({
+				handled: true,
+				reply: expect.stringContaining(`dismiss task ${task.id}`),
+				needsRefresh: false,
+			});
+			expect(session.pendingTaskCheck).toBe(false);
+			expect(session.pendingTaskCheckContext).toBeUndefined();
+			expect(await store.getTask(task.id, "cli:tester")).toMatchObject({
+				id: task.id,
+				status: "active",
+			});
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("does not run reconciliation on non-boundary turns", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const store = new TaskStore({ db, dialect: "sqlite" });
+			const task = await store.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Ship release notes",
+			});
+			const session = stubSession({
+				threadId: "thread-b",
+				pendingTaskCheck: false,
+				taskCheckConfig: {
+					caller: "cli:tester",
+					store,
+				},
+			});
+
+			const result = await maybeRunPendingTaskCheck(
+				session,
+				"I finished ship release notes.",
+			);
+
+			expect(result).toEqual({
+				handled: false,
+				needsRefresh: false,
+			});
+			expect(await store.getTask(task.id, "cli:tester")).toMatchObject({
+				id: task.id,
+				status: "active",
+			});
 		} finally {
 			await db.close();
 		}

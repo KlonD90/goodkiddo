@@ -42,12 +42,12 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - [x] Keep normal turn behavior unchanged outside defined boundary checks.
 
 ### Task 5: Add tests for boundary behavior
-- [ ] Add coverage for the first substantive user turn of a new session.
-- [ ] Add coverage proving `/new_thread` sets pending reconciliation for the next substantive user turn.
-- [ ] Add coverage for obvious single-task completion.
-- [ ] Add coverage for ambiguous completion candidates that must not auto-complete.
-- [ ] Add coverage for dismiss candidates that ask for confirmation.
-- [ ] Add coverage proving non-boundary turns do not run reconciliation.
+- [x] Add coverage for the first substantive user turn of a new session.
+- [x] Add coverage proving `/new_thread` sets pending reconciliation for the next substantive user turn.
+- [x] Add coverage for obvious single-task completion.
+- [x] Add coverage for ambiguous completion candidates that must not auto-complete.
+- [x] Add coverage for dismiss candidates that ask for confirmation.
+- [x] Add coverage proving non-boundary turns do not run reconciliation.
 
 ### Task 6: Update docs
 - [ ] Add the high-level feature doc under `docs/plan/`.
