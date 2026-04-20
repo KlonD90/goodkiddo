@@ -326,14 +326,14 @@ export async function maybeRunPendingTaskCheck(
 		return { handled: false, needsRefresh: false };
 	}
 
-	session.pendingTaskCheck = false;
-	session.pendingTaskCheckContext = undefined;
 	const result = await reconcileActiveTasksAtBoundary({
 		store: session.taskCheckConfig.store,
 		userId: session.taskCheckConfig.caller,
 		threadId: session.threadId,
 		messageText,
 	});
+	session.pendingTaskCheck = false;
+	session.pendingTaskCheckContext = undefined;
 
 	if (result.kind === "dismiss_confirmation") {
 		return {

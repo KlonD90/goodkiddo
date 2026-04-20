@@ -360,6 +360,28 @@ describe("channel task-check state", () => {
 		}
 	});
 
+	test("preserves the boundary flag when reconciliation throws", async () => {
+		const session = stubSession({
+			threadId: "thread-b",
+			pendingTaskCheck: true,
+			pendingTaskCheckContext: "keep-existing-context",
+			taskCheckConfig: {
+				caller: "cli:tester",
+				store: {
+					async listActiveTasks() {
+						throw new Error("task store unavailable");
+					},
+				} as unknown as TaskStore,
+			},
+		});
+
+		await expect(
+			maybeRunPendingTaskCheck(session, "I finished the work."),
+		).rejects.toThrow("task store unavailable");
+		expect(session.pendingTaskCheck).toBe(true);
+		expect(session.pendingTaskCheckContext).toBe("keep-existing-context");
+	});
+
 	test("does not run reconciliation on non-boundary turns", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		try {
