@@ -208,8 +208,10 @@ export async function maybeResumeCompactAndSeed(
 	mintThreadId: () => string,
 ): Promise<boolean> {
 	if (!session.compactionConfig || !session.needsResumeCompaction) return false;
-	session.needsResumeCompaction = false;
-	if (messages.length === 0) return false;
+	if (messages.length === 0) {
+		session.needsResumeCompaction = false;
+		return false;
+	}
 
 	const { caller, store } = session.compactionConfig;
 	const checkpoint = await triggerOnSessionResume({

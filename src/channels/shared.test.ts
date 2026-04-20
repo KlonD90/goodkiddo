@@ -545,6 +545,30 @@ describe("maybeResumeCompactAndSeed", () => {
 		expect(session.needsResumeCompaction).toBe(false);
 		await close();
 	});
+
+	test("preserves resume-compaction state when checkpoint creation fails", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			model: {
+				async invoke() {
+					throw new Error("LLM unavailable");
+				},
+			} as unknown as BaseChatModel,
+			needsResumeCompaction: true,
+			compactionConfig: {
+				caller: "resume-user",
+				store,
+			},
+		});
+
+		await expect(
+			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () => "unused"),
+		).rejects.toThrow("LLM unavailable");
+		expect(session.threadId).toBe("test-thread");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(session.needsResumeCompaction).toBe(true);
+		await close();
+	});
 });
 
 // ---------------------------------------------------------------------------

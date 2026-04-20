@@ -97,7 +97,10 @@ export async function readThreadMessages(
 	threadId: string,
 ): Promise<ThreadMessage[]> {
 	const stateful = agent as unknown as AgentWithState;
-	if (!stateful.getState) return [];
+	if (!stateful.getState) {
+		throw new Error("Agent does not support thread state retrieval.");
+	}
+
 	try {
 		const state = await stateful.getState({
 			configurable: { thread_id: threadId },
@@ -106,8 +109,10 @@ export async function readThreadMessages(
 		return raw
 			.map((item) => toThreadMessage(item))
 			.filter((msg): msg is ThreadMessage => msg !== null);
-	} catch {
-		return [];
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "unknown thread state error";
+		throw new Error(`Failed to read thread messages for ${threadId}: ${message}`);
 	}
 }
 

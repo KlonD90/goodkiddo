@@ -5,7 +5,7 @@ import { createDb, detectDialect } from "../db";
 import type { ChannelAgentSession } from "../channels/shared";
 import { readOrEmpty } from "./fs";
 import { MEMORY_LOG_PATH } from "./layout";
-import { rotateThread } from "./rotate_thread";
+import { readThreadMessages, rotateThread } from "./rotate_thread";
 
 function createBackend(namespace: string) {
 	const db = createDb("sqlite://:memory:");
@@ -123,5 +123,42 @@ describe("rotateThread", () => {
 		expect(seen[1]?.content).toContain("USER: Continue with the fix");
 		expect(seen[1]?.content).toContain("ASSISTANT: Working on it.");
 		expect(seen[1]?.content).not.toContain("[Conversation Checkpoint]");
+	});
+
+	test("propagates thread-state read failures instead of treating them as empty history", async () => {
+		const backend = createBackend("rotate-read-failure");
+		const { model } = createStubModel("- should not be used");
+		const agent = {
+			async getState() {
+				throw new Error("db unavailable");
+			},
+		};
+
+		await expect(readThreadMessages(agent as never, "broken-thread")).rejects.toThrow(
+			"Failed to read thread messages for broken-thread: db unavailable",
+		);
+
+		const session = {
+			threadId: "broken-thread",
+			agent,
+			workspace: backend,
+			model,
+			refreshAgent: async () => undefined,
+		} as unknown as ChannelAgentSession;
+
+		await expect(
+			rotateThread({
+				session,
+				model,
+				backend,
+				mintThreadId: () => "next-thread",
+			}),
+		).rejects.toThrow(
+			"Failed to read thread messages for broken-thread: db unavailable",
+		);
+		expect(session.threadId).toBe("broken-thread");
+
+		const log = await readOrEmpty(backend, MEMORY_LOG_PATH);
+		expect(log).not.toContain("thread_closed");
 	});
 });
