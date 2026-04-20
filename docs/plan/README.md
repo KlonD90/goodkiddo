@@ -1,22 +1,26 @@
 # Plans
 
-Planning documents live here. Two types, one per feature/initiative.
+High-level feature planning documents live here.
 
-| Type | Prefix | Purpose |
-|------|--------|---------|
-| Feature | `feature-*.md` | High-level: what and why, user cases, scope |
-| Tasks | `tasks-*.md` | Low-level: agent-sized work items, 10–20 min each |
+This repository now uses two related planning layers:
 
-Use matching slugs: `feature-voice-messages.md` → `tasks-voice-messages.md`.
+| Location | Purpose |
+|------|---------|
+| `docs/plan/` | High-level feature docs: what and why |
+| `docs/plans/` | RALPHEX-aligned execution plans: ordered implementation tasks and validation commands |
+
+Legacy task lists in this directory still exist and remain valid. New execution-ready plans should prefer `docs/plans/`.
 
 ---
 
 ## Active plans
 
-| Feature | Task lists |
+| Feature | Execution |
 |---------|-----------|
-| [Interchangeable Databases](feature-interchangeable-databases.md) | [01 Foundation](tasks-db-01-foundation.md) · [02 Migrate Stores](tasks-db-02-migrate-stores.md) · [03 Checkpoint & Wiring](tasks-db-03-checkpoint-and-wiring.md) |
-| [Voice Messages](feature-voice-messages.md) | [Tasks](tasks-voice-messages.md) |
+| [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/plan/` |
+| [Voice Messages](feature-voice-messages.md) | Legacy task lists in `docs/plan/` |
+| [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
+| [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |
 
 ---
 
@@ -44,7 +48,7 @@ Key constraints, external dependencies, open questions.
 
 ---
 
-## Task plan format
+## Legacy task plan format
 
 Breaks a feature into work items an agent can complete in **10–20 minutes each**.
 Each task must have one clear goal, target specific files, and a testable done condition.
@@ -68,3 +72,9 @@ Each task must have one clear goal, target specific files, and a testable done c
 - Tasks are ordered: each one can assume the previous is complete.
 - Mark done with `[x]` as work completes.
 - Never put design decisions inside task items — those belong in the feature plan.
+
+---
+
+## Execution plans
+
+For new execution-ready plans, use `docs/plans/` and follow the RALPHEX-aligned format documented in [../plans/README.md](../plans/README.md).
