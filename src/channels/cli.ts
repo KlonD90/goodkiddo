@@ -2,6 +2,7 @@ import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import type { AppConfig } from "../config";
+import { createDb, detectDialect } from "../db/index";
 import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
@@ -50,16 +51,19 @@ export function resolveCliCaller(): Caller {
 	};
 }
 
-export function seedCliUser(store: PermissionsStore, caller: Caller): void {
-	const existing = store.getUser(caller.entrypoint, caller.externalId);
+export async function seedCliUser(
+	store: PermissionsStore,
+	caller: Caller,
+): Promise<void> {
+	const existing = await store.getUser(caller.entrypoint, caller.externalId);
 	if (existing) return;
-	store.upsertUser({
+	await store.upsertUser({
 		entrypoint: caller.entrypoint,
 		externalId: caller.externalId,
 		displayName: caller.displayName ?? null,
 	});
 	if (CLI_DEFAULT_POLICY === "strict") {
-		store.upsertRule(caller.id, {
+		await store.upsertRule(caller.id, {
 			priority: 1000,
 			toolName: "*",
 			args: null,
@@ -72,14 +76,18 @@ export const cliChannel: AppChannel = {
 	entrypoint: "cli",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const store = new PermissionsStore({ dbPath: config.stateDbPath });
+		const db = options?.db ?? createDb(config.databaseUrl);
+		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
+		const store = new PermissionsStore({ db, dialect });
 		const caller = resolveCliCaller();
-		seedCliUser(store, caller);
+		await seedCliUser(store, caller);
 
 		const broker = new CLIApprovalBroker(store);
 		const outbound = new CliOutboundChannel();
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
+			db,
+			dialect,
 			caller,
 			store,
 			broker,
@@ -133,7 +141,7 @@ export const cliChannel: AppChannel = {
 				continue;
 			}
 
-			const command = maybeHandleCommand(userInput, caller, store);
+			const command = await maybeHandleCommand(userInput, caller, store);
 			if (command.handled) {
 				console.log(command.reply);
 				console.log();
@@ -169,5 +177,8 @@ export const cliChannel: AppChannel = {
 		}
 
 		rl.close();
+		if (!options?.db) {
+			await db.close();
+		}
 	},
 };

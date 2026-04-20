@@ -1,7 +1,7 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import { type AppAgentBundle, createAppAgent } from "../app";
-import { createPersistentCheckpointer } from "../checkpoints/bun_sqlite_saver";
+import { createPersistentCheckpointer } from "../checkpoints/sql_saver";
 import type { AppConfig } from "../config";
 import type { ApprovalBroker } from "../permissions/approval";
 import { FileAuditLogger } from "../permissions/audit";
@@ -20,9 +20,13 @@ export type ChannelAgentSession = {
 	refreshAgent: () => Promise<void>;
 };
 
+type SQL = InstanceType<typeof Bun.SQL>;
+
 export async function createChannelAgentSession(
 	config: AppConfig,
 	options: {
+		db: SQL;
+		dialect: "sqlite" | "postgres";
 		caller: Caller;
 		store: PermissionsStore;
 		broker: ApprovalBroker;
@@ -32,9 +36,11 @@ export async function createChannelAgentSession(
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
-	const checkpointer = createPersistentCheckpointer(config.stateDbPath);
+	const checkpointer = createPersistentCheckpointer(options.db, options.dialect);
 	const makeBundle = () =>
 		createAppAgent(config, {
+			db: options.db,
+			dialect: options.dialect,
 			caller: options.caller,
 			store: options.store,
 			broker: options.broker,
@@ -102,8 +108,8 @@ export const extractAgentReply = (result: { messages?: unknown[] }): string => {
 		const message = messages[index];
 		if (!isAssistantMessage(message)) continue;
 		const content =
-			typeof message === "object" && message !== null
-				? extractTextFromContent(message.content)
+			typeof message === "object" && message !== null && "content" in message
+				? extractTextFromContent((message as { content: unknown }).content)
 				: "";
 		if (content !== "") return content;
 	}

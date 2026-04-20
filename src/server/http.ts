@@ -4,6 +4,7 @@ import { buildFrontendBundle } from "./frontend_build";
 import { createWebHandler } from "./routes";
 
 type BunServer = ReturnType<typeof Bun.serve>;
+type SQL = InstanceType<typeof Bun.SQL>;
 
 export interface WebServerHandle {
 	access: AccessStore;
@@ -17,16 +18,19 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function startWebServer(
 	config: AppConfig,
+	options: { db: SQL; dialect: "sqlite" | "postgres" },
 ): Promise<WebServerHandle> {
 	if (!config.webPublicBaseUrl) {
 		throw new Error("WEB_PUBLIC_BASE_URL must not be empty");
 	}
 
-	const access = new AccessStore({ dbPath: config.stateDbPath });
+	const { db, dialect } = options;
+	const access = new AccessStore({ db, dialect });
 	const bundle = await buildFrontendBundle();
 	const handler = createWebHandler({
 		access,
-		stateDbPath: config.stateDbPath,
+		db,
+		dialect,
 		bundle,
 		publicBaseUrl: config.webPublicBaseUrl,
 	});

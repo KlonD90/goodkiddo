@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import { ensureMemoryBootstrapped } from "./bootstrap";
 import { overwrite } from "./fs";
 import { upsertIndexFile } from "./index_manager";
@@ -7,7 +8,9 @@ import { MEMORY_INDEX_PATH, MEMORY_PROMPT_CHAR_CAP } from "./layout";
 import { formatMaintenanceBlock, isEmpty, runLint } from "./lint";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 describe("runLint", () => {

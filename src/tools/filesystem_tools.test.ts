@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import {
 	createEditFileTool,
 	createGlobTool,
@@ -10,7 +11,9 @@ import {
 } from "./filesystem_tools";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 const ONE_BY_ONE_PNG = Uint8Array.from([
@@ -23,8 +26,8 @@ const ONE_BY_ONE_PNG = Uint8Array.from([
 describe("createLsTool", () => {
 	test("lists files and directories", async () => {
 		const backend = createBackend("ls-list");
-		backend.write("/root.txt", "hello");
-		backend.write("/nested/child.txt", "world");
+		await backend.write("/root.txt", "hello");
+		await backend.write("/nested/child.txt", "world");
 		const tool = createLsTool(backend);
 
 		const result = await tool.invoke({ path: "/" });
@@ -45,7 +48,7 @@ describe("createLsTool", () => {
 describe("createReadFileTool", () => {
 	test("formats file data with line numbers", async () => {
 		const backend = createBackend("read-format");
-		backend.write("/notes.txt", "alpha\nbeta");
+		await backend.write("/notes.txt", "alpha\nbeta");
 		const tool = createReadFileTool(backend);
 
 		const result = await tool.invoke({ file_path: "/notes.txt" });
@@ -55,7 +58,7 @@ describe("createReadFileTool", () => {
 
 	test("supports pagination", async () => {
 		const backend = createBackend("read-page");
-		backend.write("/notes.txt", "alpha\nbeta\ngamma");
+		await backend.write("/notes.txt", "alpha\nbeta\ngamma");
 		const tool = createReadFileTool(backend);
 
 		const result = await tool.invoke({
@@ -69,7 +72,7 @@ describe("createReadFileTool", () => {
 
 	test("returns empty-file warning", async () => {
 		const backend = createBackend("read-empty");
-		backend.write("/empty.txt", "");
+		await backend.write("/empty.txt", "");
 		const tool = createReadFileTool(backend);
 
 		const result = await tool.invoke({ file_path: "/empty.txt" });
@@ -79,7 +82,7 @@ describe("createReadFileTool", () => {
 
 	test("returns offset error when beyond file length", async () => {
 		const backend = createBackend("read-offset");
-		backend.write("/notes.txt", "alpha");
+		await backend.write("/notes.txt", "alpha");
 		const tool = createReadFileTool(backend);
 
 		const result = await tool.invoke({ file_path: "/notes.txt", offset: 5 });
@@ -98,7 +101,7 @@ describe("createReadFileTool", () => {
 
 	test("returns multimodal content blocks for images", async () => {
 		const backend = createBackend("read-image");
-		backend.uploadFiles([["/pixel.png", ONE_BY_ONE_PNG]]);
+		await backend.uploadFiles([["/pixel.png", ONE_BY_ONE_PNG]]);
 		const tool = createReadFileTool(backend);
 
 		const result = await tool.invoke({ file_path: "/pixel.png" });
@@ -126,14 +129,14 @@ describe("createWriteFileTool", () => {
 		const result = await tool.invoke({ file_path: "/notes.txt", content: "" });
 
 		expect(result).toBe("Successfully wrote to '/notes.txt'");
-		expect(backend.read("/notes.txt", 0, 10)).toBe(
+		expect(await backend.read("/notes.txt", 0, 10)).toBe(
 			"System reminder: File exists but has empty contents",
 		);
 	});
 
 	test("returns backend error when writing an existing file", async () => {
 		const backend = createBackend("write-existing");
-		backend.write("/notes.txt", "alpha");
+		await backend.write("/notes.txt", "alpha");
 		const tool = createWriteFileTool(backend);
 
 		const result = await tool.invoke({
@@ -150,7 +153,7 @@ describe("createWriteFileTool", () => {
 describe("createEditFileTool", () => {
 	test("edits a file and returns upstream success message", async () => {
 		const backend = createBackend("edit-ok");
-		backend.write("/notes.txt", "alpha\nbeta");
+		await backend.write("/notes.txt", "alpha\nbeta");
 		const tool = createEditFileTool(backend);
 
 		const result = await tool.invoke({
@@ -162,14 +165,14 @@ describe("createEditFileTool", () => {
 		expect(result).toBe(
 			"Successfully replaced 1 occurrence(s) in '/notes.txt'",
 		);
-		expect(backend.read("/notes.txt", 0, 10)).toBe(
+		expect(await backend.read("/notes.txt", 0, 10)).toBe(
 			"     1\talpha\n     2\tgamma",
 		);
 	});
 
 	test("returns not-found error for missing old string", async () => {
 		const backend = createBackend("edit-missing-string");
-		backend.write("/notes.txt", "alpha");
+		await backend.write("/notes.txt", "alpha");
 		const tool = createEditFileTool(backend);
 
 		const result = await tool.invoke({
@@ -183,7 +186,7 @@ describe("createEditFileTool", () => {
 
 	test("requires replace_all for multiple matches", async () => {
 		const backend = createBackend("edit-multi");
-		backend.write("/notes.txt", "alpha\nalpha");
+		await backend.write("/notes.txt", "alpha\nalpha");
 		const tool = createEditFileTool(backend);
 
 		const result = await tool.invoke({
@@ -199,7 +202,7 @@ describe("createEditFileTool", () => {
 
 	test("supports replace_all", async () => {
 		const backend = createBackend("edit-replace-all");
-		backend.write("/notes.txt", "alpha\nalpha");
+		await backend.write("/notes.txt", "alpha\nalpha");
 		const tool = createEditFileTool(backend);
 
 		const result = await tool.invoke({
@@ -212,7 +215,7 @@ describe("createEditFileTool", () => {
 		expect(result).toBe(
 			"Successfully replaced 2 occurrence(s) in '/notes.txt'",
 		);
-		expect(backend.read("/notes.txt", 0, 10)).toBe(
+		expect(await backend.read("/notes.txt", 0, 10)).toBe(
 			"     1\tbeta\n     2\tbeta",
 		);
 	});
@@ -221,9 +224,9 @@ describe("createEditFileTool", () => {
 describe("createGlobTool", () => {
 	test("returns matching files", async () => {
 		const backend = createBackend("glob-match");
-		backend.write("/a.ts", "a");
-		backend.write("/nested/b.ts", "b");
-		backend.write("/c.txt", "c");
+		await backend.write("/a.ts", "a");
+		await backend.write("/nested/b.ts", "b");
+		await backend.write("/c.txt", "c");
 		const tool = createGlobTool(backend);
 
 		const result = await tool.invoke({ pattern: "**/*.ts", path: "/" });
@@ -244,8 +247,8 @@ describe("createGlobTool", () => {
 describe("createGrepTool", () => {
 	test("groups regex matches by file", async () => {
 		const backend = createBackend("grep-grouped");
-		backend.write("/a.ts", "const alpha = 1;\nconst beta = 2;");
-		backend.write("/b.ts", "const bravo = 3;");
+		await backend.write("/a.ts", "const alpha = 1;\nconst beta = 2;");
+		await backend.write("/b.ts", "const bravo = 3;");
 		const tool = createGrepTool(backend);
 
 		const result = await tool.invoke({
@@ -261,7 +264,7 @@ describe("createGrepTool", () => {
 
 	test("returns upstream empty-result message", async () => {
 		const backend = createBackend("grep-empty");
-		backend.write("/a.ts", "const alpha = 1;");
+		await backend.write("/a.ts", "const alpha = 1;");
 		const tool = createGrepTool(backend);
 
 		const result = await tool.invoke({
@@ -275,7 +278,7 @@ describe("createGrepTool", () => {
 
 	test("returns no matches for invalid regex", async () => {
 		const backend = createBackend("grep-invalid");
-		backend.write("/a.ts", "const alpha = 1;");
+		await backend.write("/a.ts", "const alpha = 1;");
 		const tool = createGrepTool(backend);
 
 		const result = await tool.invoke({ pattern: "(", path: "/", glob: "*.ts" });

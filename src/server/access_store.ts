@@ -1,8 +1,7 @@
-import { Database } from "bun:sqlite";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
-import { normalizePath } from "../backends/sqlite_state_backend";
+import { normalizePath } from "../backends/state_backend";
+
+type SQL = InstanceType<typeof Bun.SQL>;
 
 export type ScopeKind = "root" | "dir" | "file";
 
@@ -63,40 +62,49 @@ function rowToResolvedGrant(row: GrantRow): ResolvedGrant {
 }
 
 export interface AccessStoreOptions {
-	dbPath: string;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 	now?: () => number;
 }
 
 export class AccessStore {
-	private readonly database: Database;
+	private readonly database: SQL;
+	private readonly dialect: "sqlite" | "postgres";
 	private readonly now: () => number;
+	private readonly _ready: Promise<void>;
 
 	constructor(options: AccessStoreOptions) {
-		if (options.dbPath !== ":memory:") {
-			mkdirSync(dirname(options.dbPath), { recursive: true });
-		}
-		this.database = new Database(options.dbPath);
-		this.database.exec("PRAGMA journal_mode = WAL");
-		this.database.exec("PRAGMA foreign_keys = ON");
-		this.database.exec(`
-			CREATE TABLE IF NOT EXISTS fs_access_grants (
-				link_uuid TEXT PRIMARY KEY,
-				bearer_token TEXT NOT NULL UNIQUE,
-				user_id TEXT NOT NULL,
-				scope_path TEXT NOT NULL,
-				scope_kind TEXT NOT NULL,
-				expires_at INTEGER NOT NULL,
-				created_at INTEGER NOT NULL,
-				revoked_at INTEGER
-			)
-		`);
-		this.database.exec(
-			"CREATE INDEX IF NOT EXISTS idx_fs_access_grants_user ON fs_access_grants(user_id)",
-		);
+		this.database = options.db;
+		this.dialect = options.dialect;
 		this.now = options.now ?? (() => Date.now());
+		this._ready = this._init();
+		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
 	}
 
-	issue(userId: string, options: IssueOptions = {}): IssuedGrant {
+	private async _init(): Promise<void> {
+		const db = this.database;
+		await db`
+      CREATE TABLE IF NOT EXISTS fs_access_grants (
+        link_uuid TEXT PRIMARY KEY,
+        bearer_token TEXT NOT NULL UNIQUE,
+        user_id TEXT NOT NULL,
+        scope_path TEXT NOT NULL,
+        scope_kind TEXT NOT NULL,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        revoked_at INTEGER
+      )
+    `;
+		await db`
+      CREATE INDEX IF NOT EXISTS idx_fs_access_grants_user ON fs_access_grants(user_id)
+    `;
+		if (this.dialect === "sqlite") {
+			await db`PRAGMA journal_mode = WAL`;
+		}
+	}
+
+	async issue(userId: string, options: IssueOptions = {}): Promise<IssuedGrant> {
+		await this._ready;
 		const ttlMs = Math.min(options.ttlMs ?? MAX_TTL_MS, MAX_TTL_MS);
 		if (ttlMs <= 0) {
 			throw new Error("ttlMs must be positive");
@@ -114,83 +122,85 @@ export class AccessStore {
 		const createdAt = this.now();
 		const expiresAt = createdAt + ttlMs;
 
-		this.database
-			.query(
-				`INSERT INTO fs_access_grants
-					(link_uuid, bearer_token, user_id, scope_path, scope_kind, expires_at, created_at, revoked_at)
-				 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)`,
-			)
-			.run(
-				linkUuid,
-				bearerToken,
-				userId,
-				scopePath,
-				scopeKind,
-				expiresAt,
-				createdAt,
-			);
+		const db = this.database;
+		await db`
+      INSERT INTO fs_access_grants
+        (link_uuid, bearer_token, user_id, scope_path, scope_kind, expires_at, created_at, revoked_at)
+      VALUES (${linkUuid}, ${bearerToken}, ${userId}, ${scopePath}, ${scopeKind}, ${expiresAt}, ${createdAt}, NULL)
+    `;
 
 		return { linkUuid, userId, scopePath, scopeKind, expiresAt, bearerToken };
 	}
 
-	resolveLink(linkUuid: string): ResolvedGrant | null {
-		const row = this.database
-			.query<GrantRow, [string, number]>(
-				`SELECT * FROM fs_access_grants
-				 WHERE link_uuid = ?1 AND revoked_at IS NULL AND expires_at > ?2`,
-			)
-			.get(linkUuid, this.now());
-		return row ? rowToResolvedGrant(row) : null;
+	async resolveLink(linkUuid: string): Promise<ResolvedGrant | null> {
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		const rows = await db<GrantRow[]>`
+      SELECT * FROM fs_access_grants
+      WHERE link_uuid = ${linkUuid} AND revoked_at IS NULL AND expires_at > ${now}
+    `;
+		return rows[0] ? rowToResolvedGrant(rows[0]) : null;
 	}
 
-	resolveBearer(bearerToken: string): ResolvedGrant | null {
+	async resolveBearer(bearerToken: string): Promise<ResolvedGrant | null> {
 		if (bearerToken === "") return null;
-		const row = this.database
-			.query<GrantRow, [string, number]>(
-				`SELECT * FROM fs_access_grants
-				 WHERE bearer_token = ?1 AND revoked_at IS NULL AND expires_at > ?2`,
-			)
-			.get(bearerToken, this.now());
-		return row ? rowToResolvedGrant(row) : null;
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		const rows = await db<GrantRow[]>`
+      SELECT * FROM fs_access_grants
+      WHERE bearer_token = ${bearerToken} AND revoked_at IS NULL AND expires_at > ${now}
+    `;
+		return rows[0] ? rowToResolvedGrant(rows[0]) : null;
 	}
 
-	revokeByLink(linkUuid: string): void {
-		this.database
-			.query(
-				"UPDATE fs_access_grants SET revoked_at = ?2 WHERE link_uuid = ?1 AND revoked_at IS NULL",
-			)
-			.run(linkUuid, this.now());
+	async revokeByLink(linkUuid: string): Promise<void> {
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		await db`
+      UPDATE fs_access_grants SET revoked_at = ${now}
+      WHERE link_uuid = ${linkUuid} AND revoked_at IS NULL
+    `;
 	}
 
-	revokeByUser(userId: string): number {
-		const result = this.database
-			.query(
-				"UPDATE fs_access_grants SET revoked_at = ?2 WHERE user_id = ?1 AND revoked_at IS NULL",
-			)
-			.run(userId, this.now());
-		return Number(result.changes);
+	async revokeByUser(userId: string): Promise<number> {
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		const result = await db<GrantRow[]>`
+      UPDATE fs_access_grants SET revoked_at = ${now}
+      WHERE user_id = ${userId} AND revoked_at IS NULL
+      RETURNING link_uuid
+    `;
+		return result.length;
 	}
 
-	listActive(userId: string): AccessGrant[] {
-		const rows = this.database
-			.query<GrantRow, [string, number]>(
-				`SELECT * FROM fs_access_grants
-				 WHERE user_id = ?1 AND revoked_at IS NULL AND expires_at > ?2
-				 ORDER BY created_at DESC`,
-			)
-			.all(userId, this.now());
+	async listActive(userId: string): Promise<AccessGrant[]> {
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		const rows = await db<GrantRow[]>`
+      SELECT * FROM fs_access_grants
+      WHERE user_id = ${userId} AND revoked_at IS NULL AND expires_at > ${now}
+      ORDER BY created_at DESC
+    `;
 		return rows.map(rowToGrant);
 	}
 
-	sweepExpired(): number {
-		const result = this.database
-			.query("DELETE FROM fs_access_grants WHERE expires_at <= ?1")
-			.run(this.now());
-		return Number(result.changes);
+	async sweepExpired(): Promise<number> {
+		await this._ready;
+		const db = this.database;
+		const now = this.now();
+		const result = await db<GrantRow[]>`
+      DELETE FROM fs_access_grants WHERE expires_at <= ${now} RETURNING link_uuid
+    `;
+		return result.length;
 	}
 
 	close(): void {
-		this.database.close();
+		// No-op: lifecycle is managed by the injected db connection
 	}
 }
 

@@ -1,17 +1,17 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import type { RunnableConfig } from "@langchain/core/runnables";
 import {
 	type BaseCheckpointSaver,
-	type ChannelVersions,
 	type Checkpoint,
-	type CheckpointListOptions,
 	type CheckpointMetadata,
 	type CheckpointTuple,
 	MemorySaver,
-	type PendingWrite,
 } from "@langchain/langgraph";
+import type {
+	CheckpointListOptions,
+	PendingWrite,
+} from "@langchain/langgraph-checkpoint";
+
+type SQL = InstanceType<typeof Bun.SQL>;
 
 const ERROR_CHANNEL = "__error__";
 const SCHEDULED_CHANNEL = "__scheduled__";
@@ -25,6 +25,8 @@ const WRITE_INDEX_BY_CHANNEL: Record<string, number> = {
 	[RESUME_CHANNEL]: -4,
 };
 
+type SqlBinary = Uint8Array | ArrayBuffer | string;
+
 type SerializedRow = {
 	type: string;
 	data: Uint8Array;
@@ -32,17 +34,23 @@ type SerializedRow = {
 
 type CheckpointRow = {
 	checkpoint_type: string;
-	checkpoint_data: Uint8Array;
+	checkpoint_data: SqlBinary;
 	metadata_type: string;
-	metadata_data: Uint8Array;
+	metadata_data: SqlBinary;
 	parent_checkpoint_id: string | null;
+};
+
+type CheckpointLookupRow = CheckpointRow & {
+	thread_id: string;
+	checkpoint_ns: string;
+	checkpoint_id: string;
 };
 
 type PendingWriteRow = {
 	task_id: string;
 	channel: string;
 	value_type: string;
-	value_data: Uint8Array;
+	value_data: SqlBinary;
 	write_idx: number;
 };
 
@@ -71,39 +79,44 @@ function metadataMatchesFilter(
 	);
 }
 
-export class BunSqliteSaver extends MemorySaver {
-	public readonly db: Database;
+export class SqlSaver extends MemorySaver {
+	public readonly db: SQL;
 
-	constructor(dbOrPath: Database | string) {
+	private readonly dialect: "sqlite" | "postgres";
+	private readonly _ready: Promise<void>;
+
+	constructor(db: SQL, dialect: "sqlite" | "postgres") {
 		super();
+		this.db = db;
+		this.dialect = dialect;
+		this._ready = this.init();
+		this._ready.catch(() => {});
+	}
 
-		if (typeof dbOrPath === "string") {
-			if (dbOrPath !== ":memory:") {
-				mkdirSync(dirname(dbOrPath), { recursive: true });
-			}
-			this.db = new Database(dbOrPath, { create: true });
-		} else {
-			this.db = dbOrPath;
+	private async init(): Promise<void> {
+		const binaryType = this.dialect === "postgres" ? "BYTEA" : "BLOB";
+		if (this.dialect === "sqlite") {
+			await this.db`PRAGMA journal_mode = WAL`;
 		}
 
-		this.db.exec(`
-			PRAGMA journal_mode = WAL;
-
+		await this.db.unsafe(`
 			CREATE TABLE IF NOT EXISTS langgraph_checkpoints (
 				thread_id TEXT NOT NULL,
 				checkpoint_ns TEXT NOT NULL,
 				checkpoint_id TEXT NOT NULL,
 				checkpoint_type TEXT NOT NULL,
-				checkpoint_data BLOB NOT NULL,
+				checkpoint_data ${binaryType} NOT NULL,
 				metadata_type TEXT NOT NULL,
-				metadata_data BLOB NOT NULL,
+				metadata_data ${binaryType} NOT NULL,
 				parent_checkpoint_id TEXT,
 				PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
-			);
-
+			)
+		`);
+		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_langgraph_checkpoints_lookup
-			ON langgraph_checkpoints(thread_id, checkpoint_ns, checkpoint_id);
-
+			ON langgraph_checkpoints(thread_id, checkpoint_ns, checkpoint_id)
+		`;
+		await this.db.unsafe(`
 			CREATE TABLE IF NOT EXISTS langgraph_checkpoint_writes (
 				thread_id TEXT NOT NULL,
 				checkpoint_ns TEXT NOT NULL,
@@ -112,7 +125,7 @@ export class BunSqliteSaver extends MemorySaver {
 				write_idx INTEGER NOT NULL,
 				channel TEXT NOT NULL,
 				value_type TEXT NOT NULL,
-				value_data BLOB NOT NULL,
+				value_data ${binaryType} NOT NULL,
 				PRIMARY KEY (
 					thread_id,
 					checkpoint_ns,
@@ -120,19 +133,16 @@ export class BunSqliteSaver extends MemorySaver {
 					task_id,
 					write_idx
 				)
-			);
-
-			CREATE INDEX IF NOT EXISTS idx_langgraph_checkpoint_writes_lookup
-			ON langgraph_checkpoint_writes(thread_id, checkpoint_ns, checkpoint_id);
+			)
 		`);
-	}
-
-	static fromConnString(path: string): BunSqliteSaver {
-		return new BunSqliteSaver(path);
+		await this.db`
+			CREATE INDEX IF NOT EXISTS idx_langgraph_checkpoint_writes_lookup
+			ON langgraph_checkpoint_writes(thread_id, checkpoint_ns, checkpoint_id)
+		`;
 	}
 
 	close(): void {
-		this.db.close();
+		// No-op: lifecycle is managed by the injected db connection.
 	}
 
 	private async serialize(value: unknown): Promise<SerializedRow> {
@@ -147,26 +157,25 @@ export class BunSqliteSaver extends MemorySaver {
 		return (await this.serde.loadsTyped(row.type, row.data)) as T;
 	}
 
-	private readPendingWrites(
+	private async readPendingWrites(
 		threadId: string,
 		checkpointNamespace: string,
 		checkpointId: string,
-	): PendingWriteRow[] {
-		return this.db
-			.query<PendingWriteRow, [string, string, string]>(`
-				SELECT
-					task_id,
-					channel,
-					value_type,
-					value_data,
-					write_idx
-				FROM langgraph_checkpoint_writes
-				WHERE thread_id = ?1
-					AND checkpoint_ns = ?2
-					AND checkpoint_id = ?3
-				ORDER BY task_id ASC, write_idx ASC
-			`)
-			.all(threadId, checkpointNamespace, checkpointId);
+	): Promise<PendingWriteRow[]> {
+		await this._ready;
+		return this.db<PendingWriteRow[]>`
+			SELECT
+				task_id,
+				channel,
+				value_type,
+				value_data,
+				write_idx
+			FROM langgraph_checkpoint_writes
+			WHERE thread_id = ${threadId}
+				AND checkpoint_ns = ${checkpointNamespace}
+				AND checkpoint_id = ${checkpointId}
+			ORDER BY task_id ASC, write_idx ASC
+		`;
 	}
 
 	private async buildCheckpointTuple(
@@ -176,14 +185,14 @@ export class BunSqliteSaver extends MemorySaver {
 		row: CheckpointRow,
 	): Promise<CheckpointTuple> {
 		const pendingWrites = await Promise.all(
-			this.readPendingWrites(threadId, checkpointNamespace, checkpointId).map(
+			(await this.readPendingWrites(threadId, checkpointNamespace, checkpointId)).map(
 				async (write) =>
 					[
 						write.task_id,
 						write.channel,
 						await this.deserialize({
 							type: write.value_type,
-							data: write.value_data,
+							data: toBytes(write.value_data),
 						}),
 					] as [string, string, unknown],
 			),
@@ -191,11 +200,11 @@ export class BunSqliteSaver extends MemorySaver {
 
 		const checkpoint = await this.deserialize<Checkpoint>({
 			type: row.checkpoint_type,
-			data: row.checkpoint_data,
+			data: toBytes(row.checkpoint_data),
 		});
 		const metadata = await this.deserialize<CheckpointMetadata>({
 			type: row.metadata_type,
-			data: row.metadata_data,
+			data: toBytes(row.metadata_data),
 		});
 
 		const tuple: CheckpointTuple = {
@@ -225,6 +234,7 @@ export class BunSqliteSaver extends MemorySaver {
 	}
 
 	async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) return undefined;
 
@@ -233,21 +243,19 @@ export class BunSqliteSaver extends MemorySaver {
 		const checkpointId = getCheckpointId(config);
 
 		if (checkpointId) {
-			const row =
-				this.db
-					.query<CheckpointRow, [string, string, string]>(`
-						SELECT
-							checkpoint_type,
-							checkpoint_data,
-							metadata_type,
-							metadata_data,
-							parent_checkpoint_id
-						FROM langgraph_checkpoints
-						WHERE thread_id = ?1
-							AND checkpoint_ns = ?2
-							AND checkpoint_id = ?3
-					`)
-					.get(threadId, checkpointNamespace, checkpointId) ?? null;
+			const rows = await this.db<CheckpointRow[]>`
+				SELECT
+					checkpoint_type,
+					checkpoint_data,
+					metadata_type,
+					metadata_data,
+					parent_checkpoint_id
+				FROM langgraph_checkpoints
+				WHERE thread_id = ${threadId}
+					AND checkpoint_ns = ${checkpointNamespace}
+					AND checkpoint_id = ${checkpointId}
+			`;
+			const row = rows[0] ?? null;
 			if (!row) return undefined;
 			return this.buildCheckpointTuple(
 				threadId,
@@ -257,23 +265,21 @@ export class BunSqliteSaver extends MemorySaver {
 			);
 		}
 
-		const latest =
-			this.db
-				.query<CheckpointRow & { checkpoint_id: string }, [string, string]>(`
-					SELECT
-						checkpoint_id,
-						checkpoint_type,
-						checkpoint_data,
-						metadata_type,
-						metadata_data,
-						parent_checkpoint_id
-					FROM langgraph_checkpoints
-					WHERE thread_id = ?1
-						AND checkpoint_ns = ?2
-					ORDER BY checkpoint_id DESC
-					LIMIT 1
-				`)
-				.get(threadId, checkpointNamespace) ?? null;
+		const latestRows = await this.db<(CheckpointRow & { checkpoint_id: string })[]>`
+			SELECT
+				checkpoint_id,
+				checkpoint_type,
+				checkpoint_data,
+				metadata_type,
+				metadata_data,
+				parent_checkpoint_id
+			FROM langgraph_checkpoints
+			WHERE thread_id = ${threadId}
+				AND checkpoint_ns = ${checkpointNamespace}
+			ORDER BY checkpoint_id DESC
+			LIMIT 1
+		`;
+		const latest = latestRows[0] ?? null;
 		if (!latest) return undefined;
 
 		return this.buildCheckpointTuple(
@@ -288,6 +294,7 @@ export class BunSqliteSaver extends MemorySaver {
 		config: RunnableConfig,
 		options?: CheckpointListOptions,
 	): AsyncGenerator<CheckpointTuple> {
+		await this._ready;
 		const requestedThreadId = config.configurable?.thread_id as
 			| string
 			| undefined;
@@ -301,28 +308,19 @@ export class BunSqliteSaver extends MemorySaver {
 			| string
 			| undefined;
 
-		const rows = this.db
-			.query<
-				CheckpointRow & {
-					thread_id: string;
-					checkpoint_ns: string;
-					checkpoint_id: string;
-				},
-				[]
-			>(`
-				SELECT
-					thread_id,
-					checkpoint_ns,
-					checkpoint_id,
-					checkpoint_type,
-					checkpoint_data,
-					metadata_type,
-					metadata_data,
-					parent_checkpoint_id
-				FROM langgraph_checkpoints
-				ORDER BY thread_id ASC, checkpoint_ns ASC, checkpoint_id DESC
-			`)
-			.all();
+		const rows = await this.db<CheckpointLookupRow[]>`
+			SELECT
+				thread_id,
+				checkpoint_ns,
+				checkpoint_id,
+				checkpoint_type,
+				checkpoint_data,
+				metadata_type,
+				metadata_data,
+				parent_checkpoint_id
+			FROM langgraph_checkpoints
+			ORDER BY thread_id ASC, checkpoint_ns ASC, checkpoint_id DESC
+		`;
 
 		let remaining = options?.limit;
 		for (const row of rows) {
@@ -366,8 +364,8 @@ export class BunSqliteSaver extends MemorySaver {
 		config: RunnableConfig,
 		checkpoint: Checkpoint,
 		metadata: CheckpointMetadata,
-		_newVersions: ChannelVersions,
 	): Promise<RunnableConfig> {
+		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) {
 			throw new Error(
@@ -379,37 +377,37 @@ export class BunSqliteSaver extends MemorySaver {
 			(config.configurable?.checkpoint_ns as string | undefined) ?? "";
 		const serializedCheckpoint = await this.serialize(checkpoint);
 		const serializedMetadata = await this.serialize(metadata);
+		const parentCheckpointId =
+			(config.configurable?.checkpoint_id as string | undefined) ?? null;
 
-		this.db
-			.prepare(`
-				INSERT INTO langgraph_checkpoints (
-					thread_id,
-					checkpoint_ns,
-					checkpoint_id,
-					checkpoint_type,
-					checkpoint_data,
-					metadata_type,
-					metadata_data,
-					parent_checkpoint_id
-				) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-				ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id)
-				DO UPDATE SET
-					checkpoint_type = excluded.checkpoint_type,
-					checkpoint_data = excluded.checkpoint_data,
-					metadata_type = excluded.metadata_type,
-					metadata_data = excluded.metadata_data,
-					parent_checkpoint_id = excluded.parent_checkpoint_id
-			`)
-			.run(
-				threadId,
-				checkpointNamespace,
-				checkpoint.id,
-				serializedCheckpoint.type,
-				serializedCheckpoint.data,
-				serializedMetadata.type,
-				serializedMetadata.data,
-				(config.configurable?.checkpoint_id as string | undefined) ?? null,
-			);
+		await this.db`
+			INSERT INTO langgraph_checkpoints (
+				thread_id,
+				checkpoint_ns,
+				checkpoint_id,
+				checkpoint_type,
+				checkpoint_data,
+				metadata_type,
+				metadata_data,
+				parent_checkpoint_id
+			) VALUES (
+				${threadId},
+				${checkpointNamespace},
+				${checkpoint.id},
+				${serializedCheckpoint.type},
+				${serializedCheckpoint.data},
+				${serializedMetadata.type},
+				${serializedMetadata.data},
+				${parentCheckpointId}
+			)
+			ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id)
+			DO UPDATE SET
+				checkpoint_type = excluded.checkpoint_type,
+				checkpoint_data = excluded.checkpoint_data,
+				metadata_type = excluded.metadata_type,
+				metadata_data = excluded.metadata_data,
+				parent_checkpoint_id = excluded.parent_checkpoint_id
+		`;
 
 		return {
 			configurable: {
@@ -425,6 +423,7 @@ export class BunSqliteSaver extends MemorySaver {
 		writes: PendingWrite[],
 		taskId: string,
 	): Promise<void> {
+		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) {
 			throw new Error(
@@ -445,70 +444,63 @@ export class BunSqliteSaver extends MemorySaver {
 
 		for (const [index, [channel, value]] of writes.entries()) {
 			const writeIndex = WRITE_INDEX_BY_CHANNEL[channel] ?? index;
-			const existing =
-				this.db
-					.query<null, [string, string, string, string, number]>(`
-						SELECT 1
-						FROM langgraph_checkpoint_writes
-						WHERE thread_id = ?1
-							AND checkpoint_ns = ?2
-							AND checkpoint_id = ?3
-							AND task_id = ?4
-							AND write_idx = ?5
-					`)
-					.get(
-						threadId,
-						checkpointNamespace,
-						checkpointId,
-						taskId,
-						writeIndex,
-					) ?? null;
-			if (existing && writeIndex >= 0) continue;
+			if (writeIndex >= 0) {
+				const existingRows = await this.db<Array<{ present: number }>>`
+					SELECT 1 AS present
+					FROM langgraph_checkpoint_writes
+					WHERE thread_id = ${threadId}
+						AND checkpoint_ns = ${checkpointNamespace}
+						AND checkpoint_id = ${checkpointId}
+						AND task_id = ${taskId}
+						AND write_idx = ${writeIndex}
+				`;
+				if (existingRows.length > 0) continue;
+			}
 
 			const serialized = await this.serialize(value);
-			this.db
-				.prepare(`
-					INSERT INTO langgraph_checkpoint_writes (
-						thread_id,
-						checkpoint_ns,
-						checkpoint_id,
-						task_id,
-						write_idx,
-						channel,
-						value_type,
-						value_data
-					) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-					ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx)
-					DO UPDATE SET
-						channel = excluded.channel,
-						value_type = excluded.value_type,
-						value_data = excluded.value_data
-				`)
-				.run(
-					threadId,
-					checkpointNamespace,
-					checkpointId,
-					taskId,
-					writeIndex,
+			await this.db`
+				INSERT INTO langgraph_checkpoint_writes (
+					thread_id,
+					checkpoint_ns,
+					checkpoint_id,
+					task_id,
+					write_idx,
 					channel,
-					serialized.type,
-					serialized.data,
-				);
+					value_type,
+					value_data
+				) VALUES (
+					${threadId},
+					${checkpointNamespace},
+					${checkpointId},
+					${taskId},
+					${writeIndex},
+					${channel},
+					${serialized.type},
+					${serialized.data}
+				)
+				ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx)
+				DO UPDATE SET
+					channel = excluded.channel,
+					value_type = excluded.value_type,
+					value_data = excluded.value_data
+			`;
 		}
 	}
 
 	async deleteThread(threadId: string): Promise<void> {
-		this.db
-			.prepare(`DELETE FROM langgraph_checkpoint_writes WHERE thread_id = ?1`)
-			.run(threadId);
-		this.db
-			.prepare(`DELETE FROM langgraph_checkpoints WHERE thread_id = ?1`)
-			.run(threadId);
+		await this._ready;
+		await this.db`
+			DELETE FROM langgraph_checkpoint_writes WHERE thread_id = ${threadId}
+		`;
+		await this.db`
+			DELETE FROM langgraph_checkpoints WHERE thread_id = ${threadId}
+		`;
 	}
 }
 
 export function createPersistentCheckpointer(
-	dbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 ): BaseCheckpointSaver {
-	return new BunSqliteSaver(dbPath);
+	return new SqlSaver(db, dialect);
 }

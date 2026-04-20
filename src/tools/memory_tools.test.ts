@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import { ensureMemoryBootstrapped } from "../memory/bootstrap";
 import { readOrEmpty } from "../memory/fs";
 import {
@@ -14,7 +15,9 @@ import {
 } from "./memory_tools";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 type Invokable = { invoke: (input: unknown) => Promise<string> };

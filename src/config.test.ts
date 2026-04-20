@@ -18,7 +18,7 @@ const CONFIG_KEYS = [
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
 	"PERMISSIONS_MODE",
-	"STATE_DB_PATH",
+	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
 	"USING_MODE",
@@ -95,7 +95,7 @@ describe("config", () => {
 					usingMode: "multi",
 					blockedUserMessage: "Access not configured. Contact the admin.",
 					permissionsMode: "enforce",
-					stateDbPath: "./state.db",
+					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
@@ -114,6 +114,22 @@ describe("config", () => {
 				"USING_MODE",
 			]);
 		});
+	});
+
+	test("ignores legacy STATE_DB_PATH and uses DATABASE_URL only", () => {
+		const previousStateDbPath = process.env.STATE_DB_PATH;
+		delete process.env.DATABASE_URL;
+		process.env.STATE_DB_PATH = "./legacy.db";
+
+		try {
+			expect(readConfigFromEnv().databaseUrl).toBe("sqlite://./state.db");
+		} finally {
+			if (previousStateDbPath === undefined) {
+				delete process.env.STATE_DB_PATH;
+			} else {
+				process.env.STATE_DB_PATH = previousStateDbPath;
+			}
+		}
 	});
 
 	test("requires telegram token when telegram entrypoint is selected", async () => {
@@ -164,7 +180,7 @@ describe("config", () => {
 					usingMode: "single",
 					blockedUserMessage: "Access not configured. Contact the admin.",
 					permissionsMode: "enforce",
-					stateDbPath: "./state.db",
+					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
@@ -213,7 +229,7 @@ describe("config", () => {
 				usingMode: "multi",
 				blockedUserMessage: "Access not configured. Contact the admin.",
 				permissionsMode: "enforce",
-				stateDbPath: "./state.db",
+				databaseUrl: "sqlite://./state.db",
 				enableExecute: true,
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",

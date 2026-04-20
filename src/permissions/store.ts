@@ -1,6 +1,3 @@
-import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { normalizeMatcher } from "./matcher";
 import {
 	type ArgumentMatcher,
@@ -13,6 +10,8 @@ import {
 	type UserRecord,
 	type UserStatus,
 } from "./types";
+
+type SQL = InstanceType<typeof Bun.SQL>;
 
 type UserRow = {
 	id: string;
@@ -33,7 +32,8 @@ type RuleRow = {
 };
 
 export interface PermissionsStoreOptions {
-	dbPath: string;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 }
 
 function rowToUser(row: UserRow): UserRecord {
@@ -61,15 +61,20 @@ function rowToRule(row: RuleRow): ToolRule {
 }
 
 export class PermissionsStore {
-	private readonly database: Database;
+	private readonly database: SQL;
+	private readonly dialect: "sqlite" | "postgres";
+	private readonly _ready: Promise<void>;
 
 	constructor(options: PermissionsStoreOptions) {
-		if (options.dbPath !== ":memory:") {
-			mkdirSync(dirname(options.dbPath), { recursive: true });
-		}
-		this.database = new Database(options.dbPath, { create: true });
-		this.database.exec(`
-      PRAGMA journal_mode = WAL;
+		this.database = options.db;
+		this.dialect = options.dialect;
+		this._ready = this._init();
+		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
+	}
+
+	private async _init(): Promise<void> {
+		const db = this.database;
+		await db`
       CREATE TABLE IF NOT EXISTS harness_users (
         id TEXT PRIMARY KEY,
         entrypoint TEXT NOT NULL,
@@ -78,149 +83,172 @@ export class PermissionsStore {
         status TEXT NOT NULL DEFAULT 'active',
         created_at INTEGER NOT NULL,
         UNIQUE(entrypoint, external_id)
-      );
-      CREATE TABLE IF NOT EXISTS tool_permissions (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id TEXT NOT NULL REFERENCES harness_users(id) ON DELETE CASCADE,
-        priority INTEGER NOT NULL DEFAULT 100,
-        tool_name TEXT NOT NULL,
-        args_matcher TEXT,
-        decision TEXT NOT NULL CHECK(decision IN ('allow','ask','deny'))
-      );
+      )
+    `;
+		if (this.dialect === "postgres") {
+			await db`
+        CREATE TABLE IF NOT EXISTS tool_permissions (
+          id SERIAL PRIMARY KEY,
+          user_id TEXT NOT NULL REFERENCES harness_users(id) ON DELETE CASCADE,
+          priority INTEGER NOT NULL DEFAULT 100,
+          tool_name TEXT NOT NULL,
+          args_matcher TEXT,
+          decision TEXT NOT NULL CHECK(decision IN ('allow','ask','deny'))
+        )
+      `;
+		} else {
+			await db`
+        CREATE TABLE IF NOT EXISTS tool_permissions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id TEXT NOT NULL REFERENCES harness_users(id) ON DELETE CASCADE,
+          priority INTEGER NOT NULL DEFAULT 100,
+          tool_name TEXT NOT NULL,
+          args_matcher TEXT,
+          decision TEXT NOT NULL CHECK(decision IN ('allow','ask','deny'))
+        )
+      `;
+		}
+		await db`
       CREATE INDEX IF NOT EXISTS idx_tool_permissions_user
-        ON tool_permissions(user_id, priority);
-    `);
+        ON tool_permissions(user_id, priority)
+    `;
+		if (this.dialect === "sqlite") {
+			await db`PRAGMA foreign_keys = ON`;
+			await db`PRAGMA journal_mode = WAL`;
+		}
 	}
 
-	getUser(entrypoint: Entrypoint, externalId: string): UserRecord | null {
-		const row = this.database
-			.query<UserRow, [string, string]>(
-				`SELECT id, entrypoint, external_id, display_name, status, created_at
-           FROM harness_users WHERE entrypoint = ?1 AND external_id = ?2`,
-			)
-			.get(entrypoint, externalId);
-		return row ? rowToUser(row) : null;
+	async getUser(
+		entrypoint: Entrypoint,
+		externalId: string,
+	): Promise<UserRecord | null> {
+		await this._ready;
+		const db = this.database;
+		const rows = await db<UserRow[]>`
+      SELECT id, entrypoint, external_id, display_name, status, created_at
+      FROM harness_users WHERE entrypoint = ${entrypoint} AND external_id = ${externalId}
+    `;
+		return rows[0] ? rowToUser(rows[0]) : null;
 	}
 
-	getUserById(userId: string): UserRecord | null {
-		const row = this.database
-			.query<UserRow, [string]>(
-				`SELECT id, entrypoint, external_id, display_name, status, created_at
-           FROM harness_users WHERE id = ?1`,
-			)
-			.get(userId);
-		return row ? rowToUser(row) : null;
+	async getUserById(userId: string): Promise<UserRecord | null> {
+		await this._ready;
+		const db = this.database;
+		const rows = await db<UserRow[]>`
+      SELECT id, entrypoint, external_id, display_name, status, created_at
+      FROM harness_users WHERE id = ${userId}
+    `;
+		return rows[0] ? rowToUser(rows[0]) : null;
 	}
 
-	listUsers(): UserRecord[] {
-		return this.database
-			.query<UserRow, []>(
-				`SELECT id, entrypoint, external_id, display_name, status, created_at
-           FROM harness_users ORDER BY created_at ASC`,
-			)
-			.all()
-			.map(rowToUser);
+	async listUsers(): Promise<UserRecord[]> {
+		await this._ready;
+		const db = this.database;
+		const rows = await db<UserRow[]>`
+      SELECT id, entrypoint, external_id, display_name, status, created_at
+      FROM harness_users ORDER BY created_at ASC
+    `;
+		return rows.map(rowToUser);
 	}
 
-	upsertUser(params: {
+	async upsertUser(params: {
 		entrypoint: Entrypoint;
 		externalId: string;
 		displayName?: string | null;
-	}): UserRecord {
+	}): Promise<UserRecord> {
+		await this._ready;
 		const id = callerId(params.entrypoint, params.externalId);
 		const now = Date.now();
-		this.database
-			.query<never, [string, string, string, string | null, number]>(
-				`INSERT INTO harness_users (id, entrypoint, external_id, display_name, status, created_at)
-           VALUES (?1, ?2, ?3, ?4, 'active', ?5)
-           ON CONFLICT(id) DO UPDATE SET display_name = COALESCE(excluded.display_name, harness_users.display_name)`,
-			)
-			.run(
-				id,
-				params.entrypoint,
-				params.externalId,
-				params.displayName ?? null,
-				now,
-			);
-		const user = this.getUserById(id);
+		const displayName = params.displayName ?? null;
+		const db = this.database;
+		await db`
+      INSERT INTO harness_users (id, entrypoint, external_id, display_name, status, created_at)
+      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'active', ${now})
+      ON CONFLICT(id) DO UPDATE SET display_name = COALESCE(excluded.display_name, harness_users.display_name)
+    `;
+		const user = await this.getUserById(id);
 		if (!user) throw new Error(`Failed to upsert user ${id}`);
 		return user;
 	}
 
-	setUserStatus(userId: string, status: UserStatus): void {
-		this.database
-			.query<never, [string, string]>(
-				`UPDATE harness_users SET status = ?2 WHERE id = ?1`,
-			)
-			.run(userId, status);
+	async setUserStatus(userId: string, status: UserStatus): Promise<void> {
+		await this._ready;
+		const db = this.database;
+		await db`UPDATE harness_users SET status = ${status} WHERE id = ${userId}`;
 	}
 
-	listRulesForUser(userId: string): ToolRule[] {
-		return this.database
-			.query<RuleRow, [string]>(
-				`SELECT id, user_id, priority, tool_name, args_matcher, decision
-           FROM tool_permissions WHERE user_id = ?1 ORDER BY priority ASC, id ASC`,
-			)
-			.all(userId)
-			.map(rowToRule);
+	async listRulesForUser(userId: string): Promise<ToolRule[]> {
+		await this._ready;
+		const db = this.database;
+		const rows = await db<RuleRow[]>`
+      SELECT id, user_id, priority, tool_name, args_matcher, decision
+      FROM tool_permissions WHERE user_id = ${userId} ORDER BY priority ASC, id ASC
+    `;
+		return rows.map(rowToRule);
 	}
 
-	upsertRule(userId: string, rule: NewToolRule): ToolRule {
+	async upsertRule(userId: string, rule: NewToolRule): Promise<ToolRule> {
+		await this._ready;
 		const argsJson = normalizeMatcher(rule.args);
-		const selectStatement = this.database.query<
-			RuleRow,
-			[string, string, string | null]
-		>(
-			`SELECT id, user_id, priority, tool_name, args_matcher, decision
-         FROM tool_permissions
-         WHERE user_id = ?1 AND tool_name = ?2 AND IFNULL(args_matcher, '') = IFNULL(?3, '')`,
-		);
-		const existing = selectStatement.get(userId, rule.toolName, argsJson);
+		const db = this.database;
+		const existingRows = await db<RuleRow[]>`
+      SELECT id, user_id, priority, tool_name, args_matcher, decision
+      FROM tool_permissions
+      WHERE user_id = ${userId} AND tool_name = ${rule.toolName}
+        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
+    `;
+		const existing = existingRows[0] ?? null;
 
 		if (existing) {
-			this.database
-				.query<never, [number, string, number]>(
-					`UPDATE tool_permissions SET decision = ?2, priority = ?3 WHERE id = ?1`,
-				)
-				.run(existing.id, rule.decision, rule.priority);
+			await db`
+        UPDATE tool_permissions SET decision = ${rule.decision}, priority = ${rule.priority} WHERE id = ${existing.id}
+      `;
 		} else {
-			this.database
-				.query<never, [string, number, string, string | null, string]>(
-					`INSERT INTO tool_permissions (user_id, priority, tool_name, args_matcher, decision)
-             VALUES (?1, ?2, ?3, ?4, ?5)`,
-				)
-				.run(userId, rule.priority, rule.toolName, argsJson, rule.decision);
+			await db`
+        INSERT INTO tool_permissions (user_id, priority, tool_name, args_matcher, decision)
+        VALUES (${userId}, ${rule.priority}, ${rule.toolName}, ${argsJson}, ${rule.decision})
+      `;
 		}
 
-		const row = selectStatement.get(userId, rule.toolName, argsJson);
+		const updatedRows = await db<RuleRow[]>`
+      SELECT id, user_id, priority, tool_name, args_matcher, decision
+      FROM tool_permissions
+      WHERE user_id = ${userId} AND tool_name = ${rule.toolName}
+        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
+    `;
+		const row = updatedRows[0];
 		if (!row) throw new Error("Failed to upsert rule");
 		return rowToRule(row);
 	}
 
-	deleteMatchingRules(
+	async deleteMatchingRules(
 		userId: string,
 		toolName: string,
 		args: ArgumentMatcher | null,
-	): number {
+	): Promise<number> {
+		await this._ready;
 		const argsJson = normalizeMatcher(args);
-		const result = this.database
-			.query<never, [string, string, string | null]>(
-				`DELETE FROM tool_permissions
-           WHERE user_id = ?1 AND tool_name = ?2 AND IFNULL(args_matcher, '') = IFNULL(?3, '')`,
-			)
-			.run(userId, toolName, argsJson);
-		return Number(result.changes);
+		const db = this.database;
+		const result = await db<RuleRow[]>`
+      DELETE FROM tool_permissions
+      WHERE user_id = ${userId} AND tool_name = ${toolName}
+        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
+      RETURNING id
+    `;
+		return result.length;
 	}
 
-	deleteAllRulesForUser(userId: string): number {
-		const result = this.database
-			.query<never, [string]>(`DELETE FROM tool_permissions WHERE user_id = ?1`)
-			.run(userId);
-		return Number(result.changes);
+	async deleteAllRulesForUser(userId: string): Promise<number> {
+		await this._ready;
+		const db = this.database;
+		const result = await db<RuleRow[]>`
+      DELETE FROM tool_permissions WHERE user_id = ${userId} RETURNING id
+    `;
+		return result.length;
 	}
 
-	ensureUser(caller: Caller): UserRecord {
-		const existing = this.getUser(caller.entrypoint, caller.externalId);
+	async ensureUser(caller: Caller): Promise<UserRecord> {
+		const existing = await this.getUser(caller.entrypoint, caller.externalId);
 		if (existing) return existing;
 		return this.upsertUser({
 			entrypoint: caller.entrypoint,
@@ -230,6 +258,6 @@ export class PermissionsStore {
 	}
 
 	close(): void {
-		this.database.close();
+		// No-op: lifecycle is managed by the injected db connection
 	}
 }

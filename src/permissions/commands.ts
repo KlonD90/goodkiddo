@@ -71,22 +71,22 @@ function formatRules(rules: ToolRule[]): string {
 	return `Policy rules (first match wins; default is allow except execute tools ask):\n${lines.join("\n")}`;
 }
 
-export function maybeHandleCommand(
+export async function maybeHandleCommand(
 	input: string,
 	caller: Caller,
 	store: PermissionsStore,
-): CommandResult {
+): Promise<CommandResult> {
 	const parsedCommand = parseSlashCommand(input);
 	if (!parsedCommand) return { handled: false };
 	const { command, rest } = parsedCommand;
 
 	if (command === "policy") {
-		const rules = store.listRulesForUser(caller.id);
+		const rules = await store.listRulesForUser(caller.id);
 		return { handled: true, reply: formatRules(rules) };
 	}
 
 	if (command === "reset") {
-		const removed = store.deleteAllRulesForUser(caller.id);
+		const removed = await store.deleteAllRulesForUser(caller.id);
 		return {
 			handled: true,
 			reply: `Removed ${removed} rule(s). Tools now follow the default policy: allow except execute tools ask.`,
@@ -115,7 +115,7 @@ export function maybeHandleCommand(
 		}
 
 		if (command === "ask") {
-			const removed = store.deleteMatchingRules(caller.id, toolName, matcher);
+			const removed = await store.deleteMatchingRules(caller.id, toolName, matcher);
 			return {
 				handled: true,
 				reply: `Removed ${removed} matching rule(s). '${toolName}' now follows the default policy.`,
@@ -125,7 +125,7 @@ export function maybeHandleCommand(
 		const priority = parsed.flags.priority
 			? Number(parsed.flags.priority)
 			: 100;
-		store.upsertRule(caller.id, {
+		await store.upsertRule(caller.id, {
 			priority: Number.isFinite(priority) ? priority : 100,
 			toolName,
 			args: matcher,

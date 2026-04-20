@@ -20,7 +20,7 @@ export function wrapToolWithGuard(
 	context: GuardContext,
 ): ReturnType<typeof tool> {
 	const handler = async (input: unknown): Promise<unknown> => {
-		const rules = context.store.listRulesForUser(context.caller.id);
+		const rules = await context.store.listRulesForUser(context.caller.id);
 		const resolved = resolveDecision(rules, original.name, input);
 
 		if (resolved.decision === "deny") {

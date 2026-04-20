@@ -23,7 +23,7 @@ export type AppConfig = {
 	usingMode: UsingMode;
 	blockedUserMessage: string;
 	permissionsMode: "enforce" | "disabled";
-	stateDbPath: string;
+	databaseUrl: string;
 	enableExecute: boolean;
 	webPort: number;
 	webPublicBaseUrl: string;
@@ -31,7 +31,7 @@ export type AppConfig = {
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
-const DEFAULT_STATE_DB_PATH = "./state.db";
+const DEFAULT_DATABASE_URL = "sqlite://./state.db";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
 
@@ -44,7 +44,7 @@ type ConfigIssueField =
 	| "BLOCKED_USER_MESSAGE"
 	| "ENABLE_EXECUTE"
 	| "PERMISSIONS_MODE"
-	| "STATE_DB_PATH"
+	| "DATABASE_URL"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
 	| "USING_MODE"
@@ -87,7 +87,7 @@ const PERSISTED_ENV_KEYS = [
 	"BLOCKED_USER_MESSAGE",
 	"ENABLE_EXECUTE",
 	"PERMISSIONS_MODE",
-	"STATE_DB_PATH",
+	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
 	"USING_MODE",
@@ -169,8 +169,7 @@ export const readConfigFromEnv = (
 			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
 			DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode,
-		stateDbPath:
-			getEnv("STATE_DB_PATH", persistedValues) || DEFAULT_STATE_DB_PATH,
+		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
@@ -554,7 +553,7 @@ Press enter to allow any chat the bot is added to.> `,
 		blockedUserMessage:
 			initialConfig.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
-		stateDbPath: initialConfig.stateDbPath ?? DEFAULT_STATE_DB_PATH,
+		databaseUrl: initialConfig.databaseUrl ?? DEFAULT_DATABASE_URL,
 		enableExecute: initialConfig.enableExecute ?? true,
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
@@ -585,8 +584,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
-		case "STATE_DB_PATH":
-			return `${key}=${escapeEnvValue(config.stateDbPath)}`;
+		case "DATABASE_URL":
+			return `${key}=${escapeEnvValue(config.databaseUrl)}`;
 		case "TELEGRAM_BOT_ALLOWED_CHAT_ID":
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
@@ -631,7 +630,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -661,7 +660,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|STATE_DB_PATH|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -717,7 +716,7 @@ export const resolveConfig = async (
 			blockedUserMessage:
 				config.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
 			permissionsMode: config.permissionsMode ?? "enforce",
-			stateDbPath: config.stateDbPath ?? DEFAULT_STATE_DB_PATH,
+			databaseUrl: config.databaseUrl ?? DEFAULT_DATABASE_URL,
 			enableExecute: config.enableExecute ?? true,
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,

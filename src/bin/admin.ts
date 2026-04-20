@@ -1,7 +1,8 @@
+import { createDb, detectDialect } from "../db/index";
 import { PermissionsStore } from "../permissions/store";
 import { EntrypointSchema } from "../permissions/types";
 
-const DB_PATH = process.env.STATE_DB_PATH || "./state.db";
+const DATABASE_URL = process.env.DATABASE_URL || "sqlite://./state.db";
 const USAGE = `Usage:
   bun src/bin/admin.ts add-user <entrypoint> <externalId> [displayName]
   bun src/bin/admin.ts list-users
@@ -9,14 +10,16 @@ const USAGE = `Usage:
   bun src/bin/admin.ts suspend <userId>
   bun src/bin/admin.ts activate <userId>`;
 
-function main(): void {
+async function main(): Promise<void> {
 	const [command, ...rest] = process.argv.slice(2);
 	if (!command) {
 		console.log(USAGE);
 		process.exit(1);
 	}
 
-	const store = new PermissionsStore({ dbPath: DB_PATH });
+	const db = createDb(DATABASE_URL);
+	const dialect = detectDialect(DATABASE_URL);
+	const store = new PermissionsStore({ db, dialect });
 
 	switch (command) {
 		case "add-user": {
@@ -26,7 +29,7 @@ function main(): void {
 				process.exit(1);
 			}
 			const entrypoint = EntrypointSchema.parse(entrypointRaw);
-			const user = store.upsertUser({
+			const user = await store.upsertUser({
 				entrypoint,
 				externalId,
 				displayName: displayNameParts.join(" ") || null,
@@ -35,7 +38,7 @@ function main(): void {
 			break;
 		}
 		case "list-users": {
-			const users = store.listUsers();
+			const users = await store.listUsers();
 			if (users.length === 0) {
 				console.log("(no users)");
 				break;
@@ -53,7 +56,7 @@ function main(): void {
 				console.log(USAGE);
 				process.exit(1);
 			}
-			const rules = store.listRulesForUser(userId);
+			const rules = await store.listRulesForUser(userId);
 			if (rules.length === 0) {
 				console.log(
 					"(no rules; default policy is allow, except execute tools ask)",
@@ -74,7 +77,7 @@ function main(): void {
 				console.log(USAGE);
 				process.exit(1);
 			}
-			store.setUserStatus(
+			await store.setUserStatus(
 				userId,
 				command === "suspend" ? "suspended" : "active",
 			);
@@ -87,6 +90,7 @@ function main(): void {
 	}
 
 	store.close();
+	await db.close();
 }
 
 main();

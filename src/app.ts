@@ -20,6 +20,8 @@ export interface CreateAppAgentOptions {
 	store: PermissionsStore;
 	broker: ApprovalBroker;
 	audit: AuditLogger;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 	checkpointer?: BaseCheckpointSaver;
 	outbound?: OutboundChannel;
 	webShare?: WebShareOptions;
@@ -28,6 +30,8 @@ export interface CreateAppAgentOptions {
 // Memory-scoped agent bits that the channel layer also needs access to — the
 // model (for /new-thread summarization) and the workspace backend (for log
 // writes and direct reads). Returned alongside the agent.
+type SQL = InstanceType<typeof Bun.SQL>;
+
 export type AppAgentBundle = {
 	agent: Awaited<ReturnType<typeof createAgent>>;
 	workspace: SqliteStateBackend;
@@ -46,7 +50,8 @@ export const createAppAgent = async (
 	);
 
 	const workspace = new SqliteStateBackend({
-		dbPath: config.stateDbPath,
+		db: options.db,
+		dialect: options.dialect,
 		namespace: options.caller.id,
 	});
 

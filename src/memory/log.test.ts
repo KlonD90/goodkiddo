@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import { createDb, detectDialect } from "../db";
 import { readOrEmpty } from "./fs";
 import { MEMORY_LOG_PATH } from "./layout";
 import { appendLog, formatLogEntry, todayIso } from "./log";
 
 function createBackend(namespace: string) {
-	return new SqliteStateBackend({ dbPath: ":memory:", namespace });
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
 }
 
 describe("formatLogEntry", () => {

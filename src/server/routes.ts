@@ -8,9 +8,12 @@ import {
 } from "./access_store";
 import type { FrontendBundle } from "./frontend_build";
 
+type SQL = InstanceType<typeof Bun.SQL>;
+
 export interface WebHandlerOptions {
 	access: AccessStore;
-	stateDbPath: string;
+	db: SQL;
+	dialect: "sqlite" | "postgres";
 	bundle: FrontendBundle;
 	publicBaseUrl: string;
 }
@@ -111,10 +114,11 @@ function requireBearer(request: Request): string | null {
 }
 
 function openWorkspace(
-	stateDbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 	userId: string,
 ): SqliteStateBackend {
-	return new SqliteStateBackend({ dbPath: stateDbPath, namespace: userId });
+	return new SqliteStateBackend({ db, dialect, namespace: userId });
 }
 
 async function readJsonBody(
@@ -131,10 +135,6 @@ async function readJsonBody(
 	}
 }
 
-function resolveScopeEntryPath(grant: ResolvedGrant): string {
-	return grant.scopeKind === "file" ? grant.scopePath : grant.scopePath;
-}
-
 function inferRequestedPathKind(rawPath: string): "file" | "dir" {
 	return rawPath.endsWith("/") ? "dir" : "file";
 }
@@ -146,7 +146,7 @@ function handleHtmlShell(
 ): Response {
 	let initialPath: string;
 	if (deepPath === "" || deepPath === "/") {
-		initialPath = resolveScopeEntryPath(grant);
+		initialPath = grant.scopePath;
 	} else {
 		const kind: "file" | "dir" = deepPath.endsWith("/") ? "dir" : "file";
 		const normalized = tryNormalizeRequestedPath(deepPath, kind);
@@ -203,15 +203,16 @@ function serveAsset(bundle: FrontendBundle, assetName: string): Response {
 	return new Response("Not found", { status: 404 });
 }
 
-function handleDownload(
+async function handleDownload(
 	request: Request,
 	linkUuid: string,
 	access: AccessStore,
-	stateDbPath: string,
-): Response {
+	db: SQL,
+	dialect: "sqlite" | "postgres",
+): Promise<Response> {
 	const cookies = parseCookies(request.headers.get("cookie"));
 	const bearer = cookies.get(DOWNLOAD_COOKIE_NAME) ?? "";
-	const grant = access.resolveBearer(bearer);
+	const grant = await access.resolveBearer(bearer);
 	if (!grant || grant.linkUuid !== linkUuid) {
 		return new Response("Unauthorized", { status: 401 });
 	}
@@ -225,8 +226,8 @@ function handleDownload(
 		return errorResponse("out_of_scope", 403);
 	}
 
-	const workspace = openWorkspace(stateDbPath, grant.userId);
-	const [result] = workspace.downloadFiles([normalized]);
+	const workspace = openWorkspace(db, dialect, grant.userId);
+	const [result] = await workspace.downloadFiles([normalized]);
 	if (!result || result.error === "file_not_found") {
 		return errorResponse("file_not_found", 404);
 	}
@@ -253,7 +254,8 @@ function handleDownload(
 async function handleApi(
 	request: Request,
 	access: AccessStore,
-	stateDbPath: string,
+	db: SQL,
+	dialect: "sqlite" | "postgres",
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const route = url.pathname.replace(/^\/api\/fs\//, "");
@@ -264,7 +266,7 @@ async function handleApi(
 
 	const bearer = requireBearer(request);
 	if (!bearer) return errorResponse("unauthorized", 401);
-	const grant = access.resolveBearer(bearer);
+	const grant = await access.resolveBearer(bearer);
 	if (!grant) return errorResponse("unauthorized", 401);
 
 	const body = await readJsonBody(request);
@@ -281,8 +283,8 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
-		const entries = workspace.lsInfo(normalized);
+		const workspace = openWorkspace(db, dialect, grant.userId);
+		const entries = await workspace.lsInfo(normalized);
 		return jsonResponse({ path: normalized, entries });
 	}
 
@@ -293,9 +295,9 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
+		const workspace = openWorkspace(db, dialect, grant.userId);
 		if (kind === "dir") {
-			const entries = workspace.lsInfo(normalized);
+			const entries = await workspace.lsInfo(normalized);
 			return jsonResponse({
 				path: normalized,
 				is_dir: true,
@@ -304,7 +306,7 @@ async function handleApi(
 				child_count: entries.length,
 			});
 		}
-		const [download] = workspace.downloadFiles([normalized]);
+		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
 		}
@@ -324,8 +326,8 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(stateDbPath, grant.userId);
-		const [download] = workspace.downloadFiles([normalized]);
+		const workspace = openWorkspace(db, dialect, grant.userId);
+		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
 		}
@@ -354,14 +356,14 @@ const UUID_REGEX =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function createWebHandler(options: WebHandlerOptions): WebHandler {
-	const { access, stateDbPath, bundle } = options;
+	const { access, db, dialect, bundle } = options;
 
 	return async function handler(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
 
 		if (pathname.startsWith("/api/fs/")) {
-			return handleApi(request, access, stateDbPath);
+			return handleApi(request, access, db, dialect);
 		}
 
 		if (pathname === "/" || pathname === "") {
@@ -380,7 +382,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 
 		if (deepPath.startsWith("/_assets/")) {
 			const assetName = deepPath.slice("/_assets/".length);
-			const grant = access.resolveLink(linkUuid);
+			const grant = await access.resolveLink(linkUuid);
 			if (!grant) return new Response("Not found", { status: 404 });
 			return serveAsset(bundle, assetName);
 		}
@@ -389,14 +391,14 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			if (request.method !== "GET") {
 				return errorResponse("method_not_allowed", 405);
 			}
-			return handleDownload(request, linkUuid, access, stateDbPath);
+			return handleDownload(request, linkUuid, access, db, dialect);
 		}
 
 		if (request.method !== "GET") {
 			return errorResponse("method_not_allowed", 405);
 		}
 
-		const grant = access.resolveLink(linkUuid);
+		const grant = await access.resolveLink(linkUuid);
 		if (!grant) return new Response("Not found", { status: 404 });
 
 		return handleHtmlShell(grant, bundle, deepPath);
