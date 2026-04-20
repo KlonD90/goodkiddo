@@ -1,6 +1,6 @@
 import type { TaskRecord, TaskStore } from "./store";
 
-type MatchKind = "id" | "title_phrase" | "title_tokens" | "note_phrase";
+type MatchKind = "id" | "title_phrase" | "note_phrase";
 
 type TaskMatch = {
 	task: TaskRecord;
@@ -49,28 +49,6 @@ const DISMISS_MARKERS = [
 	" stop working on ",
 ] as const;
 
-const STOPWORDS = new Set([
-	"a",
-	"an",
-	"and",
-	"for",
-	"from",
-	"in",
-	"is",
-	"it",
-	"my",
-	"of",
-	"on",
-	"our",
-	"task",
-	"that",
-	"the",
-	"this",
-	"to",
-	"we",
-	"with",
-]);
-
 function compactInline(value: string): string {
 	return value.replace(/\s+/g, " ").trim();
 }
@@ -81,13 +59,6 @@ function normalizeText(value: string): string {
 		.replace(/['’]/g, "")
 		.replace(/[^a-z0-9]+/g, " ")
 		.trim()} `;
-}
-
-function tokenizeSignificant(value: string): string[] {
-	return normalizeText(value)
-		.trim()
-		.split(/\s+/)
-		.filter((token) => token.length >= 3 && !STOPWORDS.has(token));
 }
 
 function hasMarker(text: string, markers: readonly string[]): boolean {
@@ -129,20 +100,10 @@ function findTaskMatches(message: string, activeTasks: TaskRecord[]): TaskMatch[
 		if (byId) return [{ task: byId, match: "id" }];
 	}
 
-	const messageTokens = new Set(tokenizeSignificant(message));
 	for (const task of activeTasks) {
 		const normalizedTitle = normalizeText(task.title);
 		if (normalizedTitle.trim().length >= 4 && message.includes(normalizedTitle)) {
 			matches.push({ task, match: "title_phrase" });
-			continue;
-		}
-
-		const titleTokens = tokenizeSignificant(task.title);
-		if (
-			titleTokens.length >= 2 &&
-			titleTokens.every((token) => messageTokens.has(token))
-		) {
-			matches.push({ task, match: "title_tokens" });
 			continue;
 		}
 

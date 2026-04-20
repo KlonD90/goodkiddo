@@ -120,28 +120,6 @@ describe("reconcileActiveTasksAtBoundary", () => {
 		expect(await store.listActiveTasks("telegram:1")).toHaveLength(0);
 	});
 
-	test("auto-completes a token-based title match", async () => {
-		const task = await store.addTask({
-			userId: "telegram:1",
-			threadIdCreated: "thread-a",
-			listName: "today",
-			title: "Ship webhook handler",
-		});
-
-		const result = await reconcileActiveTasksAtBoundary({
-			store,
-			userId: "telegram:1",
-			threadId: "thread-b",
-			messageText: "I finished the handler for the webhook ship work.",
-		});
-
-		expect(result.kind).toBe("completed");
-		if (result.kind !== "completed") {
-			throw new Error("Expected auto-complete result");
-		}
-		expect(result.task.id).toBe(task.id);
-	});
-
 	test("auto-completes a note-based phrase match", async () => {
 		const task = await store.addTask({
 			userId: "telegram:1",
@@ -178,6 +156,25 @@ describe("reconcileActiveTasksAtBoundary", () => {
 			userId: "telegram:1",
 			threadId: "thread-b",
 			messageText: "The webhook handler is not done yet.",
+		});
+
+		expect(result).toEqual({ kind: "none" });
+		expect(await store.listActiveTasks("telegram:1")).toHaveLength(1);
+	});
+
+	test("does not auto-complete loose token overlaps from unrelated completion text", async () => {
+		await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "today",
+			title: "Auth middleware",
+		});
+
+		const result = await reconcileActiveTasksAtBoundary({
+			store,
+			userId: "telegram:1",
+			threadId: "thread-b",
+			messageText: "I finished the auth docs, but middleware is next.",
 		});
 
 		expect(result).toEqual({ kind: "none" });

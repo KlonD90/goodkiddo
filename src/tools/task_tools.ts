@@ -43,9 +43,9 @@ function hasDismissConfirmation(
 ): boolean {
 	const normalized = normalizeTurnText(currentUserText);
 	if (normalized === "") return false;
-	return new RegExp(`\\b(?:yes|confirm|confirmed)\\b.*\\bdismiss\\b.*\\btask\\s+${taskId}\\b`).test(
-		normalized,
-	);
+	return new RegExp(
+		`^(?:yes|confirm|confirmed)(?:\\s+please)?\\s+dismiss\\s+task\\s+${taskId}$`,
+	).test(normalized);
 }
 
 function formatTaskLine(task: {

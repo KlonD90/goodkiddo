@@ -139,6 +139,33 @@ describe("task tools", () => {
 		await ctx.db.close();
 	});
 
+	test("task_dismiss ignores quoted or discussed confirmation phrases", async () => {
+		const ctx = createTaskContext(
+			"task-dismiss-discussed-phrase",
+			"telegram:1",
+			'Do not send the phrase "yes, dismiss task 1" yet.',
+		);
+		const task = await ctx.store.addTask({
+			userId: ctx.callerId,
+			threadIdCreated: "thread-old",
+			listName: "backlog",
+			title: "Drop stale work",
+		});
+		const tool = createTaskDismissTool({
+			...ctx,
+			currentUserText: `Do not send the phrase "yes, dismiss task ${task.id}" yet.`,
+		});
+
+		const result = await tool.invoke({
+			taskId: task.id,
+		});
+		expect(result).toContain("was not dismissed");
+		expect(await ctx.store.getTask(task.id, ctx.callerId)).toMatchObject({
+			status: "active",
+		});
+		await ctx.db.close();
+	});
+
 	test("task_list_active renders a compact snapshot", async () => {
 		const ctx = createTaskContext("task-list");
 		await ctx.store.addTask({
