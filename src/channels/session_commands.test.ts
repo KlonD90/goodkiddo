@@ -4,14 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
+import { SqliteStateBackend } from "../backends";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createDb, detectDialect } from "../db";
-import { SqliteStateBackend } from "../backends";
-import type { ChannelAgentSession } from "./shared";
 import {
 	maybeHandleSessionCommand,
 	type SessionCommandContext,
 } from "./session_commands";
+import type { ChannelAgentSession } from "./shared";
 
 const tempDirs: string[] = [];
 
@@ -42,18 +42,22 @@ function createBackend(namespace: string) {
 
 function createStubModel(summaryResponse = "- done"): BaseChatModel {
 	return {
-		async invoke() {
-			// Return a valid structured summary JSON for checkpoint generation,
-			// or a plain string for the plain summarize call in rotateThread.
+		async invoke(messages: Array<{ role: string; content: string }>) {
+			const systemPrompt = messages[0]?.content ?? "";
+			if (systemPrompt.includes("compacted into a checkpoint")) {
+				return {
+					content: JSON.stringify({
+						current_goal: "test goal",
+						decisions: [],
+						constraints: [],
+						unfinished_work: [],
+						pending_approvals: [],
+						important_artifacts: [],
+					}),
+				};
+			}
 			return {
-				content: JSON.stringify({
-					current_goal: "test goal",
-					decisions: [],
-					constraints: [],
-					unfinished_work: [],
-					pending_approvals: [],
-					important_artifacts: [],
-				}),
+				content: summaryResponse,
 			};
 		},
 	} as unknown as BaseChatModel;
@@ -86,7 +90,7 @@ describe("maybeHandleSessionCommand — /new_thread without compaction", () => {
 		const session = createStubSession("thread-1", [
 			{ role: "user", content: "hello" },
 		]);
-		const model = createStubModel();
+		const model = createStubModel("- archived hello");
 		const backend = session.workspace;
 		let minted = "";
 
@@ -105,6 +109,7 @@ describe("maybeHandleSessionCommand — /new_thread without compaction", () => {
 		if (result.handled) {
 			expect(result.reply).toContain("New thread started");
 			expect(result.reply).toContain("thread-2");
+			expect(result.reply).toContain("- archived hello");
 		}
 		expect(session.threadId).toBe("thread-2");
 	});
@@ -261,9 +266,11 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		await maybeHandleSessionCommand("/new_thread", ctx);
 
 		expect(session.pendingCompactionSeed).toBeDefined();
-		expect(session.pendingCompactionSeed!.summary.current_goal).toBe("test goal");
+		expect(session.pendingCompactionSeed?.summary.current_goal).toBe(
+			"test goal",
+		);
 		// last 2 turns from 4 messages = 4 messages
-		expect(session.pendingCompactionSeed!.recentTurns).toHaveLength(4);
+		expect(session.pendingCompactionSeed?.recentTurns).toHaveLength(4);
 		await close();
 	});
 
@@ -288,8 +295,8 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 
 		const seed = session.pendingCompactionSeed;
 		expect(seed).toBeDefined();
-		expect(typeof seed!.summary.current_goal).toBe("string");
-		expect(Array.isArray(seed!.summary.decisions)).toBe(true);
+		expect(typeof seed?.summary.current_goal).toBe("string");
+		expect(Array.isArray(seed?.summary.decisions)).toBe(true);
 		await close();
 	});
 
@@ -335,7 +342,8 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 
 		await maybeHandleSessionCommand("/new_thread", ctx);
 
-		const recentTurns = session.pendingCompactionSeed!.recentTurns;
+		const recentTurns = session.pendingCompactionSeed?.recentTurns;
+		if (!recentTurns) throw new Error("Expected pending compaction seed");
 		expect(recentTurns).toHaveLength(4); // last 2 turns = 4 messages
 		const contents = recentTurns.map((m) => m.content);
 		expect(contents).not.toContain("early");

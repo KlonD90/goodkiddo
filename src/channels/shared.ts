@@ -4,22 +4,27 @@ import { type AppAgentBundle, createAppAgent } from "../app";
 import {
 	type CompactionThresholds,
 	maybeCompactByThresholds,
-	runCompaction,
+	triggerOnSessionResume,
 } from "../checkpoints/compaction_trigger";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createPersistentCheckpointer } from "../checkpoints/sql_saver";
 import type { AppConfig } from "../config";
 import {
-	deserializeCheckpointSummary,
 	type CheckpointSummary,
+	deserializeCheckpointSummary,
 } from "../memory/checkpoint_compaction";
-import { buildRuntimeContext, extractRecentTurns } from "../memory/runtime_context";
+import { readThreadMessages } from "../memory/rotate_thread";
+import {
+	buildRuntimeContext,
+	extractRecentTurns,
+} from "../memory/runtime_context";
 import type { ThreadMessage } from "../memory/summarize";
 import type { ApprovalBroker } from "../permissions/approval";
 import { FileAuditLogger } from "../permissions/audit";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import type { WebShareOptions } from "../tools/factory";
+import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
 
 export type AgentInstance = AppAgentBundle["agent"];
@@ -41,8 +46,11 @@ export type ChannelAgentSession = {
 	workspace: BackendProtocol;
 	model: BaseChatModel;
 	refreshAgent: () => Promise<void>;
+	persistThreadId?: (threadId: string) => Promise<void>;
 	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
 	pendingCompactionSeed?: PendingCompactionSeed;
+	/** True for the first turn after a persisted thread is resumed. */
+	needsResumeCompaction?: boolean;
 	/** When set, auto-compaction is checked before each turn. */
 	compactionConfig?: CompactionSessionConfig;
 };
@@ -63,9 +71,14 @@ export async function createChannelAgentSession(
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
-	const checkpointer = createPersistentCheckpointer(options.db, options.dialect);
+	const checkpointer = createPersistentCheckpointer(
+		options.db,
+		options.dialect,
+	);
 	const forcedCheckpointStore = new ForcedCheckpointStore(options.db);
+	const activeThreadStore = new ActiveThreadStore(options.db);
 	await forcedCheckpointStore.ready();
+	await activeThreadStore.ready();
 
 	const makeBundle = () =>
 		createAppAgent(config, {
@@ -92,11 +105,23 @@ export async function createChannelAgentSession(
 			session.workspace = bundle.workspace;
 			session.model = bundle.model;
 		},
+		persistThreadId: (threadId: string) =>
+			activeThreadStore.setActiveThread(options.caller.id, threadId),
 		compactionConfig: {
 			caller: options.caller.id,
 			store: forcedCheckpointStore,
 		},
 	};
+
+	session.threadId = await activeThreadStore.getOrCreate(
+		options.caller.id,
+		options.threadId,
+	);
+	const existingMessages = await readThreadMessages(
+		session.agent,
+		session.threadId,
+	);
+	session.needsResumeCompaction = existingMessages.length > 0;
 
 	return session;
 }
@@ -157,6 +182,41 @@ export function buildInvokeMessages(
 	return [...seedMessages, currentUserMessage];
 }
 
+async function rotateSessionThread(
+	session: ChannelAgentSession,
+	newThreadId: string,
+): Promise<void> {
+	session.threadId = newThreadId;
+	session.needsResumeCompaction = false;
+	await session.persistThreadId?.(newThreadId);
+}
+
+export async function maybeResumeCompactAndSeed(
+	session: ChannelAgentSession,
+	messages: ThreadMessage[],
+	mintThreadId: () => string,
+): Promise<boolean> {
+	if (!session.compactionConfig || !session.needsResumeCompaction) return false;
+	session.needsResumeCompaction = false;
+	if (messages.length === 0) return false;
+
+	const { caller, store } = session.compactionConfig;
+	const checkpoint = await triggerOnSessionResume({
+		caller,
+		threadId: session.threadId,
+		messages,
+		model: session.model,
+		store,
+	});
+
+	await rotateSessionThread(session, mintThreadId());
+	session.pendingCompactionSeed = {
+		summary: deserializeCheckpointSummary(checkpoint.summaryPayload),
+		recentTurns: extractRecentTurns(messages, 2),
+	};
+	return true;
+}
+
 /**
  * Check message/token thresholds and, when exceeded, create a forced
  * checkpoint, rotate to a new thread, and set a pending compaction seed so
@@ -170,16 +230,26 @@ export function buildInvokeMessages(
 export async function maybeAutoCompactAndSeed(
 	session: ChannelAgentSession,
 	messages: ThreadMessage[],
+	pendingUserContent: unknown,
 	mintThreadId: () => string,
 ): Promise<boolean> {
 	if (!session.compactionConfig) return false;
 	const { caller, store, thresholds } = session.compactionConfig;
+	const pendingText = extractTextFromContent(pendingUserContent);
+	const thresholdMessages = [
+		...messages,
+		{
+			role: "user" as const,
+			content: pendingText === "" ? "[multimodal input]" : pendingText,
+		},
+	];
 
 	const checkpoint = await maybeCompactByThresholds(
 		{
 			caller,
 			threadId: session.threadId,
 			messages,
+			pendingMessage: thresholdMessages[thresholdMessages.length - 1],
 			model: session.model,
 			store,
 		},
@@ -191,7 +261,7 @@ export async function maybeAutoCompactAndSeed(
 	const recentTurns = extractRecentTurns(messages, 2);
 	const summary = deserializeCheckpointSummary(checkpoint.summaryPayload);
 
-	session.threadId = mintThreadId();
+	await rotateSessionThread(session, mintThreadId());
 	session.pendingCompactionSeed = { summary, recentTurns };
 	return true;
 }

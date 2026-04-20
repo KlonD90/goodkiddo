@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import { createDb, detectDialect } from "../db";
+import { createDb } from "../db";
 import type { ThreadMessage } from "../memory/summarize";
 import type { CompactionContext } from "./compaction_trigger";
 import {
@@ -218,6 +218,26 @@ describe("maybeCompactByThresholds", () => {
 			tokenBudget: 100_000,
 		});
 		expect(result).not.toBeNull();
+		expect(result?.sourceBoundary).toBe("message_limit");
+		await close();
+	});
+
+	test("uses the pending user turn when evaluating thresholds", async () => {
+		const { store, close } = createTempStore();
+		const model = createStubModel({ current_goal: "goal" });
+		const ctx: CompactionContext = {
+			caller: "user-4b",
+			threadId: "thread-d2",
+			messages: makeMessages(2, "x"),
+			pendingMessage: { role: "user", content: "incoming" },
+			model,
+			store,
+		};
+
+		const result = await maybeCompactByThresholds(ctx, {
+			messageLimit: 3,
+			tokenBudget: 100_000,
+		});
 		expect(result?.sourceBoundary).toBe("message_limit");
 		await close();
 	});

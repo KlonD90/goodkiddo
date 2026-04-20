@@ -37,6 +37,7 @@ export type CompactionContext = {
 	caller: string;
 	threadId: string;
 	messages: ThreadMessage[];
+	pendingMessage?: ThreadMessage;
 	model: BaseChatModel;
 	store: ForcedCheckpointStore;
 };
@@ -101,12 +102,15 @@ export async function maybeCompactByThresholds(
 ): Promise<ForcedCheckpoint | null> {
 	const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
 	const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+	const thresholdMessages = context.pendingMessage
+		? [...context.messages, context.pendingMessage]
+		: context.messages;
 
-	if (shouldCompactByMessageLimit(context.messages, msgLimit)) {
+	if (shouldCompactByMessageLimit(thresholdMessages, msgLimit)) {
 		return runCompaction(context, "message_limit");
 	}
 
-	if (shouldCompactByTokenBudget(context.messages, tokenBudget)) {
+	if (shouldCompactByTokenBudget(thresholdMessages, tokenBudget)) {
 		return runCompaction(context, "token_limit");
 	}
 

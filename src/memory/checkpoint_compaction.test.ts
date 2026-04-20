@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import {
+	type CheckpointSummary,
 	deserializeCheckpointSummary,
 	generateCheckpointSummary,
 	serializeCheckpointSummary,
-	type CheckpointSummary,
 } from "./checkpoint_compaction";
 import type { ThreadMessage } from "./summarize";
 
@@ -72,9 +72,7 @@ describe("generateCheckpointSummary", () => {
 		expect(seen).toHaveLength(2);
 		expect(seen[0]?.role).toBe("system");
 		expect(seen[1]?.role).toBe("user");
-		expect(seen[1]?.content).toContain(
-			"USER: Build a CSV export feature",
-		);
+		expect(seen[1]?.content).toContain("USER: Build a CSV export feature");
 	});
 
 	test("strips markdown code fences from model output", async () => {
@@ -87,7 +85,7 @@ describe("generateCheckpointSummary", () => {
 			important_artifacts: ["auth.ts"],
 		};
 		const { model } = createStubModel(
-			"```json\n" + JSON.stringify(payload) + "\n```",
+			`\`\`\`json\n${JSON.stringify(payload)}\n\`\`\``,
 		);
 		const summary = await generateCheckpointSummary(model, [
 			{ role: "user", content: "Build auth" },
@@ -153,9 +151,7 @@ describe("generateCheckpointSummary", () => {
 			async invoke(messages: Array<{ role: string; content: unknown }>) {
 				for (const m of messages) seen.push(m);
 				return {
-					content: [
-						{ type: "text", text: JSON.stringify(payload) },
-					],
+					content: [{ type: "text", text: JSON.stringify(payload) }],
 				};
 			},
 		} as unknown as BaseChatModel;

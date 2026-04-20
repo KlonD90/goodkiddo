@@ -3,6 +3,7 @@ import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
+import { readThreadMessages } from "../memory/rotate_thread";
 import {
 	type ApprovalBroker,
 	type ApprovalOutcome,
@@ -26,10 +27,9 @@ import {
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
-	seedFromCheckpoint,
+	maybeResumeCompactAndSeed,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
-import { readThreadMessages } from "../memory/rotate_thread";
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
@@ -1492,18 +1492,6 @@ async function ensureTelegramSession(
 		webShare,
 	});
 
-	// Session resume: if a checkpoint exists for this thread, seed first turn.
-	if (session.compactionConfig) {
-		const existingCheckpoint = await session.compactionConfig.store.readLatest(
-			session.compactionConfig.caller,
-			baseThreadId,
-		);
-		if (existingCheckpoint) {
-			const messages = await readThreadMessages(session.agent, session.threadId);
-			seedFromCheckpoint(session, existingCheckpoint.summaryPayload, messages);
-		}
-	}
-
 	const telegramSession: TelegramAgentSession = {
 		...session,
 		running: false,
@@ -1531,11 +1519,16 @@ async function runAgentTurn(
 			session.agent,
 			session.threadId,
 		);
-		await maybeAutoCompactAndSeed(
+		const resumed = await maybeResumeCompactAndSeed(
 			session,
 			currentMessages,
 			() => mintTelegramThreadId(chatId),
 		);
+		if (!resumed) {
+			await maybeAutoCompactAndSeed(session, currentMessages, userInput, () =>
+				mintTelegramThreadId(chatId),
+			);
+		}
 		const invokeMessages = buildInvokeMessages(session, {
 			role: "user",
 			content: userInput,
@@ -1875,15 +1868,15 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
-				const session = await ensureTelegramSession(
-					chatIdString,
-					caller,
-					config,
-					db,
-					dialect,
-					store,
-					bot,
-					sessions,
+			const session = await ensureTelegramSession(
+				chatIdString,
+				caller,
+				config,
+				db,
+				dialect,
+				store,
+				bot,
+				sessions,
 				outbound,
 				webShare,
 			);
@@ -1908,15 +1901,15 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
-				const session = await ensureTelegramSession(
-					chatIdString,
-					caller,
-					config,
-					db,
-					dialect,
-					store,
-					bot,
-					sessions,
+			const session = await ensureTelegramSession(
+				chatIdString,
+				caller,
+				config,
+				db,
+				dialect,
+				store,
+				bot,
+				sessions,
 				outbound,
 				webShare,
 			);

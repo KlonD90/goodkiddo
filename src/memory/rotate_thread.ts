@@ -119,6 +119,8 @@ export async function rotateThread(options: {
 
 	const newThreadId = mintThreadId();
 	session.threadId = newThreadId;
+	session.needsResumeCompaction = false;
+	await session.persistThreadId?.(newThreadId);
 
 	return { summary, previousThreadId, newThreadId };
 }

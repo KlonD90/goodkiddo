@@ -22,6 +22,17 @@ const makeMessages = (...pairs: Array<[string, string]>): ThreadMessage[] =>
 		{ role: "assistant" as const, content: a },
 	]);
 
+const TOOL_HEAVY_MESSAGES: ThreadMessage[] = [
+	{ role: "user", content: "first" },
+	{ role: "assistant", content: "first reply" },
+	{ role: "user", content: "second" },
+	{ role: "assistant", content: "thinking" },
+	{ role: "tool", content: "tool payload" },
+	{ role: "assistant", content: "second reply" },
+	{ role: "user", content: "third" },
+	{ role: "assistant", content: "third reply" },
+];
+
 // ---------------------------------------------------------------------------
 // renderCheckpointSummary
 // ---------------------------------------------------------------------------
@@ -121,7 +132,10 @@ describe("extractRecentTurns", () => {
 		const result = extractRecentTurns(msgs, 1);
 		expect(result).toHaveLength(2);
 		expect(result[0]).toMatchObject({ role: "user", content: "third" });
-		expect(result[1]).toMatchObject({ role: "assistant", content: "third-reply" });
+		expect(result[1]).toMatchObject({
+			role: "assistant",
+			content: "third-reply",
+		});
 	});
 
 	test("extracts last 2 turns from 4-turn history", () => {
@@ -162,6 +176,17 @@ describe("extractRecentTurns", () => {
 		expect(result).toHaveLength(1);
 		expect(result[0]).toMatchObject({ role: "user", content: "second" });
 	});
+
+	test("keeps interleaved tool messages inside the retained turns", () => {
+		expect(extractRecentTurns(TOOL_HEAVY_MESSAGES, 2)).toEqual([
+			{ role: "user", content: "second" },
+			{ role: "assistant", content: "thinking" },
+			{ role: "tool", content: "tool payload" },
+			{ role: "assistant", content: "second reply" },
+			{ role: "user", content: "third" },
+			{ role: "assistant", content: "third reply" },
+		]);
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -188,7 +213,11 @@ describe("buildRuntimeContext — no checkpoint", () => {
 	test("does not mutate the original messages array", () => {
 		const history = makeMessages(["q1", "a1"]);
 		const original = [...history];
-		buildRuntimeContext({ checkpoint: null, allMessages: history, currentInput: "q2" });
+		buildRuntimeContext({
+			checkpoint: null,
+			allMessages: history,
+			currentInput: "q2",
+		});
 		expect(history).toEqual(original);
 	});
 
@@ -225,8 +254,8 @@ describe("buildRuntimeContext — with checkpoint", () => {
 			currentInput: "go",
 		});
 		expect(ctx.messages[0]).toMatchObject({ role: "system" });
-		expect(ctx.messages[0]!.content).toContain("[Conversation Checkpoint]");
-		expect(ctx.messages[0]!.content).toContain("Build payment integration");
+		expect(ctx.messages[0]?.content).toContain("[Conversation Checkpoint]");
+		expect(ctx.messages[0]?.content).toContain("Build payment integration");
 	});
 
 	test("last message is the current user input", () => {
@@ -266,11 +295,7 @@ describe("buildRuntimeContext — with checkpoint", () => {
 	});
 
 	test("message count is: 1 system + recentTurns*2 + 1 user", () => {
-		const history = makeMessages(
-			["a", "a-r"],
-			["b", "b-r"],
-			["c", "c-r"],
-		);
+		const history = makeMessages(["a", "a-r"], ["b", "b-r"], ["c", "c-r"]);
 
 		const ctx = buildRuntimeContext({
 			checkpoint: FULL_SUMMARY,
@@ -311,16 +336,12 @@ describe("buildRuntimeContext — with checkpoint", () => {
 
 		// 1 system + 0 recent + 1 current = 2
 		expect(ctx.messages).toHaveLength(2);
-		expect(ctx.messages[0]!.role).toBe("system");
-		expect(ctx.messages[1]!.role).toBe("user");
+		expect(ctx.messages[0]?.role).toBe("system");
+		expect(ctx.messages[1]?.role).toBe("user");
 	});
 
 	test("stored history length is unchanged after calling buildRuntimeContext", () => {
-		const history = makeMessages(
-			["p1", "a1"],
-			["p2", "a2"],
-			["p3", "a3"],
-		);
+		const history = makeMessages(["p1", "a1"], ["p2", "a2"], ["p3", "a3"]);
 		const lengthBefore = history.length;
 
 		buildRuntimeContext({
@@ -338,7 +359,7 @@ describe("buildRuntimeContext — with checkpoint", () => {
 // ---------------------------------------------------------------------------
 
 describe("stored history vs model-facing working context", () => {
-	test("full history contains 10 turns; working context contains only 3 messages (1 sys + 2 recent + 1 current is 4, but testing the distinction)", () => {
+	test("full history is reduced to the exact compacted shape", () => {
 		const fullHistory = makeMessages(
 			["t1", "r1"],
 			["t2", "r2"],
@@ -357,9 +378,17 @@ describe("stored history vs model-facing working context", () => {
 			recentTurnCount: 2,
 		});
 
-		// Runtime context has: 1 system + 4 (2 turns) + 1 current = 6
-		// This is strictly less than the full 10 stored messages
-		expect(ctx.messages.length).toBeLessThan(fullHistory.length);
+		expect(ctx.messages).toEqual([
+			{
+				role: "system",
+				content: renderCheckpointSummary(FULL_SUMMARY),
+			},
+			{ role: "user", content: "t4" },
+			{ role: "assistant", content: "r4" },
+			{ role: "user", content: "t5" },
+			{ role: "assistant", content: "r5" },
+			{ role: "user", content: "t6" },
+		]);
 		expect(ctx.hasCompaction).toBe(true);
 	});
 

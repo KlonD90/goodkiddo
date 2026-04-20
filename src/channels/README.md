@@ -13,7 +13,9 @@ Channel runtime adapters for the CLI and Telegram entrypoints.
 CLI and Telegram sessions share the same LangGraph checkpoint flow:
 
 - live thread state is persisted in the database selected by `DATABASE_URL`
+- the active thread id per caller is persisted in `active_threads`, so `/new_thread` and compaction-triggered rotations survive restarts
 - checkpoints are handled by the SQL-backed saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts)
+- forced checkpoint summaries are stored separately in [`src/checkpoints/forced_checkpoint_store.ts`](../checkpoints/forced_checkpoint_store.ts)
 - the checkpointer, permission store, workspace backend, and web access store share one injected `Bun.SQL` connection created in [`src/bin/bot.ts`](../bin/bot.ts)
 - rebuilding the agent between turns refreshes the system prompt without losing thread history
 

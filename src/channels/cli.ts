@@ -19,7 +19,7 @@ import {
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeAutoCompactAndSeed,
-	seedFromCheckpoint,
+	maybeResumeCompactAndSeed,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 
@@ -103,19 +103,6 @@ export const cliChannel: AppChannel = {
 			webShare,
 		});
 
-		// Session resume: if a checkpoint exists for this thread (e.g. bot was
-		// restarted after a previous compaction), seed the first turn with it.
-		if (session.compactionConfig) {
-			const existingCheckpoint = await session.compactionConfig.store.readLatest(
-				session.compactionConfig.caller,
-				baseThreadId,
-			);
-			if (existingCheckpoint) {
-				const messages = await readThreadMessages(session.agent, session.threadId);
-				seedFromCheckpoint(session, existingCheckpoint.summaryPayload, messages);
-			}
-		}
-
 		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;
 
 		const rl = readline.createInterface({ input, output });
@@ -188,7 +175,19 @@ export const cliChannel: AppChannel = {
 					session.agent,
 					session.threadId,
 				);
-				await maybeAutoCompactAndSeed(session, currentMessages, mintThreadId);
+				const resumed = await maybeResumeCompactAndSeed(
+					session,
+					currentMessages,
+					mintThreadId,
+				);
+				if (!resumed) {
+					await maybeAutoCompactAndSeed(
+						session,
+						currentMessages,
+						userInput,
+						mintThreadId,
+					);
+				}
 				const invokeMessages = buildInvokeMessages(session, {
 					role: "user",
 					content: userInput,

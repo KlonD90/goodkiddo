@@ -34,14 +34,9 @@ export function renderCheckpointSummary(summary: CheckpointSummary): string {
 		);
 	}
 
-	const unresolved = [
-		...summary.unfinished_work,
-		...summary.pending_approvals,
-	];
+	const unresolved = [...summary.unfinished_work, ...summary.pending_approvals];
 	if (unresolved.length > 0) {
-		lines.push(
-			`Unresolved:\n${unresolved.map((u) => `  - ${u}`).join("\n")}`,
-		);
+		lines.push(`Unresolved:\n${unresolved.map((u) => `  - ${u}`).join("\n")}`);
 	}
 
 	if (summary.important_artifacts.length > 0) {
@@ -68,7 +63,7 @@ export function extractRecentTurns(
 	let startIdx = messages.length;
 
 	for (let i = messages.length - 1; i >= 0; i--) {
-		if (messages[i]!.role === "user") {
+		if (messages[i]?.role === "user") {
 			userCount++;
 			startIdx = i;
 			if (userCount >= turns) break;
@@ -95,7 +90,12 @@ export function buildRuntimeContext(options: {
 	currentInput: string;
 	recentTurnCount?: number;
 }): RuntimeContext {
-	const { checkpoint, allMessages, currentInput, recentTurnCount = 2 } = options;
+	const {
+		checkpoint,
+		allMessages,
+		currentInput,
+		recentTurnCount = 2,
+	} = options;
 
 	const currentUserMessage: ThreadMessage = {
 		role: "user",
