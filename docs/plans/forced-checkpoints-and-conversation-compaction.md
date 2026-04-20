@@ -22,10 +22,10 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - [x] Add tests proving summary generation preserves key operational state across compaction.
 
 ### Task 3: Build compact runtime context assembly
-- [ ] Add a runtime-context builder that assembles prompt input from the latest checkpoint summary, unresolved active items, the last 2 turns, and the current user input.
-- [ ] Ensure full stored history is not replayed into runtime context after compaction.
-- [ ] Keep raw full history in SQL unchanged for audit and recovery.
-- [ ] Add tests that distinguish stored history from model-facing working context.
+- [x] Add a runtime-context builder that assembles prompt input from the latest checkpoint summary, unresolved active items, the last 2 turns, and the current user input.
+- [x] Ensure full stored history is not replayed into runtime context after compaction.
+- [x] Keep raw full history in SQL unchanged for audit and recovery.
+- [x] Add tests that distinguish stored history from model-facing working context.
 
 ### Task 4: Add forced compaction triggers
 - [ ] Trigger forced checkpoint creation on `/new_thread`.
