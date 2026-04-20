@@ -11,10 +11,10 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - `bun test src/tasks/store.test.ts src/tasks/reconcile.test.ts`
 
 ### Task 1: Add SQL task store
-- [ ] Create `src/tasks/store.ts` with table init, query helpers, and status transitions.
-- [ ] Add tests for add, list, complete, and dismiss flows scoped by caller.
-- [ ] Store `thread_id_created`, `thread_id_completed`, `list_name`, `title`, `note`, `status`, and timestamp fields on each task row.
-- [ ] Add indexes for `(user_id, status, updated_at DESC)` and `(user_id, list_name, status)`.
+- [x] Create `src/tasks/store.ts` with table init, query helpers, and status transitions.
+- [x] Add tests for add, list, complete, and dismiss flows scoped by caller.
+- [x] Store `thread_id_created`, `thread_id_completed`, `list_name`, `title`, `note`, `status`, and timestamp fields on each task row.
+- [x] Add indexes for `(user_id, status, updated_at DESC)` and `(user_id, list_name, status)`.
 
 ### Task 2: Add agent-facing task tools and prompt guidance
 - [ ] Add `task_add({ listName, title, note? })`.
