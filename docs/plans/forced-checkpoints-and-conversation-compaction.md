@@ -11,10 +11,10 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - `bun test src/memory/checkpoint_compaction.test.ts src/memory/runtime_context.test.ts`
 
 ### Task 1: Define checkpoint storage and retrieval
-- [ ] Add a checkpoint storage module for structured forced-checkpoint records.
-- [ ] Persist checkpoint summary payloads separately from raw message history.
-- [ ] Store checkpoint metadata needed for runtime reconstruction, including caller, thread, creation time, and source boundary.
-- [ ] Add tests for create, read-latest, and caller/thread isolation behavior.
+- [x] Add a checkpoint storage module for structured forced-checkpoint records.
+- [x] Persist checkpoint summary payloads separately from raw message history.
+- [x] Store checkpoint metadata needed for runtime reconstruction, including caller, thread, creation time, and source boundary.
+- [x] Add tests for create, read-latest, and caller/thread isolation behavior.
 
 ### Task 2: Define structured checkpoint summaries
 - [ ] Implement a checkpoint summary shape that captures current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts.
