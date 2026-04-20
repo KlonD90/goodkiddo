@@ -22,7 +22,8 @@ If config is missing, the app starts an interactive setup wizard.
 
 ## Plans
 
-- [`docs/plan/`](./docs/plan/) — feature plans and agent task lists
+- [`docs/plan/`](./docs/plan/) — high-level feature plans
+- [`docs/plans/`](./docs/plans/) — execution-ready RALPHEX-aligned implementation plans
 
 ## Read Next
 

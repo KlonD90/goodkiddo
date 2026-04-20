@@ -6,3 +6,4 @@ state.db*
 .claude
 .tmp
 permissions.log
+.ralphex/
