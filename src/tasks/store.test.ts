@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { TaskStore } from "./store";
+import { formatActiveTaskSnapshot, TaskStore } from "./store";
 
 type IndexListRow = {
 	seq: number;
@@ -211,5 +211,30 @@ describe("TaskStore", () => {
 			id: otherCaller.id,
 			status: "active",
 		});
+	});
+
+	test("renders a compact active-task snapshot", async () => {
+		await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "today",
+			title: "Ship task tools",
+			note: "Keep the output compact",
+		});
+		await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-b",
+			listName: "backlog",
+			title: "Follow up later",
+		});
+
+		const snapshot = await store.composeActiveTaskSnapshot("telegram:1", {
+			limit: 1,
+		});
+		expect(snapshot).toContain("## Active tasks");
+		expect(snapshot).toContain("backlog: Follow up later");
+		expect(snapshot).toContain("1 more active task");
+
+		expect(formatActiveTaskSnapshot([])).toBe("## Active tasks\n- None.");
 	});
 });

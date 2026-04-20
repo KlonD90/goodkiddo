@@ -11,6 +11,7 @@ import type { ApprovalBroker } from "./permissions/approval";
 import type { AuditLogger } from "./permissions/audit";
 import type { PermissionsStore } from "./permissions/store";
 import type { Caller } from "./permissions/types";
+import { TaskStore } from "./tasks/store";
 import { createExecutionToolset } from "./tools";
 import type { WebShareOptions } from "./tools/factory";
 import type { GuardContext } from "./tools/guard";
@@ -22,6 +23,7 @@ export interface CreateAppAgentOptions {
 	audit: AuditLogger;
 	db: SQL;
 	dialect: "sqlite" | "postgres";
+	threadId: string;
 	checkpointer?: BaseCheckpointSaver;
 	outbound?: OutboundChannel;
 	runtimeContextBlock?: string;
@@ -57,6 +59,13 @@ export const createAppAgent = async (
 	});
 
 	await ensureMemoryBootstrapped(workspace);
+	const taskStore = new TaskStore({
+		db: options.db,
+		dialect: options.dialect,
+	});
+	const activeTaskSnapshot = await taskStore.composeActiveTaskSnapshot(
+		options.caller.id,
+	);
 
 	const guard: GuardContext | undefined =
 		config.permissionsMode === "enforce"
@@ -80,6 +89,8 @@ export const createAppAgent = async (
 		guard,
 		enableExecute: config.enableExecute,
 		callerId: options.caller.id,
+		threadId: options.threadId,
+		taskStore,
 		outbound: options.outbound,
 		webShare: options.webShare,
 	});
@@ -87,6 +98,7 @@ export const createAppAgent = async (
 	const systemPrompt = await buildSystemPrompt({
 		identityPrompt: DO_IT_MD,
 		backend: workspace,
+		activeTaskSnapshot,
 		runtimeContextBlock: options.runtimeContextBlock,
 	});
 

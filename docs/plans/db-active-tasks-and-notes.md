@@ -17,13 +17,13 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - [x] Add indexes for `(user_id, status, updated_at DESC)` and `(user_id, list_name, status)`.
 
 ### Task 2: Add agent-facing task tools and prompt guidance
-- [ ] Add `task_add({ listName, title, note? })`.
-- [ ] Add `task_complete({ taskId })`.
-- [ ] Add `task_dismiss({ taskId, reason? })`.
-- [ ] Add `task_list_active({ limit? })`.
-- [ ] Register the new task tools in the execution tool factory.
-- [ ] Update prompt guidance so durable facts still use `memory_write`, while actionable work uses the task tools.
-- [ ] Extend prompt building to inject a compact active-task snapshot from SQL on every agent build.
+- [x] Add `task_add({ listName, title, note? })`.
+- [x] Add `task_complete({ taskId })`.
+- [x] Add `task_dismiss({ taskId, reason? })`.
+- [x] Add `task_list_active({ limit? })`.
+- [x] Register the new task tools in the execution tool factory.
+- [x] Update prompt guidance so durable facts still use `memory_write`, while actionable work uses the task tools.
+- [x] Extend prompt building to inject a compact active-task snapshot from SQL on every agent build.
 
 ### Task 3: Add boundary-based task reconciliation
 - [ ] Extend channel session state with a `pendingTaskCheck` flag.

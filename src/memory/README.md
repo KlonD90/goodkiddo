@@ -9,7 +9,7 @@ Per-caller agent memory: long-term notes, procedural skills, append-only log, pl
 - `actuel_archive.ts` — Karpathy-style `## Actuel` / `## Archive` compaction (`applyRotate` moves old content under a dated heading)
 - `log.ts` — `appendLog(op, detail)` → `## [YYYY-MM-DD] op | detail`
 - `lint.ts` — pure health check over the subtrees (stale, orphan, duplicate, over-budget); findings surface in the system prompt, not as a tool
-- `session_loader.ts` — `buildSystemPrompt({ identityPrompt, backend })` composes identity + memory rules + MEMORY/USER/SKILLS snapshot + maintenance block (if any)
+- `session_loader.ts` — `buildSystemPrompt({ identityPrompt, backend, activeTaskSnapshot? })` composes identity + memory rules + MEMORY/USER/SKILLS snapshot + active-task snapshot + maintenance block (if any)
 - `memory_prompt.md` — identity-agnostic memory-usage rules injected between identity and snapshot
 - `summarize.ts` — `summarizeThread(model, messages)` for the `/new-thread` command
 - `rotate_thread.ts` — `rotateThread` summarizes the current thread into log.md and rotates `session.threadId`
@@ -29,6 +29,8 @@ Layout per caller:
 ```
 
 Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools.
+
+Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed.
 
 Conversation state is split into two layers:
 

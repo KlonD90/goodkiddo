@@ -106,4 +106,17 @@ describe("buildSystemPrompt", () => {
 		});
 		expect(prompt).toContain("## Compacted Conversation Context");
 	});
+
+	test("appends active-task snapshot when provided", async () => {
+		const backend = createBackend("prompt-active-tasks");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+			activeTaskSnapshot:
+				"## Active tasks\n- [12] today: Ship task tools\n- [9] backlog: Follow up",
+		});
+		expect(prompt).toContain("## Active tasks");
+		expect(prompt).toContain("today: Ship task tools");
+	});
 });

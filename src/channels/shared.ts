@@ -94,6 +94,7 @@ export async function createChannelAgentSession(
 			broker: options.broker,
 			audit,
 			checkpointer,
+			threadId: session?.threadId ?? options.threadId,
 			outbound: options.outbound,
 			runtimeContextBlock: session?.pendingCompactionSeed
 				? renderCompactionPromptContext({

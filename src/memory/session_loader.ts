@@ -60,10 +60,17 @@ export async function composeMemorySnapshot(
 export async function buildSystemPrompt(options: {
 	identityPrompt: string;
 	backend: BackendProtocol;
+	activeTaskSnapshot?: string;
 	runtimeContextBlock?: string;
 	now?: Date;
 }): Promise<string> {
-	const { identityPrompt, backend, runtimeContextBlock, now } = options;
+	const {
+		identityPrompt,
+		backend,
+		activeTaskSnapshot,
+		runtimeContextBlock,
+		now,
+	} = options;
 	const [snapshot, findings] = await Promise.all([
 		composeMemorySnapshot(backend),
 		runLint(backend, now),
@@ -77,6 +84,9 @@ export async function buildSystemPrompt(options: {
 		"---",
 		snapshot,
 	];
+	if (activeTaskSnapshot && activeTaskSnapshot.trim().length > 0) {
+		parts.push("---", activeTaskSnapshot.trim());
+	}
 	if (maintenance.length > 0) {
 		parts.push("---", maintenance);
 	}

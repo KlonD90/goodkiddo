@@ -48,6 +48,15 @@ export interface AddTaskInput {
 	note?: string | null;
 }
 
+export interface ActiveTaskSnapshotOptions {
+	heading?: string;
+	limit?: number;
+}
+
+function compactInline(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
 function rowToTask(row: TaskRow): TaskRecord {
 	return {
 		id: row.id,
@@ -64,6 +73,33 @@ function rowToTask(row: TaskRow): TaskRecord {
 		completedAt: row.completed_at,
 		dismissedAt: row.dismissed_at,
 	};
+}
+
+export function formatActiveTaskSnapshot(
+	tasks: TaskRecord[],
+	options: ActiveTaskSnapshotOptions = {},
+): string {
+	const heading = options.heading ?? "## Active tasks";
+	const limit = options.limit ?? tasks.length;
+	const visibleTasks = tasks.slice(0, limit);
+	const lines = [heading];
+
+	if (visibleTasks.length === 0) {
+		lines.push("- None.");
+		return lines.join("\n");
+	}
+
+	for (const task of visibleTasks) {
+		const title = compactInline(task.title);
+		const note = task.note ? ` — ${compactInline(task.note)}` : "";
+		lines.push(`- [${task.id}] ${task.listName}: ${title}${note}`);
+	}
+
+	if (tasks.length > visibleTasks.length) {
+		lines.push(`- ... ${tasks.length - visibleTasks.length} more active task(s).`);
+	}
+
+	return lines.join("\n");
 }
 
 export class TaskStore {
@@ -320,6 +356,15 @@ export class TaskStore {
 
 	async listActiveTasks(userId: string, limit = 100): Promise<TaskRecord[]> {
 		return this.listTasksForUser(userId, { status: "active", limit });
+	}
+
+	async composeActiveTaskSnapshot(
+		userId: string,
+		options: ActiveTaskSnapshotOptions = {},
+	): Promise<string> {
+		const limit = options.limit ?? 12;
+		const tasks = await this.listActiveTasks(userId, limit + 1);
+		return formatActiveTaskSnapshot(tasks, options);
 	}
 
 	async completeTask(params: {

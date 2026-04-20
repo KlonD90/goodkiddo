@@ -32,6 +32,8 @@ During the turn:
   constraints unless the user explicitly changes them.
 - Use memory to inform the current task, not as a substitute for reasoning
   about the current task.
+- Check the injected active-task snapshot before creating duplicate follow-ups
+  or claiming work is still pending.
 
 At the end of a turn:
 
@@ -56,6 +58,8 @@ Do not write memory for:
 - Turn-by-turn conversation state or temporary plans.
 - Trivia, guesses, or information likely to expire quickly.
 - Facts already captured clearly in code, tests, config, or git history.
+- Action items, TODOs, or follow-up work that should stay open only until
+  completed or dismissed.
 
 If a fact is likely to matter in a future session, save it. If not, leave it
 out.
@@ -68,6 +72,15 @@ Use these tools:
 - `skill_write` — write or update a reusable procedure under `/skills/`.
 - `memory_append_log` — append a single `## [DATE] op | detail` line to
   `/memory/log.md`.
+- `task_add` — create actionable work that should remain open across turns.
+- `task_complete` — close an active task once the work is done.
+- `task_dismiss` — drop an active task that is no longer relevant.
+- `task_list_active` — read the latest SQL-backed active-task list on demand.
+
+Use the task tools for actionable work. Use `memory_write` and `skill_write`
+for durable facts and reusable procedures. Do not store the same item in both
+systems unless there is a durable outcome worth remembering after the task is
+closed.
 
 For `memory_write` and `skill_write`:
 

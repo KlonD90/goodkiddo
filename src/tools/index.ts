@@ -18,3 +18,9 @@ export {
 	createWriteFileTool,
 } from "./filesystem_tools";
 export { type GuardContext, wrapToolWithGuard } from "./guard";
+export {
+	createTaskAddTool,
+	createTaskCompleteTool,
+	createTaskDismissTool,
+	createTaskListActiveTool,
+} from "./task_tools";

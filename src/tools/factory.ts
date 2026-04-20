@@ -28,6 +28,13 @@ import {
 } from "./memory_tools";
 import { createSendFileTool } from "./send_file_tool";
 import { createGrantFsAccessTool } from "./share_tools";
+import {
+	createTaskAddTool,
+	createTaskCompleteTool,
+	createTaskDismissTool,
+	createTaskListActiveTool,
+} from "./task_tools";
+import type { TaskStore } from "../tasks/store";
 
 export interface WebShareOptions {
 	access: AccessStore;
@@ -41,6 +48,8 @@ export interface CreateExecutionToolsetOptions {
 	guard?: GuardContext;
 	enableExecute?: boolean;
 	callerId?: string;
+	threadId?: string;
+	taskStore?: TaskStore;
 	outbound?: OutboundChannel;
 	webShare?: WebShareOptions;
 }
@@ -83,6 +92,32 @@ export async function createExecutionToolset(
 				})
 			: null;
 
+	const taskTools =
+		options.taskStore && options.callerId && options.threadId
+			? [
+					createTaskAddTool({
+						store: options.taskStore,
+						callerId: options.callerId,
+						threadId: options.threadId,
+					}),
+					createTaskCompleteTool({
+						store: options.taskStore,
+						callerId: options.callerId,
+						threadId: options.threadId,
+					}),
+					createTaskDismissTool({
+						store: options.taskStore,
+						callerId: options.callerId,
+						threadId: options.threadId,
+					}),
+					createTaskListActiveTool({
+						store: options.taskStore,
+						callerId: options.callerId,
+						threadId: options.threadId,
+					}),
+				]
+			: [];
+
 	const tools = [
 		createLsTool(options.workspace),
 		createReadFileTool(options.workspace),
@@ -93,6 +128,7 @@ export async function createExecutionToolset(
 		createMemoryWriteTool(options.workspace),
 		createSkillWriteTool(options.workspace),
 		createMemoryAppendLogTool(options.workspace),
+		...taskTools,
 		createBrowserSnapshotTool({ registry: browserRegistry }),
 		createBrowserActionTool({ registry: browserRegistry }),
 		new SearxngSearch({
