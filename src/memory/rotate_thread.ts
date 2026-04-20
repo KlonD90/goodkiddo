@@ -77,7 +77,7 @@ function extractContentText(content: unknown): string {
 	return "";
 }
 
-async function readThreadMessages(
+export async function readThreadMessages(
 	agent: AgentInstance,
 	threadId: string,
 ): Promise<ThreadMessage[]> {

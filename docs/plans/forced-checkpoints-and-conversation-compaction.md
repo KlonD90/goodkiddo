@@ -28,11 +28,11 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - [x] Add tests that distinguish stored history from model-facing working context.
 
 ### Task 4: Add forced compaction triggers
-- [ ] Trigger forced checkpoint creation on `/new_thread`.
-- [ ] Trigger forced checkpoint creation on the first message after session resume when session lifecycle support exists.
-- [ ] Trigger forced checkpoint creation when message or token budget thresholds are exceeded.
-- [ ] Leave room for future explicit “conversation ended” detection without making it a v1 dependency.
-- [ ] Add tests proving compaction fires only at defined boundaries.
+- [x] Trigger forced checkpoint creation on `/new_thread`.
+- [x] Trigger forced checkpoint creation on the first message after session resume when session lifecycle support exists.
+- [x] Trigger forced checkpoint creation when message or token budget thresholds are exceeded.
+- [x] Leave room for future explicit “conversation ended” detection without making it a v1 dependency.
+- [x] Add tests proving compaction fires only at defined boundaries.
 
 ### Task 5: Integrate channels with compacted context loading
 - [ ] Update channel/session flow so fresh turns load compacted runtime context rather than all historical messages.

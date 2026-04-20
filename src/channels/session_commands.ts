@@ -1,6 +1,11 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
-import { rotateThread } from "../memory/rotate_thread";
+import {
+	runCompaction,
+	type CompactionContext,
+} from "../checkpoints/compaction_trigger";
+import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import type { AccessStore, ScopeKind } from "../server/access_store";
 import { buildShareUrl } from "../tools/share_tools";
 import type { ChannelAgentSession } from "./shared";
@@ -18,12 +23,19 @@ export type WebShareCommandContext = {
 	callerId: string;
 };
 
+export type CompactionCommandContext = {
+	caller: string;
+	store: ForcedCheckpointStore;
+};
+
 export type SessionCommandContext = {
 	session: ChannelAgentSession;
 	model: BaseChatModel;
 	backend: BackendProtocol;
 	mintThreadId: () => string;
 	webShare?: WebShareCommandContext;
+	/** When provided, forced checkpoints are created at defined session boundaries. */
+	compaction?: CompactionCommandContext;
 };
 
 async function handleOpenFs(
@@ -100,6 +112,21 @@ export async function maybeHandleSessionCommand(
 		.split("@", 1)[0];
 
 	if (command === "new-thread" || command === "new_thread") {
+		if (context.compaction) {
+			const messages = await readThreadMessages(
+				context.session.agent,
+				context.session.threadId,
+			);
+			const compactionCtx: CompactionContext = {
+				caller: context.compaction.caller,
+				threadId: context.session.threadId,
+				messages,
+				model: context.model,
+				store: context.compaction.store,
+			};
+			await runCompaction(compactionCtx, "new_thread");
+		}
+
 		const { summary, newThreadId } = await rotateThread({
 			session: context.session,
 			model: context.model,
