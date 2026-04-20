@@ -95,4 +95,15 @@ describe("buildSystemPrompt", () => {
 		// we look for the actual block shape, not a bare substring.
 		expect(prompt).not.toMatch(/\n## Memory maintenance\n- /);
 	});
+
+	test("appends runtime-only compaction context when provided", async () => {
+		const backend = createBackend("prompt-runtime-context");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+			runtimeContextBlock: "## Compacted Conversation Context\n\n{}",
+		});
+		expect(prompt).toContain("## Compacted Conversation Context");
+	});
 });

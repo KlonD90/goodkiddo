@@ -1526,9 +1526,17 @@ async function runAgentTurn(
 			() => mintTelegramThreadId(chatId),
 		);
 		if (!resumed) {
-			await maybeAutoCompactAndSeed(session, currentMessages, userInput, () =>
-				mintTelegramThreadId(chatId),
+			const compacted = await maybeAutoCompactAndSeed(
+				session,
+				currentMessages,
+				userInput,
+				() => mintTelegramThreadId(chatId),
 			);
+			if (compacted) {
+				await session.refreshAgent();
+			}
+		} else {
+			await session.refreshAgent();
 		}
 		const invokeMessages = buildInvokeMessages(session, {
 			role: "user",
@@ -1730,6 +1738,18 @@ async function handleTelegramControlInput(
 			if (approvalReply.reply) {
 				await sendTelegramMessage(bot, chatId, approvalReply.reply);
 			}
+			return true;
+		}
+
+		if (
+			extractTelegramCommandName(commandText) !== null &&
+			(session.running || session.queue.length > 0)
+		) {
+			await sendTelegramMessage(
+				bot,
+				chatId,
+				"Wait for the current queued turn to finish before sending another Telegram command.",
+			);
 			return true;
 		}
 

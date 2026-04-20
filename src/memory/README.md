@@ -53,12 +53,11 @@ Each checkpoint captures: current goal, decisions, constraints, unfinished work,
 
 **Checkpoint summary generation** (`checkpoint_compaction.ts`) prompts the model to produce the structured `CheckpointSummary` JSON. The resulting snapshot is serialized and stored in `ForcedCheckpointStore`.
 
-**Runtime context builder** (`runtime_context.ts`) assembles the model-facing prompt from:
+**Runtime context builder** (`runtime_context.ts`) renders a runtime-only prompt appendix from:
 
-1. Latest checkpoint summary (rendered as a `[Conversation Checkpoint]` system message)
+1. Latest checkpoint summary (serialized as structured JSON data)
 2. Last 2 user-initiated turns (not last 2 messages — turns include all interleaved assistant/tool messages)
-3. Current user input
 
-Synthetic `[Conversation Checkpoint]` seed messages are treated as runtime-only scaffolding: they seed the next compacted turn, but they are filtered back out when thread history is reread for later summaries or checkpoint generation so the system does not recursively summarize old summaries.
+That appendix is injected through the rebuilt system prompt for the next turn only, so the persisted thread history still contains just the actual new user/assistant exchange. The prompt block explicitly labels checkpoint strings as untrusted historical data rather than behavioral instructions.
 
 When no checkpoint exists yet, the builder falls back to replaying full stored history. `RuntimeContext.hasCompaction` indicates which path was taken.

@@ -24,6 +24,7 @@ export interface CreateAppAgentOptions {
 	dialect: "sqlite" | "postgres";
 	checkpointer?: BaseCheckpointSaver;
 	outbound?: OutboundChannel;
+	runtimeContextBlock?: string;
 	webShare?: WebShareOptions;
 }
 
@@ -86,6 +87,7 @@ export const createAppAgent = async (
 	const systemPrompt = await buildSystemPrompt({
 		identityPrompt: DO_IT_MD,
 		backend: workspace,
+		runtimeContextBlock: options.runtimeContextBlock,
 	});
 
 	const agent = createAgent({

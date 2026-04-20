@@ -6,6 +6,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 export type ThreadMessage = {
 	role: "user" | "assistant" | "system" | "tool";
 	content: string;
+	estimatedTokens?: number;
 };
 
 const SUMMARY_SYSTEM = [

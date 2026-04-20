@@ -182,12 +182,17 @@ export const cliChannel: AppChannel = {
 					mintThreadId,
 				);
 				if (!resumed) {
-					await maybeAutoCompactAndSeed(
+					const compacted = await maybeAutoCompactAndSeed(
 						session,
 						currentMessages,
 						userInput,
 						mintThreadId,
 					);
+					if (compacted) {
+						await session.refreshAgent();
+					}
+				} else {
+					await session.refreshAgent();
 				}
 				const invokeMessages = buildInvokeMessages(session, {
 					role: "user",

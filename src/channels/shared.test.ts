@@ -112,7 +112,7 @@ describe("buildInvokeMessages — no pending seed", () => {
 });
 
 describe("buildInvokeMessages — with pending seed", () => {
-	test("prepends checkpoint system message and recent turns", () => {
+	test("does not inject checkpoint context into persisted turn messages", () => {
 		const recentTurns = makeMessages(["prev-q", "prev-a"]);
 		const session = stubSession({
 			pendingCompactionSeed: { summary: SAMPLE_SUMMARY, recentTurns },
@@ -123,14 +123,8 @@ describe("buildInvokeMessages — with pending seed", () => {
 			content: "next question",
 		});
 
-		// [system checkpoint] + [user prev-q, assistant prev-a] + [user next-q] = 4
-		expect(result).toHaveLength(4);
-		expect(result[0]).toMatchObject({ role: "system" });
-		expect(result[0]?.content).toContain("[Conversation Checkpoint]");
-		expect(result[0]?.content).toContain("Deploy the service");
-		expect(result[1]).toMatchObject({ role: "user", content: "prev-q" });
-		expect(result[2]).toMatchObject({ role: "assistant", content: "prev-a" });
-		expect(result[3]).toMatchObject({ role: "user", content: "next question" });
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ role: "user", content: "next question" });
 	});
 
 	test("keeps pendingCompactionSeed until the caller explicitly clears it", () => {
@@ -172,7 +166,7 @@ describe("buildInvokeMessages — with pending seed", () => {
 		expect(last?.content).toBe(content);
 	});
 
-	test("empty recentTurns: only system + current user", () => {
+	test("empty recentTurns still returns only the current user turn", () => {
 		const session = stubSession({
 			pendingCompactionSeed: { summary: SAMPLE_SUMMARY, recentTurns: [] },
 		});
@@ -181,9 +175,8 @@ describe("buildInvokeMessages — with pending seed", () => {
 			role: "user",
 			content: "go",
 		});
-		expect(result).toHaveLength(2);
-		expect(result[0]?.role).toBe("system");
-		expect(result[1]).toMatchObject({ role: "user", content: "go" });
+		expect(result).toHaveLength(1);
+		expect(result[0]).toMatchObject({ role: "user", content: "go" });
 	});
 });
 
@@ -287,9 +280,12 @@ describe("recoverPendingSeedForEmptyThread", () => {
 		expect(session.pendingCompactionSeed?.summary.current_goal).toBe(
 			"Deploy the service",
 		);
-		expect(session.pendingCompactionSeed?.recentTurns).toEqual(
-			makeMessages(["older", "older-reply"], ["recent", "recent-reply"]),
-		);
+		expect(
+			session.pendingCompactionSeed?.recentTurns.map(({ role, content }) => ({
+				role,
+				content,
+			})),
+		).toEqual(makeMessages(["older", "older-reply"], ["recent", "recent-reply"]));
 		await close();
 	});
 
@@ -443,11 +439,8 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 			content: "after compaction",
 		});
 
-		// [system checkpoint, user q1, assistant a1, user "after compaction"] = 4
-		expect(invokeMessages).toHaveLength(4);
-		expect(invokeMessages[0]?.role).toBe("system");
-		expect(invokeMessages[0]?.content).toContain("Deploy the service");
-		expect(invokeMessages[invokeMessages.length - 1]).toMatchObject({
+		expect(invokeMessages).toHaveLength(1);
+		expect(invokeMessages[0]).toMatchObject({
 			role: "user",
 			content: "after compaction",
 		});
@@ -484,6 +477,37 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 
 		const checkpoint = await store.readLatest("user-4", "test-thread");
 		expect(checkpoint?.sourceBoundary).toBe("message_limit");
+		await close();
+	});
+
+	test("token-budget compaction counts multimodal pending input conservatively", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			model: {
+				async invoke() {
+					return { content: JSON.stringify(SAMPLE_SUMMARY) };
+				},
+			} as unknown as BaseChatModel,
+			compactionConfig: {
+				caller: "user-6",
+				store,
+				thresholds: { messageLimit: 100, tokenBudget: 1000 },
+			},
+		});
+
+		const result = await maybeAutoCompactAndSeed(
+			session,
+			[],
+			[
+				{ type: "text", text: "please inspect this" },
+				{ type: "image", mimeType: "image/png", data: new Uint8Array([1, 2]) },
+			],
+			() => "new-thread-multimodal",
+		);
+
+		expect(result).toBe(true);
+		const checkpoint = await store.readLatest("user-6", "test-thread");
+		expect(checkpoint?.sourceBoundary).toBe("token_limit");
 		await close();
 	});
 

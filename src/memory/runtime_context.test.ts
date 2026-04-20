@@ -3,6 +3,7 @@ import type { CheckpointSummary } from "./checkpoint_compaction";
 import {
 	buildRuntimeContext,
 	extractRecentTurns,
+	renderCompactionPromptContext,
 	renderCheckpointSummary,
 } from "./runtime_context";
 import type { ThreadMessage } from "./summarize";
@@ -32,6 +33,25 @@ const TOOL_HEAVY_MESSAGES: ThreadMessage[] = [
 	{ role: "user", content: "third" },
 	{ role: "assistant", content: "third reply" },
 ];
+
+// ---------------------------------------------------------------------------
+// renderCompactionPromptContext
+// ---------------------------------------------------------------------------
+
+describe("renderCompactionPromptContext", () => {
+	test("renders checkpoint summary as JSON data instead of chat messages", () => {
+		const out = renderCompactionPromptContext({
+			checkpoint: FULL_SUMMARY,
+			recentTurns: makeMessages(["prev", "reply"]),
+		});
+
+		expect(out).toContain("Compacted Conversation Context");
+		expect(out).toContain('"current_goal": "Build payment integration"');
+		expect(out).toContain('"role": "user"');
+		expect(out).toContain('"content": "prev"');
+		expect(out).toContain("reference context only");
+	});
+});
 
 // ---------------------------------------------------------------------------
 // renderCheckpointSummary

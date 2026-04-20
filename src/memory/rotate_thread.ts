@@ -1,6 +1,7 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import type { AgentInstance, ChannelAgentSession } from "../channels/shared";
+import { estimateContentTokens, extractContentText } from "./message_content";
 import { appendLog } from "./log";
 import { summarizeThread, type ThreadMessage } from "./summarize";
 
@@ -42,7 +43,11 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 			if (content.trim().length === 0) return null;
 			const role = obj.role as ThreadMessage["role"];
 			if (isSyntheticCheckpointSystemMessage(role, content)) return null;
-			return { role, content };
+			return {
+				role,
+				content,
+				estimatedTokens: estimateContentTokens(obj.content),
+			};
 		}
 	}
 
@@ -72,24 +77,11 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 	const content = extractContentText(obj.content);
 	if (content.trim().length === 0) return null;
 	if (isSyntheticCheckpointSystemMessage(role, content)) return null;
-	return { role, content };
-}
-
-function extractContentText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (Array.isArray(content)) {
-		return content.map((part) => extractContentText(part)).join("");
-	}
-	if (typeof content === "object" && content !== null) {
-		if ("text" in content) {
-			const text = (content as { text?: unknown }).text;
-			if (typeof text === "string") return text;
-		}
-		if ("content" in content) {
-			return extractContentText((content as { content?: unknown }).content);
-		}
-	}
-	return "";
+	return {
+		role,
+		content,
+		estimatedTokens: estimateContentTokens(obj.content),
+	};
 }
 
 export async function readThreadMessages(

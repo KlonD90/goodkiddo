@@ -48,7 +48,7 @@ export type CompactionContext = {
  */
 export function estimateTokens(messages: ThreadMessage[]): number {
 	return messages.reduce(
-		(sum, msg) => sum + Math.ceil(msg.content.length / 4),
+		(sum, msg) => sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
 		0,
 	);
 }

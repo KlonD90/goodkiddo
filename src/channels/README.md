@@ -27,11 +27,13 @@ After a forced checkpoint is created, channel sessions load compacted runtime co
 
 `full_history != runtime_context`. Full turn history stays in the SQL saver for audit and recovery. The model sees only:
 
-1. Latest forced checkpoint summary (as a `[Conversation Checkpoint]` system message)
+1. Latest forced checkpoint summary (serialized as a runtime-only prompt block)
 2. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
 3. Current user input
 
 Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by `src/memory/checkpoint_compaction.ts` writing to `ForcedCheckpointStore`. The runtime context is then assembled by `src/memory/runtime_context.ts`.
+
+The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
 
 `/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start.
 

@@ -13,10 +13,14 @@ import {
 	type CheckpointSummary,
 	deserializeCheckpointSummary,
 } from "../memory/checkpoint_compaction";
+import {
+	estimateContentTokens,
+	extractContentText,
+} from "../memory/message_content";
 import { readThreadMessages } from "../memory/rotate_thread";
 import {
-	buildRuntimeContext,
 	extractRecentTurns,
+	renderCompactionPromptContext,
 } from "../memory/runtime_context";
 import type { ThreadMessage } from "../memory/summarize";
 import type { ApprovalBroker } from "../permissions/approval";
@@ -80,6 +84,7 @@ export async function createChannelAgentSession(
 	await forcedCheckpointStore.ready();
 	await activeThreadStore.ready();
 
+	let session: ChannelAgentSession | undefined;
 	const makeBundle = () =>
 		createAppAgent(config, {
 			db: options.db,
@@ -90,20 +95,26 @@ export async function createChannelAgentSession(
 			audit,
 			checkpointer,
 			outbound: options.outbound,
+			runtimeContextBlock: session?.pendingCompactionSeed
+				? renderCompactionPromptContext({
+						checkpoint: session.pendingCompactionSeed.summary,
+						recentTurns: session.pendingCompactionSeed.recentTurns,
+					})
+				: undefined,
 			webShare: options.webShare,
 		});
 	let bundle = await makeBundle();
 
-	const session: ChannelAgentSession = {
+	const createdSession: ChannelAgentSession = {
 		agent: bundle.agent,
 		threadId: options.threadId,
 		workspace: bundle.workspace,
 		model: bundle.model,
 		refreshAgent: async () => {
 			bundle = await makeBundle();
-			session.agent = bundle.agent;
-			session.workspace = bundle.workspace;
-			session.model = bundle.model;
+			createdSession.agent = bundle.agent;
+			createdSession.workspace = bundle.workspace;
+			createdSession.model = bundle.model;
 		},
 		persistThreadId: (threadId: string) =>
 			activeThreadStore.setActiveThread(options.caller.id, threadId),
@@ -112,26 +123,27 @@ export async function createChannelAgentSession(
 			store: forcedCheckpointStore,
 		},
 	};
+	session = createdSession;
 
-	session.threadId = await activeThreadStore.getOrCreate(
+	createdSession.threadId = await activeThreadStore.getOrCreate(
 		options.caller.id,
 		options.threadId,
 	);
 	const existingMessages = await readThreadMessages(
-		session.agent,
-		session.threadId,
+		createdSession.agent,
+		createdSession.threadId,
 	);
 	if (existingMessages.length > 0) {
-		session.needsResumeCompaction = true;
+		createdSession.needsResumeCompaction = true;
 	} else {
 		await recoverPendingSeedForEmptyThread(
-			session,
+			createdSession,
 			options.caller.id,
 			forcedCheckpointStore,
 		);
 	}
 
-	return session;
+	return createdSession;
 }
 
 /**
@@ -156,37 +168,16 @@ export function seedFromCheckpoint(
 /**
  * Build the messages array to pass to agent.invoke() / agent.stream().
  *
- * - If the session has a pending compaction seed, this returns
- *   [checkpoint_system_msg, ...recentTurns, currentUserMessage].
- *   The caller must clear the seed only after the seeded turn succeeds.
- * - Otherwise returns [currentUserMessage].
- *
- * The `currentUserMessage.content` is passed through unchanged, so multimodal
- * content (image blocks, etc.) is preserved.
+ * Pending compaction context is injected through the rebuilt system prompt so
+ * it does not become persisted thread history. The message payload therefore
+ * always contains just the actual user turn.
  */
 export function buildInvokeMessages(
 	session: ChannelAgentSession,
 	currentUserMessage: { role: "user"; content: unknown },
 ): Array<{ role: string; content: unknown }> {
-	if (!session.pendingCompactionSeed) {
-		return [currentUserMessage];
-	}
-
-	const { summary, recentTurns } = session.pendingCompactionSeed;
-
-	const ctx = buildRuntimeContext({
-		checkpoint: summary,
-		allMessages: recentTurns,
-		currentInput:
-			typeof currentUserMessage.content === "string"
-				? currentUserMessage.content
-				: "[multimodal input]",
-	});
-
-	// Replace the last message (built by buildRuntimeContext as plain string)
-	// with the original currentUserMessage so multimodal content is preserved.
-	const seedMessages = ctx.messages.slice(0, -1);
-	return [...seedMessages, currentUserMessage];
+	void session;
+	return [currentUserMessage];
 }
 
 export function clearPendingCompactionSeed(session: ChannelAgentSession): void {
@@ -269,6 +260,7 @@ export async function maybeAutoCompactAndSeed(
 		{
 			role: "user" as const,
 			content: pendingText === "" ? "[multimodal input]" : pendingText,
+			estimatedTokens: estimateContentTokens(pendingUserContent),
 		},
 	];
 
@@ -302,15 +294,7 @@ export const extractTextFromContent = (content: unknown): string => {
 			.filter((item) => item !== "")
 			.join("\n");
 	}
-	if (typeof content === "object" && content !== null) {
-		if ("text" in content && typeof content.text === "string") {
-			return content.text;
-		}
-		if ("content" in content) {
-			return extractTextFromContent(content.content);
-		}
-	}
-	return "";
+	return extractContentText(content);
 };
 
 function isAssistantMessage(message: unknown): boolean {
