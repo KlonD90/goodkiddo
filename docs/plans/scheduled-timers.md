@@ -84,14 +84,14 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `store.test.ts` with in-memory DB: create, find due, update cron, delete by owner, delete by non-owner rejected, touchRun resets failures, touchError increments counter
 
 ### Task 2: Implement background scheduler loop
-- [ ] Create `src/capabilities/timers/scheduler.ts` — `startScheduler(store, options)` function
-- [ ] Options: `{ intervalMs: 60_000, readMdFile(path): Promise<string>, onTick(timer, promptText): Promise<void> }`
-- [ ] Returns `{ stop(): void }` — clears interval
-- [ ] Loop: poll `store.findDue()`, for each timer call `readMdFile(timer.mdFilePath)`, then `onTick(timer, promptText)`
-- [ ] If `readMdFile` throws (file not found): call `store.delete(timer.id, timer.userId)` and `notifyUser(timer.userId, "Timer for '/memory/<path>.md' was deleted because the memory file no longer exists.")`, then move to next timer (no retry)
-- [ ] After `onTick` success: call `store.touchRun(id, nextRunAt)` where `nextRunAt` is computed from cron expression
-- [ ] After `onTick` failure: `store.touchError(id, message)`; if `consecutive_failures >= 3` after increment: call `notifyUser(userId, warningMessage)` then reset counter
-- [ ] Add `scheduler.test.ts` with mocked store and readMdFile: fires due timers, skips non-due, handles onTick errors, md file not found causes timer deletion and user notification (not retry)
+- [x] Create `src/capabilities/timers/scheduler.ts` — `startScheduler(store, options)` function
+- [x] Options: `{ intervalMs: 60_000, readMdFile(path): Promise<string>, onTick(timer, promptText): Promise<void> }`
+- [x] Returns `{ stop(): void }` — clears interval
+- [x] Loop: poll `store.findDue()`, for each timer call `readMdFile(timer.mdFilePath)`, then `onTick(timer, promptText)`
+- [x] If `readMdFile` throws (file not found): call `store.delete(timer.id, timer.userId)` and `notifyUser(timer.userId, "Timer for '/memory/<path>.md' was deleted because the memory file no longer exists.")`, then move to next timer (no retry)
+- [x] After `onTick` success: call `store.touchRun(id, nextRunAt)` where `nextRunAt` is computed from cron expression
+- [x] After `onTick` failure: `store.touchError(id, message)`; if `consecutive_failures >= 3` after increment: call `notifyUser(userId, warningMessage)` then reset counter
+- [x] Add `scheduler.test.ts` with mocked store and readMdFile: fires due timers, skips non-due, handles onTick errors, md file not found causes timer deletion and user notification (not retry)
 
 ### Task 3: Define LLM timer tools interface
 - [ ] Create `src/capabilities/timers/tools.ts` — `createTimerTools(store, options)` function

@@ -26,6 +26,7 @@
     "@mantine/hooks": "^7.17.4",
     "@tabler/icons-react": "^3.34.0",
     "ai-sdk-provider-chatgpt-oauth": "^1.1.0",
+    "cron-parser": "^5.5.0",
     "csv-parse": "^6.2.1",
     "deepagents": "^1.8.8",
     "grammy": "^1.42.0",
