@@ -4,7 +4,7 @@ import type { SpreadsheetParser, SpreadsheetParseResult } from "./parser";
 export class CsvParser implements SpreadsheetParser {
 	async parse(data: Uint8Array, _filename: string, _mimeType: string): Promise<SpreadsheetParseResult> {
 		try {
-			const text = new TextDecoder("utf-8", { fatal: true }).decode(data);
+			const text = new TextDecoder("utf-8", { fatal: false }).decode(data);
 			if (!text.trim()) {
 				return {
 					sheets: [{
@@ -52,6 +52,7 @@ export class CsvParser implements SpreadsheetParser {
 			};
 		} catch (err) {
 			console.error("CSV parse error:", err);
+			const message = err instanceof Error ? err.message : "Unknown parse error";
 			return {
 				sheets: [{
 					name: "Sheet1",
@@ -61,7 +62,8 @@ export class CsvParser implements SpreadsheetParser {
 					colCount: 0
 				}],
 				isEmpty: false,
-				isCorrupt: true
+				isCorrupt: true,
+				errorMessage: message
 			};
 		}
 	}

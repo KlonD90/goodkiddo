@@ -2153,13 +2153,18 @@ export async function handleTelegramSpreadsheetMessage(
 	const queueTurn = deps?.queueTurn ?? handleTelegramQueuedTurn;
 
 	if (
-		params.document.file_size === undefined ||
+		typeof params.document.file_size === "number" &&
 		params.document.file_size > SPREADSHEET_MAX_BYTES
 	) {
+		await sendMessage(params.bot, params.chatId, "Spreadsheet is too large (max 10 MB).");
+		return;
+	}
+
+	if (typeof params.document.file_size !== "number") {
 		await sendMessage(
 			params.bot,
 			params.chatId,
-			"Spreadsheet is too large (max 10 MB).",
+			"Spreadsheet file size is unknown. Please try again or send a different file.",
 		);
 		return;
 	}
@@ -2192,7 +2197,7 @@ export async function handleTelegramSpreadsheetMessage(
 			await sendMessage(
 				params.bot,
 				params.chatId,
-				`Failed to read spreadsheet: parsing failed`,
+				`Failed to read spreadsheet: ${result.errorMessage ?? "parsing failed"}`,
 			);
 			return;
 		}

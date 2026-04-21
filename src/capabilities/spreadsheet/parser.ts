@@ -8,6 +8,7 @@ export interface SpreadsheetParseResult {
 	}>;
 	isEmpty: boolean;
 	isCorrupt: boolean;
+	errorMessage?: string;
 }
 
 export interface SpreadsheetParser {

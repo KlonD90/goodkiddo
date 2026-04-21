@@ -67,6 +67,7 @@ export class ExcelParser implements SpreadsheetParser {
 			};
 		} catch (err) {
 			console.error("Excel parse error:", err);
+			const message = err instanceof Error ? err.message : "Unknown parse error";
 			return {
 				sheets: [{
 					name: "Sheet1",
@@ -76,7 +77,8 @@ export class ExcelParser implements SpreadsheetParser {
 					colCount: 0
 				}],
 				isEmpty: false,
-				isCorrupt: true
+				isCorrupt: true,
+				errorMessage: message
 			};
 		}
 	}
