@@ -1518,6 +1518,8 @@ export function createTelegramTranscriber(config: AppConfig): Transcriber {
 				apiKey: config.transcriptionApiKey,
 				baseUrl: config.transcriptionBaseUrl || undefined,
 			});
+		default:
+			return new NoOpTranscriber();
 	}
 }
 
@@ -1911,6 +1913,15 @@ export async function handleTelegramVoiceMessage(
 		return;
 	}
 
+	if (typeof params.voice.file_size !== "number") {
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			"Voice message file size is unknown. Please try again or send a text message.",
+		);
+		return;
+	}
+
 	let downloaded: { data: Uint8Array; filePath: string };
 	try {
 		const file = await params.getFile();
@@ -1986,6 +1997,15 @@ export async function handleTelegramPdfMessage(
 		params.document.file_size > PDF_MAX_BYTES
 	) {
 		await sendMessage(params.bot, params.chatId, "PDF is too large (max 20 MB).");
+		return;
+	}
+
+	if (typeof params.document.file_size !== "number") {
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			"PDF file size is unknown. Please try again or send a different file.",
+		);
 		return;
 	}
 
