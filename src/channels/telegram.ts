@@ -31,6 +31,8 @@ import {
 } from "../capabilities/spreadsheet/parser";
 import { CsvParser } from "../capabilities/spreadsheet/csv_parser";
 import { ExcelParser } from "../capabilities/spreadsheet/excel_parser";
+import { renderSpreadsheet } from "../capabilities/spreadsheet/renderer";
+import { SPREADSHEET_MAX_BYTES } from "../capabilities/spreadsheet/constants";
 import type { AppConfig } from "../config";
 import { canReusePrimaryAiCredentialsForTranscription } from "../config";
 import { createDb, detectDialect } from "../db/index";
@@ -2128,6 +2130,109 @@ export async function handleTelegramPdfMessage(
 	}
 }
 
+export async function handleTelegramSpreadsheetMessage(
+	params: {
+		session: TelegramAgentSession;
+		bot: Bot;
+		chatId: string;
+		caller: Caller;
+		store: PermissionsStore;
+		webShare: ChannelRunOptions["webShare"];
+		botToken: string;
+		document: TelegramDocumentFile;
+		filename: string;
+		mimeType: string;
+		getFile: () => Promise<{ file_path?: string }>;
+	},
+	deps?: {
+		fetchSpreadsheet?: typeof fetchTelegramFileBytes;
+		queueTurn?: typeof handleTelegramQueuedTurn;
+		sendMessage?: typeof sendTelegramMessage;
+	},
+): Promise<void> {
+	const sendMessage = deps?.sendMessage ?? sendTelegramMessage;
+	const fetchSpreadsheet = deps?.fetchSpreadsheet ?? fetchTelegramFileBytes;
+	const queueTurn = deps?.queueTurn ?? handleTelegramQueuedTurn;
+
+	if (
+		typeof params.document.file_size === "number" &&
+		params.document.file_size > SPREADSHEET_MAX_BYTES
+	) {
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			"Spreadsheet is too large (max 10 MB).",
+		);
+		return;
+	}
+
+	let downloaded: { data: Uint8Array; filePath: string };
+	try {
+		const file = await params.getFile();
+		downloaded = await fetchSpreadsheet(file, params.botToken);
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "Unknown spreadsheet download error";
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Failed to download spreadsheet: ${message}`,
+		);
+		return;
+	}
+
+	try {
+		const result = await params.session.spreadsheetParser.parse(
+			downloaded.data,
+			params.filename,
+			params.mimeType,
+		);
+
+		if (result.isCorrupt) {
+			await sendMessage(
+				params.bot,
+				params.chatId,
+				`Failed to read spreadsheet: parsing failed`,
+			);
+			return;
+		}
+
+		if (result.isEmpty) {
+			await sendMessage(
+				params.bot,
+				params.chatId,
+				"This spreadsheet appears to be empty.",
+			);
+			return;
+		}
+
+		const content = renderSpreadsheet(result, params.filename);
+		await queueTurn(
+			params.session,
+			params.bot,
+			params.chatId,
+			"",
+			content,
+			params.caller,
+			params.store,
+			params.webShare,
+			content,
+		);
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "Unknown spreadsheet extraction error";
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Failed to read spreadsheet: ${message}`,
+		);
+	}
+}
+
 async function handleTelegramQueuedTurn(
 	session: TelegramAgentSession,
 	bot: Bot,
@@ -2371,45 +2476,93 @@ export const telegramChannel: AppChannel = {
 		});
 
 		bot.on("message:document", async (ctx) => {
-			if (ctx.message.document.mime_type !== "application/pdf") {
+			const mimeType = ctx.message.document.mime_type ?? "";
+			const filename = ctx.message.document.file_name ?? "";
+
+			if (mimeType === "application/pdf") {
+				const chatIdString = String(ctx.chat.id);
+				const caller = await getTelegramCaller(store, chatIdString);
+				if (!caller) {
+					await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+					return;
+				}
+
+				const session = await ensureTelegramSession(
+					chatIdString,
+					caller,
+					config,
+					db,
+					dialect,
+					store,
+					bot,
+					sessions,
+					outbound,
+					webShare,
+					transcriber,
+					pdfExtractor,
+					spreadsheetParser,
+				);
+
+				await handleTelegramPdfMessage({
+					session,
+					bot,
+					chatId: chatIdString,
+					caller,
+					store,
+					webShare,
+					botToken: config.telegramBotToken,
+					document: ctx.message.document,
+					filename: ctx.message.document.file_name ?? "document.pdf",
+					getFile: () => ctx.getFile(),
+				});
 				return;
 			}
 
-			const chatIdString = String(ctx.chat.id);
-			const caller = await getTelegramCaller(store, chatIdString);
-			if (!caller) {
-				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+			if (
+				mimeType === "text/csv" ||
+				mimeType === "application/csv" ||
+				filename.endsWith(".csv") ||
+				mimeType === "application/vnd.ms-excel" ||
+				mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+			) {
+				const chatIdString = String(ctx.chat.id);
+				const caller = await getTelegramCaller(store, chatIdString);
+				if (!caller) {
+					await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+					return;
+				}
+
+				const session = await ensureTelegramSession(
+					chatIdString,
+					caller,
+					config,
+					db,
+					dialect,
+					store,
+					bot,
+					sessions,
+					outbound,
+					webShare,
+					transcriber,
+					pdfExtractor,
+					spreadsheetParser,
+				);
+
+				await handleTelegramSpreadsheetMessage({
+					session,
+					bot,
+					chatId: chatIdString,
+					caller,
+					store,
+					webShare,
+					botToken: config.telegramBotToken,
+					document: ctx.message.document,
+					filename,
+					mimeType,
+					getFile: () => ctx.getFile(),
+				});
 				return;
 			}
-
-			const session = await ensureTelegramSession(
-				chatIdString,
-				caller,
-				config,
-				db,
-				dialect,
-				store,
-				bot,
-				sessions,
-				outbound,
-				webShare,
-				transcriber,
-				pdfExtractor,
-				spreadsheetParser,
-			);
-
-			await handleTelegramPdfMessage({
-				session,
-				bot,
-				chatId: chatIdString,
-				caller,
-				store,
-				webShare,
-				botToken: config.telegramBotToken,
-				document: ctx.message.document,
-				filename: ctx.message.document.file_name ?? "document.pdf",
-				getFile: () => ctx.getFile(),
-			});
 		});
 
 		bot.catch(async (error) => {

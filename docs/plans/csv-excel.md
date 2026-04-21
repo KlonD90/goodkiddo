@@ -71,16 +71,16 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Add `spreadsheetParser: SpreadsheetParser` field to `TelegramAgentSession`
 
 ### Task 5: Add spreadsheet `message:document` handler in telegram.ts
-- [ ] In the existing `bot.on("message:document", ...)` handler, check `mime_type` for CSV or Excel variants
-- [ ] If not a supported spreadsheet type: return early (no error reply)
-- [ ] On entry: check caller permission, get or create session
-- [ ] Check file size — reject with `"Spreadsheet is too large (max 10 MB)."` if exceeds `SPREADSHEET_MAX_BYTES`
-- [ ] Download the file via `fetchTelegramFileBytes(file, botToken)`
-- [ ] Call `spreadsheetParser.parse(downloaded.data, filename, mimeType)`
-- [ ] If `isCorrupt`: reply `"Failed to read spreadsheet: <reason>"` and return
-- [ ] If `isEmpty`: reply `"This spreadsheet appears to be empty."` and return
-- [ ] Build text content with `renderSpreadsheet(result, filename)`
-- [ ] Queue via `handleTelegramQueuedTurn` with the text content
+- [x] In the existing `bot.on("message:document", ...)` handler, check `mime_type` for CSV or Excel variants
+- [x] If not a supported spreadsheet type: return early (no error reply)
+- [x] On entry: check caller permission, get or create session
+- [x] Check file size — reject with `"Spreadsheet is too large (max 10 MB)."` if exceeds `SPREADSHEET_MAX_BYTES`
+- [x] Download the file via `fetchTelegramFileBytes(file, botToken)`
+- [x] Call `spreadsheetParser.parse(downloaded.data, filename, mimeType)`
+- [x] If `isCorrupt`: reply `"Failed to read spreadsheet: <reason>"` and return
+- [x] If `isEmpty`: reply `"This spreadsheet appears to be empty."` and return
+- [x] Build text content with `renderSpreadsheet(result, filename)`
+- [x] Queue via `handleTelegramQueuedTurn` with the text content
 
 ### Task 6: Add config flags
 - [ ] Add `enableSpreadsheets: boolean` (default `true`) to `AppConfig` in `src/config.ts`
