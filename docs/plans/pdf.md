@@ -52,9 +52,9 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Add `pdf_extract_extractor.test.ts` with mocked PDF bytes covering: valid PDF, empty PDF, encrypted PDF, corrupt PDF, oversized file
 
 ### Task 3: Add PDF capability helpers and constants
-- [ ] Create `src/capabilities/pdf/constants.ts` with `PDF_MAX_BYTES = 20 * 1024 * 1024` (20 MB hard cap)
-- [ ] Create `src/capabilities/pdf/content.ts` with `buildPdfContent(pages, filename): string` — returns italic-prefixed summary: `"_Document: <filename> — N pages_\n\n<page 1 text>\n\n--- Page 2 ---\n<page 2 text>..."`
-- [ ] Create `src/capabilities/pdf/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler (same download URL pattern, documents use the same API)
+- [x] Create `src/capabilities/pdf/constants.ts` with `PDF_MAX_BYTES = 20 * 1024 * 1024` (20 MB hard cap)
+- [x] Create `src/capabilities/pdf/content.ts` with `buildPdfContent(pages, filename): string` — returns italic-prefixed summary: `"_Document: <filename> — N pages_\n\n<page 1 text>\n\n--- Page 2 ---\n<page 2 text>..."`
+- [x] Create `src/capabilities/pdf/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler (same download URL pattern, documents use the same API)
 
 ### Task 4: Wire PDF extractor into telegram channel
 - [ ] Add `pdfExtractor?: PdfExtractor` field to `ChannelRunOptions` in `src/channels/types.ts`
