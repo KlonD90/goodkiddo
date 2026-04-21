@@ -321,9 +321,21 @@ export class TimerStore {
 		`;
 	}
 
-	async touchError(id: string, error: string): Promise<number> {
+	async touchError(id: string, error: string, nextRunAt?: number): Promise<number> {
 		await this._ready;
 		const now = this.now();
+		if (nextRunAt !== undefined) {
+			const rows = await this.db<Array<{ consecutive_failures: number }>>`
+				UPDATE timers
+				SET
+					last_error = ${error},
+					consecutive_failures = consecutive_failures + 1,
+					next_run_at = ${nextRunAt}
+				WHERE id = ${id}
+				RETURNING consecutive_failures
+			`;
+			return rows[0]?.consecutive_failures ?? 0;
+		}
 		const rows = await this.db<Array<{ consecutive_failures: number }>>`
 			UPDATE timers
 			SET

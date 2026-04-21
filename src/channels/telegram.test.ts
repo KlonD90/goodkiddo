@@ -2166,7 +2166,10 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
-			expect(mockTimerStore.touchError._calls).toEqual([["timer-1", "LLM failed"]]);
+			expect(mockTimerStore.touchError._calls.length).toBe(1);
+			expect(mockTimerStore.touchError._calls[0][0]).toBe("timer-1");
+			expect(mockTimerStore.touchError._calls[0][1]).toBe("LLM failed");
+			expect(typeof mockTimerStore.touchError._calls[0][2]).toBe("number");
 			expect(mockNotifyUser._calls).toEqual([
 				["telegram:123", expect.stringContaining("failed 3 times")],
 			]);

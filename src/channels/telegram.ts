@@ -1607,7 +1607,7 @@ export async function ensureTelegramSession(
 
 	const timerTools = timerStore
 		? createTimerTools(timerStore, {
-				timezone: "UTC",
+				timezone: config.timezone,
 				computeNextRun: (cronExpression: string) => {
 					const expr = CronExpressionParser.parse(cronExpression, {
 						currentDate: new Date(),
@@ -2678,7 +2678,8 @@ export const telegramChannel: AppChannel = {
 					fullText += text;
 				}
 				if (fullText.trim() !== "") {
-					await sendTelegramMessage(bot, timer.chatId, fullText);
+					const chatId = timer.chatId.replace(/^telegram:/, "");
+					await sendTelegramMessage(bot, chatId, fullText);
 				}
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
@@ -2688,7 +2689,8 @@ export const telegramChannel: AppChannel = {
 		};
 
 		const notifyUser = async (userId: string, message: string): Promise<void> => {
-			await sendTelegramMessage(bot, userId, message);
+			const chatId = userId.replace(/^telegram:/, "");
+			await sendTelegramMessage(bot, chatId, message);
 		};
 
 		let schedulerStop: (() => void) | undefined;

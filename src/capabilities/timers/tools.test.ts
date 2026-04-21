@@ -110,6 +110,23 @@ describe("TimerTools", () => {
 			expect(result).toBe("Error: Memory file path must be inside /memory/");
 		});
 
+		test("returns error for path with traversal attempt", async () => {
+			const tools = createTimerTools(store, {
+				timezone: "UTC",
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			const result = await createTool.invoke({
+				mdFilePath: "/memory/../etc/passwd",
+				cronExpression: "0 10 * * 1-5",
+			});
+
+			expect(result).toBe("Error: Memory file path must be inside /memory/");
+		});
+
 		test("returns error when md file not found", async () => {
 			readMdFileMock = vi.fn().mockRejectedValue(new Error("File not found"));
 			const tools = createTimerTools(store, {
@@ -334,6 +351,31 @@ describe("TimerTools", () => {
 			});
 
 			expect(result).toContain("Invalid schedule");
+		});
+
+		test("returns 'No changes provided' for empty update", async () => {
+			const timer = await store.create({
+				userId: callerId,
+				chatId: callerId,
+				mdFilePath: "timer.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const tools = createTimerTools(store, {
+				timezone: "UTC",
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const updateTool = tools.find((t) => t.name === "update_timer")!;
+
+			const result = await updateTool.invoke({
+				timerId: timer.id,
+			});
+
+			expect(result).toBe("No changes provided.");
 		});
 	});
 

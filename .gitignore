@@ -8,3 +8,4 @@ state.db*
 permissions.log
 .ralphex/
 .pnpm-store/
+landing/dist/

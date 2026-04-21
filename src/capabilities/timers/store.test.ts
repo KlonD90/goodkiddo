@@ -270,4 +270,52 @@ describe("TimerStore", () => {
 		expect(after?.consecutiveFailures).toBe(3);
 		expect(after?.lastError).toBe("Error 3");
 	});
+
+	test("getById returns null for non-existent id", async () => {
+		const found = await store.getById("non-existent-id");
+		expect(found).toBeNull();
+	});
+
+	test("findDue excludes disabled timers", async () => {
+		const timer = await store.create({
+			userId: "telegram:1",
+			chatId: "telegram:1",
+			mdFilePath: "timer.md",
+			cronExpression: "0 10 * * *",
+			timezone: "UTC",
+			nextRunAt: 500,
+		});
+
+		await store.update(timer.id, "telegram:1", { enabled: false });
+
+		currentTime = 1000;
+		const due = await store.findDue();
+		expect(due).toHaveLength(0);
+	});
+
+	test("touchError with non-existent id returns 0", async () => {
+		const count = await store.touchError("non-existent-id", "Error");
+		expect(count).toBe(0);
+	});
+
+	test("touchRun with non-existent id does not throw", async () => {
+		await expect(store.touchRun("non-existent-id", 5000)).resolves.toBeUndefined();
+	});
+
+	test("touchError updates next_run_at when provided", async () => {
+		const timer = await store.create({
+			userId: "telegram:1",
+			chatId: "telegram:1",
+			mdFilePath: "timer.md",
+			cronExpression: "0 10 * * *",
+			timezone: "UTC",
+			nextRunAt: 2000,
+		});
+
+		await store.touchError(timer.id, "Error", 10000);
+
+		const after = await store.getById(timer.id);
+		expect(after?.nextRunAt).toBe(10000);
+		expect(after?.consecutiveFailures).toBe(1);
+	});
 });

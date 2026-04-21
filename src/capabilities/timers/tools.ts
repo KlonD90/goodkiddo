@@ -1,6 +1,7 @@
 import { tool } from "langchain";
 import { z } from "zod";
 import { CronExpressionParser } from "cron-parser";
+import { resolve } from "node:path";
 import type { TimerStore, TimerRecord } from "./store.js";
 
 export interface TimerToolsOptions {
@@ -15,9 +16,9 @@ function isValidMemoryPath(path: string): boolean {
 	const trimmed = path.trim();
 	if (trimmed === "") return false;
 	if (trimmed.includes("..")) return false;
-	if (trimmed.startsWith("/") && !trimmed.startsWith("/memory/")) return false;
-	const normalized = trimmed.replace(/\\/g, "/");
-	if (normalized.includes("..")) return false;
+	if (trimmed.startsWith("/")) {
+		return trimmed.startsWith("/memory/");
+	}
 	return true;
 }
 

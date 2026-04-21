@@ -9,7 +9,7 @@
 - Voice transcription capability structure and provider extension points are documented in `src/capabilities/voice/README.md`.
 - PDF parsing capability structure and extractor interface are documented in `src/capabilities/pdf/README.md`.
 - Spreadsheet parsing capability structure and parser interface are documented in `src/capabilities/spreadsheet/README.md`.
-- Scheduled timers capability structure, scheduler behavior, cron format, and notification backend extension points are documented in `src/capabilities/timers/README.md`.
+- Scheduled timers (`src/capabilities/timers/`) let the agent run memory file prompts on cron schedules. Timer tools available to the LLM: `create_timer(mdFilePath, cronExpression, timezone?)`, `list_timers()`, `update_timer(timerId, updates)`, `delete_timer(timerId)`. See `src/capabilities/timers/README.md` for cron format and notification backend extension points.
 
 ## Memory And Tasks
 

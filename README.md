@@ -6,7 +6,7 @@ Security-aware AI agent harness built with TypeScript and Bun.
 - Per-caller memory wiki (notes, skills, log) plus SQL-backed active tasks, with `/new_thread` rotation and boundary-based task reconciliation
 - Persistent conversation state in `DATABASE_URL`: full LangGraph history for audit/recovery, plus forced checkpoints that compact runtime context at `/new_thread`, session-resume, and prompt-budget boundaries
 - Docker sandbox today, Firecracker path where supported
-- CLI and Telegram entrypoints, including Telegram photo, voice, and PDF document handling for multimodal models
+- CLI and Telegram entrypoints, including Telegram photo, voice, PDF document handling, spreadsheets, and scheduled timers for multimodal models
 
 ## Run
 
@@ -20,10 +20,13 @@ dedicated transcription credential when voice cannot reuse `AI_API_KEY`, and
 `TRANSCRIPTION_BASE_URL` to override the transcription endpoint. If
 `TRANSCRIPTION_PROVIDER` is unset, the app defaults to `openrouter` when
 `AI_TYPE=openrouter`, otherwise `openai`. The `openai` provider uses the
-Audio Transcriptions API, while the `openrouter` provider uses OpenRouter's
+Audio Transcriptions API, while `openrouter` provider uses OpenRouter's
 documented chat-completions audio input flow with the default
 `openai/gpt-4o-mini-transcribe` model. PDF document handling is enabled by
-default. Use `ENABLE_PDF_DOCUMENTS=false` to disable it.
+default. Use `ENABLE_PDF_DOCUMENTS=false` to disable it. Spreadsheet
+handling is enabled by default. Use `ENABLE_SPREADSHEETS=false` to disable it.
+Set `TIMEZONE=America/New_York` to control the default timezone for
+scheduled timers (defaults to `UTC`).
 
 ```bash
 ./dev.sh
