@@ -39,14 +39,14 @@ export class PdfExtractExtractor implements PdfExtractor {
 			return {
 				pages,
 				isEncrypted: false,
-				isCorrupt: false,
+				isCorrupt: "",
 			};
 		} catch (error) {
 			if (error instanceof PasswordException) {
 				return {
 					pages: [],
 					isEncrypted: true,
-					isCorrupt: false,
+					isCorrupt: "",
 				};
 			}
 
@@ -54,7 +54,7 @@ export class PdfExtractExtractor implements PdfExtractor {
 				return {
 					pages: [],
 					isEncrypted: false,
-					isCorrupt: true,
+					isCorrupt: error instanceof Error ? error.message : "Invalid or corrupted PDF",
 				};
 			}
 
@@ -62,14 +62,14 @@ export class PdfExtractExtractor implements PdfExtractor {
 				return {
 					pages: [],
 					isEncrypted: false,
-					isCorrupt: true,
+					isCorrupt: error.message,
 				};
 			}
 
 			return {
 				pages: [],
 				isEncrypted: false,
-				isCorrupt: true,
+				isCorrupt: "Unknown error reading PDF",
 			};
 		} finally {
 			await parser.destroy();

@@ -1,3 +1,5 @@
+import { compactInline } from "../utils/text";
+
 type SQL = InstanceType<typeof Bun.SQL>;
 
 export type TaskStatus = "active" | "completed" | "dismissed";
@@ -57,10 +59,6 @@ export interface ActiveTaskSnapshotOptions {
 export interface RecentCompletedTaskOptions {
 	completedSince: number;
 	limit?: number;
-}
-
-function compactInline(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
 }
 
 function requireCompactField(value: string, label: string): string {

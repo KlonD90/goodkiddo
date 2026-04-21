@@ -67,8 +67,13 @@ afterEach(() => {
 
 const createTelegramSessionFixture = (
 	transcriber: Transcriber,
-): Awaited<ReturnType<typeof ensureTelegramSession>> =>
-	({
+): Awaited<ReturnType<typeof ensureTelegramSession>> => {
+	const mockPdfExtractor: PdfExtractor = {
+		async extract(_pdfBytes: Uint8Array, _filename: string) {
+			throw new Error("PDF extraction not configured");
+		},
+	};
+	return {
 		agent: {} as never,
 		running: false,
 		queue: [],
@@ -77,9 +82,10 @@ const createTelegramSessionFixture = (
 		model: {} as never,
 		refreshAgent: async () => {},
 		transcriber,
-		pdfExtractor: new NoOpPdfExtractor(),
+		pdfExtractor: mockPdfExtractor,
 		pendingApprovals: new Map(),
-	}) as Awaited<ReturnType<typeof ensureTelegramSession>>;
+	} as Awaited<ReturnType<typeof ensureTelegramSession>>;
+};
 
 describe("telegram channel", () => {
 	test("createTelegramTranscriber returns no-op when voice messages are disabled", () => {
@@ -842,7 +848,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 					{ pageNumber: 2, text: "Page two content" },
 				],
 				isEncrypted: false,
-				isCorrupt: false,
+				isCorrupt: "",
 			});
 
 			await handleTelegramPdfMessage(
@@ -953,7 +959,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			session.pdfExtractor = new MockPdfExtractor({
 				pages: [{ pageNumber: 1, text: "ignored" }],
 				isEncrypted: true,
-				isCorrupt: false,
+				isCorrupt: "",
 			});
 
 			await handleTelegramPdfMessage(
@@ -1002,7 +1008,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			session.pdfExtractor = new MockPdfExtractor({
 				pages: [{ pageNumber: 1, text: "ignored" }],
 				isEncrypted: false,
-				isCorrupt: true,
+				isCorrupt: "corrupt PDF content",
 			});
 
 			await handleTelegramPdfMessage(
@@ -1052,7 +1058,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 					{ pageNumber: 2, text: "" },
 				],
 				isEncrypted: false,
-				isCorrupt: false,
+				isCorrupt: "",
 			});
 
 			await handleTelegramPdfMessage(

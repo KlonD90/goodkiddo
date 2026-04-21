@@ -10,7 +10,7 @@ class StubPdfExtractor implements PdfExtractor {
 		return {
 			pages: [{ pageNumber: 1, text: `${filename}:${pdfBytes.length}` }],
 			isEncrypted: false,
-			isCorrupt: false,
+			isCorrupt: "",
 		};
 	}
 }
@@ -32,7 +32,7 @@ describe("pdf extractor", () => {
 		).resolves.toEqual({
 			pages: [{ pageNumber: 1, text: "test.pdf:3" }],
 			isEncrypted: false,
-			isCorrupt: false,
+			isCorrupt: "",
 		});
 	});
 });

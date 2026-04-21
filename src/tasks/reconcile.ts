@@ -1,3 +1,4 @@
+import { compactInline } from "../utils/text";
 import type { TaskRecord, TaskStore } from "./store";
 
 type MatchKind = "id" | "title_phrase" | "note_phrase";
@@ -48,10 +49,6 @@ const DISMISS_MARKERS = [
 	" shelve ",
 	" stop working on ",
 ] as const;
-
-function compactInline(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
-}
 
 function normalizeText(value: string): string {
 	return ` ${value

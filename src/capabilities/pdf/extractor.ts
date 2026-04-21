@@ -6,7 +6,7 @@ export interface PdfPage {
 export interface PdfExtractionResult {
 	pages: PdfPage[];
 	isEncrypted: boolean;
-	isCorrupt: boolean;
+	isCorrupt: string;
 }
 
 export interface PdfExtractor {

@@ -45,6 +45,7 @@ function hasDismissConfirmation(
 	if (normalized === "") return false;
 	return new RegExp(
 		`^(?:yes|confirm|confirmed)(?:\\s+please)?\\s+dismiss\\s+task\\s+${taskId}$`,
+		"i",
 	).test(normalized);
 }
 

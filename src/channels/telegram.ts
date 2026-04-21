@@ -1989,6 +1989,15 @@ export async function handleTelegramPdfMessage(
 		return;
 	}
 
+	if (params.session.pdfExtractor instanceof NoOpPdfExtractor) {
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			"PDF documents are not supported on this server.",
+		);
+		return;
+	}
+
 	let downloaded: { data: Uint8Array; filePath: string };
 	try {
 		const file = await params.getFile();
@@ -2019,7 +2028,7 @@ export async function handleTelegramPdfMessage(
 			return;
 		}
 
-		if (result.isCorrupt) {
+		if (result.isCorrupt !== "") {
 			await sendMessage(
 				params.bot,
 				params.chatId,
@@ -2092,7 +2101,10 @@ export const telegramChannel: AppChannel = {
 		const transcriber =
 			options?.transcriber ?? createTelegramTranscriber(config);
 		const pdfExtractor =
-			options?.pdfExtractor ?? new PdfExtractExtractor();
+			options?.pdfExtractor ??
+			(config.enablePdfDocuments === false
+				? new NoOpPdfExtractor()
+				: new PdfExtractExtractor());
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });

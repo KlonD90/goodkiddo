@@ -29,7 +29,7 @@ describe("PdfExtractExtractor", () => {
 			{ pageNumber: 2, text: "Hello from page 2" },
 		]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe(false);
+		expect(result.isCorrupt).toBe("");
 	});
 
 	test("handles empty PDF (no extractable text)", async () => {
@@ -47,7 +47,7 @@ describe("PdfExtractExtractor", () => {
 
 		expect(result.pages).toEqual([{ pageNumber: 1, text: "" }]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe(false);
+		expect(result.isCorrupt).toBe("");
 	});
 
 	test("detects encrypted PDF and sets isEncrypted flag", async () => {
@@ -68,10 +68,10 @@ describe("PdfExtractExtractor", () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(true);
-		expect(result.isCorrupt).toBe(false);
+		expect(result.isCorrupt).toBe("");
 	});
 
-	test("detects corrupt PDF and sets isCorrupt flag", async () => {
+test("detects corrupt PDF and sets isCorrupt flag", async () => {
 		const mockFactory: PdfParserFactory = () => ({
 			getText: async () => {
 				throw new (await import("pdf-parse")).InvalidPDFException(
@@ -86,7 +86,7 @@ describe("PdfExtractExtractor", () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe(true);
+		expect(result.isCorrupt).toBe("Invalid PDF structure");
 	});
 
 	test("handles FormatError as corrupt PDF", async () => {
@@ -107,7 +107,7 @@ describe("PdfExtractExtractor", () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe(true);
+		expect(result.isCorrupt).toBe("Malformed PDF content");
 	});
 
 	test("handles unknown errors as corrupt PDF", async () => {
@@ -126,7 +126,7 @@ describe("PdfExtractExtractor", () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe(true);
+		expect(result.isCorrupt).toBe("Unexpected error");
 	});
 
 	test("passes Uint8Array data to factory", async () => {

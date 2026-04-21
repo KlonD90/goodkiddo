@@ -9,6 +9,7 @@ import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import { extractRecentTurns } from "../memory/runtime_context";
 import type { AccessStore, ScopeKind } from "../server/access_store";
+import { compactInline } from "../utils/text";
 import type { TaskRecord } from "../tasks/store";
 import { buildShareUrl } from "../tools/share_tools";
 import type { ChannelAgentSession } from "./shared";
@@ -46,10 +47,6 @@ export const NEW_THREAD_ACTIVE_TASK_LIMIT = 8;
 export const NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT = 5;
 export const NEW_THREAD_RECENT_COMPLETED_WINDOW_MS =
 	7 * 24 * 60 * 60 * 1000;
-
-function compactInline(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
-}
 
 function formatTaskReplyBlock(
 	heading: string,
