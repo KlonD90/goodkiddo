@@ -24,7 +24,7 @@ Configuration:
 - `ENABLE_VOICE_MESSAGES=false` disables voice handling and forces the channel to use `NoOpTranscriber`
 - `TRANSCRIPTION_PROVIDER=openai|openrouter` selects the provider wiring in `src/channels/telegram.ts`
 - `openai` uses `/audio/transcriptions` with `whisper-1`
-- `openrouter` uses `/chat/completions` audio input with the default `openai/gpt-4o-mini-transcribe` model
+- `openrouter` uses `/chat/completions` audio input with the default `openai/whisper-1` model
 - `TRANSCRIPTION_API_KEY` provides a dedicated OpenAI-compatible credential when transcription cannot reuse `AI_API_KEY`
 - `TRANSCRIPTION_BASE_URL` overrides the provider endpoint used for transcription
 - if `TRANSCRIPTION_PROVIDER` is unset, the app defaults to `openrouter` when `AI_TYPE=openrouter`, otherwise `openai`

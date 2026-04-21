@@ -2,16 +2,19 @@ import { extname } from "node:path";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
 import {
+	VOICE_MAX_BYTES,
+	VOICE_MIME_TYPE,
+} from "../capabilities/voice/constants";
+import {
 	buildVoiceContent,
 	buildVoiceTurnText,
 } from "../capabilities/voice/content";
-import { VOICE_MAX_BYTES, VOICE_MIME_TYPE } from "../capabilities/voice/constants";
 import { fetchVoiceBytes } from "../capabilities/voice/fetch";
+import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
 import {
 	NoOpTranscriber,
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
-import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
@@ -34,15 +37,15 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	type ChannelAgentSession,
 	clearPendingCompactionSeed,
 	clearPendingTaskCheckContext,
-	type ChannelAgentSession,
 	createChannelAgentSession,
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
-	maybeRunPendingTaskCheck,
 	maybeResumeCompactAndSeed,
+	maybeRunPendingTaskCheck,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 
@@ -1570,31 +1573,31 @@ async function runAgentTurn(
 			() => mintTelegramThreadId(chatId),
 		);
 		if (!resumed) {
-				const compacted = await maybeAutoCompactAndSeed(
-					session,
-					currentMessages,
-					queuedTurn.content,
-					() => mintTelegramThreadId(chatId),
-				);
-				needsRefresh = compacted;
-			} else {
-				needsRefresh = true;
-			}
-			const taskCheck = await maybeRunPendingTaskCheck(
+			const compacted = await maybeAutoCompactAndSeed(
 				session,
-				queuedTurn.currentUserText ?? queuedTurn.content,
+				currentMessages,
+				queuedTurn.content,
+				() => mintTelegramThreadId(chatId),
 			);
+			needsRefresh = compacted;
+		} else {
+			needsRefresh = true;
+		}
+		const taskCheck = await maybeRunPendingTaskCheck(
+			session,
+			queuedTurn.currentUserText ?? queuedTurn.content,
+		);
 		if (taskCheck.handled) {
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
 		if (needsRefresh || taskCheck.needsRefresh) {
 			await session.refreshAgent();
-			}
-			const invokeMessages = buildInvokeMessages(session, {
-				role: "user",
-				content: queuedTurn.content,
-			});
+		}
+		const invokeMessages = buildInvokeMessages(session, {
+			role: "user",
+			content: queuedTurn.content,
+		});
 		const stream = await session.agent.stream(
 			{ messages: invokeMessages },
 			{
@@ -1972,7 +1975,8 @@ export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const transcriber = options?.transcriber ?? createTelegramTranscriber(config);
+		const transcriber =
+			options?.transcriber ?? createTelegramTranscriber(config);
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });

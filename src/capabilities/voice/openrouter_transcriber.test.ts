@@ -32,21 +32,23 @@ describe("OpenRouterTranscriber", () => {
 		const transcriber = new OpenRouterTranscriber({
 			apiKey: "voice-key",
 			baseUrl: "https://openrouter.example/api/v1",
-			modelName: "openai/gpt-4o-mini-transcribe",
+			modelName: "openai/whisper-1",
 		});
 
 		await expect(
 			transcriber.transcribe(Uint8Array.from([1, 2, 3]), "audio/ogg"),
 		).resolves.toBe("hello world");
 
-		expect(requestUrl).toBe("https://openrouter.example/api/v1/chat/completions");
+		expect(requestUrl).toBe(
+			"https://openrouter.example/api/v1/chat/completions",
+		);
 		expect(requestInit?.method).toBe("POST");
-		expect((requestInit?.headers as Record<string, string>)?.Authorization).toBe(
-			"Bearer voice-key",
-		);
-		expect((requestInit?.headers as Record<string, string>)?.["Content-Type"]).toBe(
-			"application/json",
-		);
+		expect(
+			(requestInit?.headers as Record<string, string>)?.Authorization,
+		).toBe("Bearer voice-key");
+		expect(
+			(requestInit?.headers as Record<string, string>)?.["Content-Type"],
+		).toBe("application/json");
 
 		const payload = JSON.parse(String(requestInit?.body)) as {
 			model: string;
@@ -61,7 +63,7 @@ describe("OpenRouterTranscriber", () => {
 				>;
 			}>;
 		};
-		expect(payload.model).toBe("openai/gpt-4o-mini-transcribe");
+		expect(payload.model).toBe("openai/whisper-1");
 		expect(payload.messages[0]?.role).toBe("user");
 		expect(payload.messages[0]?.content[0]).toEqual({
 			type: "text",

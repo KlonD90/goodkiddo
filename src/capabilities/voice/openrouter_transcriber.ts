@@ -96,7 +96,8 @@ function encodeBase64(bytes: Uint8Array): string {
 }
 
 function normalizeAudioFormat(mimeType: string): string {
-	const normalizedMimeType = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+	const normalizedMimeType =
+		mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 	switch (normalizedMimeType) {
 		case "audio/mpeg":
 			return "mp3";
@@ -144,7 +145,9 @@ function extractTranscriptText(
 	return "";
 }
 
-async function getTranscriptionErrorMessage(response: Response): Promise<string> {
+async function getTranscriptionErrorMessage(
+	response: Response,
+): Promise<string> {
 	const body = (await response.text()).trim();
 	if (body === "") {
 		return `HTTP ${response.status}`;

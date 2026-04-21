@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Bot } from "grammy";
+import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
+import {
+	NoOpTranscriber,
+	type Transcriber,
+} from "../capabilities/voice/transcriber";
+import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -7,9 +13,9 @@ import type { Caller } from "../permissions/types";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
+	chunkTelegramMessage,
 	createTelegramTranscriber,
 	ensureTelegramSession,
-	chunkTelegramMessage,
 	extractTelegramCommandName,
 	extractTelegramReplyFromAgentState,
 	fetchTelegramFileBytes,
@@ -24,12 +30,6 @@ import {
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
 } from "./telegram";
-import {
-	NoOpTranscriber,
-	type Transcriber,
-} from "../capabilities/voice/transcriber";
-import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
-import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 
 let store: PermissionsStore;
 
@@ -117,7 +117,7 @@ describe("telegram channel", () => {
 					>;
 				}>;
 			};
-			expect(payload.model).toBe("openai/gpt-4o-mini-transcribe");
+			expect(payload.model).toBe("openai/whisper-1");
 			expect(payload.messages[0]?.role).toBe("user");
 			expect(payload.messages[0]?.content[0]).toEqual({
 				type: "text",
