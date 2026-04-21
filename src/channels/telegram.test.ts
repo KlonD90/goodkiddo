@@ -6,7 +6,11 @@ import {
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
-import { NoOpPdfExtractor } from "../capabilities/pdf/extractor";
+import {
+	NoOpPdfExtractor,
+	type PdfExtractor,
+	type PdfExtractionResult,
+} from "../capabilities/pdf/extractor";
 import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -22,6 +26,7 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	handleTelegramPdfMessage,
 	handleTelegramVoiceMessage,
 	maybeHandleTelegramApprovalReply,
 	mergeTelegramStreamText,
@@ -810,6 +815,365 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 				"Voice messages are not supported on this server.",
 			]);
 			expect(fetched).toBe(false);
+		});
+	});
+
+	describe("message:document", () => {
+		class MockPdfExtractor implements PdfExtractor {
+			constructor(private result: PdfExtractionResult) {}
+			async extract(_pdfBytes: Uint8Array, _filename: string) {
+				return this.result;
+			}
+		}
+
+		test("queues PDF content with extracted text", async () => {
+			const queuedTurns: Array<{
+				commandText: string;
+				content: unknown;
+				currentUserText?: string;
+			}> = [];
+			const sentMessages: string[] = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.pdfExtractor = new MockPdfExtractor({
+				pages: [
+					{ pageNumber: 1, text: "Hello from PDF" },
+					{ pageNumber: 2, text: "Page two content" },
+				],
+				isEncrypted: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramPdfMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "test.pdf",
+					getFile: async () => ({ file_path: "documents/file_1.pdf" }),
+				},
+				{
+					fetchPdf: async (file, botToken) => {
+						expect(file).toEqual({ file_path: "documents/file_1.pdf" });
+						expect(botToken).toBe("telegram-token");
+						return {
+							data: Uint8Array.from([1, 2, 3]),
+							filePath: "documents/file_1.pdf",
+						};
+					},
+					queueTurn: async (
+						_session,
+						_bot,
+						_chatId,
+						commandText,
+						content,
+						_caller,
+						_store,
+						_webShare,
+						currentUserText,
+					) => {
+						queuedTurns.push({ commandText, content, currentUserText });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(queuedTurns).toHaveLength(1);
+			expect(queuedTurns[0]?.commandText).toBe("");
+			expect(queuedTurns[0]?.content).toContain("_Document: test.pdf — 2 pages_");
+			expect(queuedTurns[0]?.content).toContain("Hello from PDF");
+			expect(queuedTurns[0]?.content).toContain("--- Page 2 ---");
+			expect(queuedTurns[0]?.content).toContain("Page two content");
+			expect(sentMessages).toEqual([]);
+		});
+
+		test("rejects oversized PDF before download", async () => {
+			const sentMessages: string[] = [];
+			let fetched = false;
+
+			await handleTelegramPdfMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => "ignored",
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 21 * 1024 * 1024 },
+					filename: "large.pdf",
+					getFile: async () => {
+						fetched = true;
+						return { file_path: "documents/large.pdf" };
+					},
+				},
+				{
+					fetchPdf: async () => {
+						fetched = true;
+						return {
+							data: Uint8Array.from([1]),
+							filePath: "documents/large.pdf",
+						};
+					},
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["PDF is too large (max 20 MB)."]);
+			expect(fetched).toBe(false);
+		});
+
+		test("rejects encrypted PDF", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.pdfExtractor = new MockPdfExtractor({
+				pages: [{ pageNumber: 1, text: "ignored" }],
+				isEncrypted: true,
+				isCorrupt: false,
+			});
+
+			await handleTelegramPdfMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "encrypted.pdf",
+					getFile: async () => ({ file_path: "documents/encrypted.pdf" }),
+				},
+				{
+					fetchPdf: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/encrypted.pdf",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual([
+				"This PDF is password-protected and cannot be read.",
+			]);
+			expect(queuedTurns).toEqual([]);
+		});
+
+		test("rejects corrupt PDF", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.pdfExtractor = new MockPdfExtractor({
+				pages: [{ pageNumber: 1, text: "ignored" }],
+				isEncrypted: false,
+				isCorrupt: true,
+			});
+
+			await handleTelegramPdfMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "corrupt.pdf",
+					getFile: async () => ({ file_path: "documents/corrupt.pdf" }),
+				},
+				{
+					fetchPdf: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/corrupt.pdf",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages[0]?.startsWith("Failed to read PDF:")).toBe(true);
+			expect(queuedTurns).toEqual([]);
+		});
+
+		test("replies when PDF has no extractable text", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.pdfExtractor = new MockPdfExtractor({
+				pages: [
+					{ pageNumber: 1, text: "   " },
+					{ pageNumber: 2, text: "" },
+				],
+				isEncrypted: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramPdfMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "empty.pdf",
+					getFile: async () => ({ file_path: "documents/empty.pdf" }),
+				},
+				{
+					fetchPdf: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/empty.pdf",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["This PDF appears to contain no text."]);
+			expect(queuedTurns).toEqual([]);
+		});
+
+		test("surfaces download errors", async () => {
+			const sentMessages: string[] = [];
+
+			await handleTelegramPdfMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => "ignored",
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "test.pdf",
+					getFile: async () => ({ file_path: "documents/test.pdf" }),
+				},
+				{
+					fetchPdf: async () => {
+						throw new Error("status 404");
+					},
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual([
+				"Failed to download PDF: status 404",
+			]);
+		});
+
+		test("surfaces extraction errors", async () => {
+			const sentMessages: string[] = [];
+
+			class ErrorPdfExtractor implements PdfExtractor {
+				async extract(_pdfBytes: Uint8Array, _filename: string): Promise<PdfExtractionResult> {
+					return Promise.reject(new Error("extraction failed"));
+				}
+			}
+
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.pdfExtractor = new ErrorPdfExtractor();
+
+			await handleTelegramPdfMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "test.pdf",
+					getFile: async () => ({ file_path: "documents/test.pdf" }),
+				},
+				{
+					fetchPdf: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/test.pdf",
+					}),
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual([
+				"Failed to read PDF: extraction failed",
+			]);
 		});
 	});
 

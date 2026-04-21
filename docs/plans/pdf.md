@@ -81,9 +81,9 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Add tests covering flag-on and flag-off behavior
 
 ### Task 7: Add telegram channel tests for PDF
-- [ ] Add `message:document` test cases to `src/channels/telegram.test.ts`
-- [ ] Cover: valid PDF extraction, encrypted PDF rejection, corrupt PDF rejection, empty PDF reply, oversized PDF rejection, non-PDF document ignored
-- [ ] Mock the extractor and fetchTelegramFileBytes in tests
+- [x] Add `message:document` test cases to `src/channels/telegram.test.ts`
+- [x] Cover: valid PDF extraction, encrypted PDF rejection, corrupt PDF rejection, empty PDF reply, oversized PDF rejection, non-PDF document ignored
+- [x] Mock the extractor and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
 - [ ] Update `src/channels/README.md` to document PDF support, limits, and configuration
