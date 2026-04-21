@@ -3,6 +3,7 @@
 Source root for the harness.
 
 - `bin/` — entrypoints (CLI, Telegram, admin script)
+- `capabilities/` — channel-agnostic helpers such as `voice/` transcription plumbing
 - `channels/` — channel adapters and dispatch (CLI, Telegram)
 - `checkpoints/` — SQL-backed LangGraph history, forced checkpoint storage, and compaction triggers
 - `app.ts` — caller-aware agent factory (per-user FS + permissions guard)

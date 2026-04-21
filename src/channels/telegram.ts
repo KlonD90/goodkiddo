@@ -1,7 +1,10 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
-import { buildVoiceContent } from "../capabilities/voice/content";
+import {
+	buildVoiceContent,
+	buildVoiceTurnText,
+} from "../capabilities/voice/content";
 import { VOICE_MAX_BYTES, VOICE_MIME_TYPE } from "../capabilities/voice/constants";
 import { fetchVoiceBytes } from "../capabilities/voice/fetch";
 import {
@@ -110,6 +113,7 @@ type TelegramUserInput =
 type TelegramQueuedTurn = {
 	content: TelegramUserInput;
 	commandText: string;
+	currentUserText?: string;
 };
 
 type TelegramVoiceFile = {
@@ -1489,13 +1493,14 @@ export function createTelegramTranscriber(config: AppConfig): Transcriber {
 	switch (config.transcriptionProvider) {
 		case "openai":
 			return new WhisperTranscriber({
-				apiKey: config.aiApiKey,
-				baseUrl: config.aiBaseUrl || undefined,
+				apiKey: config.transcriptionApiKey,
+				baseUrl: config.transcriptionBaseUrl || undefined,
 			});
 		case "openrouter":
 			return new WhisperTranscriber({
-				apiKey: config.aiApiKey,
-				baseUrl: config.aiBaseUrl || OPENROUTER_TRANSCRIPTION_BASE_URL,
+				apiKey: config.transcriptionApiKey,
+				baseUrl:
+					config.transcriptionBaseUrl || OPENROUTER_TRANSCRIPTION_BASE_URL,
 			});
 	}
 }
@@ -1548,11 +1553,12 @@ async function runAgentTurn(
 	session: TelegramAgentSession,
 	bot: Bot,
 	chatId: string,
-	userInput: TelegramUserInput,
+	queuedTurn: TelegramQueuedTurn,
 ): Promise<void> {
 	const stopTyping = startTelegramTypingLoop(bot, chatId);
 	try {
-		session.currentUserText = extractTextFromContent(userInput);
+		session.currentUserText =
+			queuedTurn.currentUserText ?? extractTextFromContent(queuedTurn.content);
 		await session.refreshAgent();
 		const currentMessages = await readThreadMessages(
 			session.agent,
@@ -1565,28 +1571,31 @@ async function runAgentTurn(
 			() => mintTelegramThreadId(chatId),
 		);
 		if (!resumed) {
-			const compacted = await maybeAutoCompactAndSeed(
+				const compacted = await maybeAutoCompactAndSeed(
+					session,
+					currentMessages,
+					queuedTurn.content,
+					() => mintTelegramThreadId(chatId),
+				);
+				needsRefresh = compacted;
+			} else {
+				needsRefresh = true;
+			}
+			const taskCheck = await maybeRunPendingTaskCheck(
 				session,
-				currentMessages,
-				userInput,
-				() => mintTelegramThreadId(chatId),
+				queuedTurn.currentUserText ?? queuedTurn.content,
 			);
-			needsRefresh = compacted;
-		} else {
-			needsRefresh = true;
-		}
-		const taskCheck = await maybeRunPendingTaskCheck(session, userInput);
 		if (taskCheck.handled) {
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
 		if (needsRefresh || taskCheck.needsRefresh) {
 			await session.refreshAgent();
-		}
-		const invokeMessages = buildInvokeMessages(session, {
-			role: "user",
-			content: userInput,
-		});
+			}
+			const invokeMessages = buildInvokeMessages(session, {
+				role: "user",
+				content: queuedTurn.content,
+			});
 		const stream = await session.agent.stream(
 			{ messages: invokeMessages },
 			{
@@ -1699,7 +1708,7 @@ async function pumpQueue(
 	if (next === undefined) return;
 	session.running = true;
 	try {
-		await runAgentTurn(session, bot, chatId, next.content);
+		await runAgentTurn(session, bot, chatId, next);
 	} finally {
 		session.running = false;
 		if (session.queue.length > 0) {
@@ -1904,16 +1913,19 @@ export async function handleTelegramVoiceMessage(
 			downloaded.data,
 			VOICE_MIME_TYPE,
 		);
+		const commandText = normalizeTelegramCommandText(transcript);
 		const content = buildVoiceContent(transcript, params.caption);
+		const currentUserText = buildVoiceTurnText(transcript, params.caption);
 		await queueTurn(
 			params.session,
 			params.bot,
 			params.chatId,
-			"",
+			commandText,
 			content,
 			params.caller,
 			params.store,
 			params.webShare,
+			currentUserText,
 		);
 	} catch (error) {
 		const message =
@@ -1937,6 +1949,7 @@ async function handleTelegramQueuedTurn(
 	caller: Caller,
 	store: PermissionsStore,
 	webShare: ChannelRunOptions["webShare"],
+	currentUserText?: string,
 ): Promise<void> {
 	if (
 		await handleTelegramControlInput(
@@ -1952,7 +1965,7 @@ async function handleTelegramQueuedTurn(
 		return;
 	}
 
-	session.queue.push({ content, commandText });
+	session.queue.push({ content, commandText, currentUserText });
 	void pumpQueue(session, bot, chatId);
 }
 

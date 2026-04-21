@@ -6,7 +6,7 @@ Security-aware AI agent harness built with TypeScript and Bun.
 - Per-caller memory wiki (notes, skills, log) plus SQL-backed active tasks, with `/new_thread` rotation and boundary-based task reconciliation
 - Persistent conversation state in `DATABASE_URL`: full LangGraph history for audit/recovery, plus forced checkpoints that compact runtime context at `/new_thread`, session-resume, and prompt-budget boundaries
 - Docker sandbox today, Firecracker path where supported
-- CLI and Telegram entrypoints, including Telegram photo messages for multimodal models
+- CLI and Telegram entrypoints, including Telegram photo and voice messages for multimodal models
 
 ## Run
 
@@ -14,9 +14,12 @@ Requirements: `bun`, `docker`, model API access.
 
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
 Telegram voice messages are enabled by default. Use `ENABLE_VOICE_MESSAGES=false`
-to disable them, and `TRANSCRIPTION_PROVIDER=openai|openrouter` to choose the
-OpenAI-compatible transcription backend. If `TRANSCRIPTION_PROVIDER` is unset,
-the app defaults to `openrouter` when `AI_TYPE=openrouter`, otherwise `openai`.
+to disable them, `TRANSCRIPTION_PROVIDER=openai|openrouter` to choose the
+OpenAI-compatible transcription backend, `TRANSCRIPTION_API_KEY` to provide a
+dedicated transcription credential when voice cannot reuse `AI_API_KEY`, and
+`TRANSCRIPTION_BASE_URL` to override the transcription endpoint. If
+`TRANSCRIPTION_PROVIDER` is unset, the app defaults to `openrouter` when
+`AI_TYPE=openrouter`, otherwise `openai`.
 
 ```bash
 ./dev.sh

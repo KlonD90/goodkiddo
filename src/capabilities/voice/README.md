@@ -15,12 +15,15 @@ Current Telegram behavior:
 - voice audio is downloaded into memory and discarded after transcription
 - the Telegram channel sends `audio/ogg` bytes to the configured transcriber
 - transcripts are injected back into the normal text-turn flow as `_Transcribed: ..._`
+- Telegram control handling keeps using the raw transcript so approvals and commands behave like text turns
 - caption text is appended after the transcript when present
 
 Configuration:
 
 - `ENABLE_VOICE_MESSAGES=false` disables voice handling and forces the channel to use `NoOpTranscriber`
 - `TRANSCRIPTION_PROVIDER=openai|openrouter` selects the default provider wiring in `src/channels/telegram.ts`
+- `TRANSCRIPTION_API_KEY` provides a dedicated OpenAI-compatible credential when transcription cannot reuse `AI_API_KEY`
+- `TRANSCRIPTION_BASE_URL` overrides the default OpenAI/OpenRouter transcription endpoint
 - if `TRANSCRIPTION_PROVIDER` is unset, the app defaults to `openrouter` when `AI_TYPE=openrouter`, otherwise `openai`
 
 How to add a new transcription provider:

@@ -23,6 +23,8 @@ const CONFIG_KEYS = [
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TRANSCRIPTION_API_KEY",
+	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
 	"WEB_PORT",
@@ -87,6 +89,8 @@ describe("config", () => {
 				ENABLE_VOICE_MESSAGES: "false",
 				TELEGRAM_BOT_ALLOWED_CHAT_ID: "12345",
 				TELEGRAM_BOT_TOKEN: "telegram-token",
+				TRANSCRIPTION_API_KEY: "voice-key",
+				TRANSCRIPTION_BASE_URL: "https://voice.example/v1",
 				TRANSCRIPTION_PROVIDER: "openrouter",
 				USING_MODE: "multi",
 			},
@@ -106,6 +110,8 @@ describe("config", () => {
 					enableExecute: true,
 					enableVoiceMessages: false,
 					transcriptionProvider: "openrouter",
+					transcriptionApiKey: "voice-key",
+					transcriptionBaseUrl: "https://voice.example/v1",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 				});
@@ -116,11 +122,62 @@ describe("config", () => {
 	test("defaults voice transcription settings when not configured", async () => {
 		await withEnv(
 			{
+				AI_API_KEY: "openrouter-key",
 				AI_TYPE: "openrouter",
 			},
 			() => {
-				expect(readConfigFromEnv().enableVoiceMessages).toBe(true);
-				expect(readConfigFromEnv().transcriptionProvider).toBe("openrouter");
+				const config = readConfigFromEnv();
+				expect(config.enableVoiceMessages).toBe(true);
+				expect(config.transcriptionProvider).toBe("openrouter");
+				expect(config.transcriptionApiKey).toBe("openrouter-key");
+			},
+		);
+	});
+
+	test("defaults the transcription provider to openai for non-openrouter models", async () => {
+		await withEnv(
+			{
+				AI_TYPE: "anthropic",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.transcriptionProvider).toBe("openai");
+				expect(config.transcriptionApiKey).toBe("");
+			},
+		);
+	});
+
+	test("reports an invalid transcription provider value", async () => {
+		await withEnv(
+			{
+				TRANSCRIPTION_PROVIDER: "bogus",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "TRANSCRIPTION_PROVIDER",
+					reason:
+						'Invalid TRANSCRIPTION_PROVIDER "bogus". Supported values: openai, openrouter',
+				});
+			},
+		);
+	});
+
+	test("requires a dedicated transcription key when Telegram voice cannot reuse AI_API_KEY", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "anthropic-key",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				AI_TYPE: "anthropic",
+				APP_ENTRYPOINT: "telegram",
+				TELEGRAM_BOT_TOKEN: "telegram-token",
+				USING_MODE: "single",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "TRANSCRIPTION_API_KEY",
+					reason:
+						"TRANSCRIPTION_API_KEY is required when Telegram voice messages use transcription credentials different from AI_API_KEY.",
+				});
 			},
 		);
 	});
@@ -205,6 +262,8 @@ describe("config", () => {
 					enableExecute: true,
 					enableVoiceMessages: true,
 					transcriptionProvider: "openai",
+					transcriptionApiKey: "wizard-key",
+					transcriptionBaseUrl: "",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 				});
@@ -256,6 +315,8 @@ describe("config", () => {
 				enableExecute: true,
 				enableVoiceMessages: true,
 				transcriptionProvider: "openai",
+				transcriptionApiKey: "selector-key",
+				transcriptionBaseUrl: "",
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",
 			});
@@ -298,6 +359,9 @@ describe("config", () => {
 				'TRANSCRIPTION_PROVIDER="openai"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'TRANSCRIPTION_API_KEY=""',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'USING_MODE="single"',
 			);
 		});
@@ -336,6 +400,7 @@ describe("config", () => {
 			expect(config.appEntrypoint).toBe("cli");
 			expect(config.enableVoiceMessages).toBe(true);
 			expect(config.transcriptionProvider).toBe("openai");
+			expect(config.transcriptionApiKey).toBe("");
 			expect(config.usingMode).toBe("single");
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'CUSTOM_FLAG="keep-me"',
@@ -354,6 +419,8 @@ describe("config", () => {
 					'AI_TYPE="openai"',
 					'APP_ENTRYPOINT="cli"',
 					'ENABLE_VOICE_MESSAGES="false"',
+					'TRANSCRIPTION_API_KEY="persisted-voice-key"',
+					'TRANSCRIPTION_BASE_URL="https://voice.example/v1"',
 					'TRANSCRIPTION_PROVIDER="openrouter"',
 					'USING_MODE="single"',
 				].join("\n"),
@@ -365,6 +432,8 @@ describe("config", () => {
 			expect(config.aiApiKey).toBe("persisted-key");
 			expect(config.enableVoiceMessages).toBe(false);
 			expect(config.transcriptionProvider).toBe("openrouter");
+			expect(config.transcriptionApiKey).toBe("persisted-voice-key");
+			expect(config.transcriptionBaseUrl).toBe("https://voice.example/v1");
 			expect(process.env.AI_API_KEY).toBeUndefined();
 			expect(process.env.AI_MODEL_NAME).toBeUndefined();
 			expect(process.env.AI_TYPE).toBeUndefined();

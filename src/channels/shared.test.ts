@@ -76,6 +76,8 @@ const TEST_CONFIG: AppConfig = {
 	enableExecute: false,
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
+	transcriptionApiKey: "test-key",
+	transcriptionBaseUrl: "",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 };

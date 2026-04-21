@@ -76,4 +76,17 @@ describe("WhisperTranscriber", () => {
 			transcriber.transcribe(Uint8Array.from([9]), "audio/ogg"),
 		).rejects.toThrow("Transcription request failed: socket hang up");
 	});
+
+	test("rejects a success payload that does not include text", async () => {
+		globalThis.fetch = (async () =>
+			Response.json({ transcript: "missing text field" })) as unknown as typeof fetch;
+
+		const transcriber = new WhisperTranscriber({ apiKey: "voice-key" });
+
+		await expect(
+			transcriber.transcribe(Uint8Array.from([9]), "audio/ogg"),
+		).rejects.toThrow(
+			"Transcription request failed: Transcription response did not include text.",
+		);
+	});
 });

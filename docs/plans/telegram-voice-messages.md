@@ -11,6 +11,7 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
    - Bot downloads the voice file (OGG Opus, max 1 MB)
    - Bot transcribes it via Whisper API
    - Bot shows italic-prefixed transcript (e.g. `_Transcribed: hello world_`) to the agent
+   - Control flow still uses the raw transcript, so approvals and slash/session commands behave like text turns
    - Agent responds to the transcription as normal user input
 
 2. **With caption** — voice + text caption:
@@ -65,13 +66,13 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Download the voice file via `fetchVoiceBytes(file, botToken)` from the voice capability
 - [x] Call `transcriber.transcribe(downloaded.data, VOICE_MIME_TYPE)`
 - [x] Build text content with `buildVoiceContent(transcript, caption)`
-- [x] Queue via `handleTelegramQueuedTurn` with the text content (empty commandText)
+- [x] Queue via `handleTelegramQueuedTurn` with the agent-facing text content while preserving the raw transcript for control parsing
 - [x] On transcription error: catch, reply `"Transcription failed: <message>"`
 - [x] On download error: reply `"Failed to download voice message: <message>"`
 
 ### Task 6: Add config flags and defaults
 - [x] Add `enableVoiceMessages: boolean` (default `true`) and `transcriptionProvider: "openai" | "openrouter"` to `AppConfig` in `src/config.ts`
-- [x] Wire `transcriptionProvider` to construct the appropriate `Transcriber` in `telegramChannel.run()`
+- [x] Wire `transcriptionProvider` plus dedicated transcription credential/base-url overrides to construct the appropriate `Transcriber` in `telegramChannel.run()`
 - [x] Follow the existing `.env` persistence pattern for the new flags
 - [x] Add tests covering flag-on and flag-off behavior
 

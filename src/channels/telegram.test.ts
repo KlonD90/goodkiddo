@@ -47,6 +47,8 @@ const TEST_CONFIG: AppConfig = {
 	enableExecute: false,
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
+	transcriptionApiKey: "test-key",
+	transcriptionBaseUrl: "",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 };
@@ -97,7 +99,7 @@ describe("telegram channel", () => {
 			);
 			expect(init?.method).toBe("POST");
 			expect(init?.headers).toMatchObject({
-				Authorization: "Bearer test-key",
+				Authorization: "Bearer voice-key",
 			});
 			return Response.json({ text: "transcribed" });
 		}) as typeof fetch;
@@ -105,7 +107,11 @@ describe("telegram channel", () => {
 		try {
 			const transcriber = createTelegramTranscriber({
 				...TEST_CONFIG,
+				aiType: "anthropic",
+				aiApiKey: "anthropic-key",
+				aiBaseUrl: "https://anthropic.example",
 				transcriptionProvider: "openrouter",
+				transcriptionApiKey: "voice-key",
 			});
 
 			expect(transcriber).toBeInstanceOf(WhisperTranscriber);
@@ -533,7 +539,11 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 	describe("message:voice", () => {
 		test("queues transcribed voice content with appended caption text", async () => {
-			const queuedTurns: Array<{ commandText: string; content: unknown }> = [];
+			const queuedTurns: Array<{
+				commandText: string;
+				content: unknown;
+				currentUserText?: string;
+			}> = [];
 			const sentMessages: string[] = [];
 			const session = createTelegramSessionFixture({
 				transcribe: async (audioBytes: Uint8Array, mimeType: string) => {
@@ -569,8 +579,18 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 							filePath: "voice/file_1.ogg",
 						};
 					},
-					queueTurn: async (_session, _bot, _chatId, commandText, content) => {
-						queuedTurns.push({ commandText, content });
+					queueTurn: async (
+						_session,
+						_bot,
+						_chatId,
+						commandText,
+						content,
+						_caller,
+						_store,
+						_webShare,
+						currentUserText,
+					) => {
+						queuedTurns.push({ commandText, content, currentUserText });
 					},
 					sendMessage: async (_bot, _chatId, text) => {
 						sentMessages.push(text);
@@ -580,8 +600,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			expect(queuedTurns).toEqual([
 				{
-					commandText: "",
+					commandText: "hello world",
 					content: "_Transcribed: hello world_\n\nfollow up question",
+					currentUserText: "hello world\n\nfollow up question",
 				},
 			]);
 			expect(sentMessages).toEqual([]);

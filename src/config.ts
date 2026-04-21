@@ -27,6 +27,8 @@ export type AppConfig = {
 	enableExecute: boolean;
 	enableVoiceMessages: boolean;
 	transcriptionProvider: TranscriptionProvider;
+	transcriptionApiKey: string;
+	transcriptionBaseUrl: string;
 	webPort: number;
 	webPublicBaseUrl: string;
 };
@@ -57,6 +59,8 @@ type ConfigIssueField =
 	| "DATABASE_URL"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
+	| "TRANSCRIPTION_API_KEY"
+	| "TRANSCRIPTION_BASE_URL"
 	| "TRANSCRIPTION_PROVIDER"
 	| "USING_MODE"
 	| "WEB_PORT"
@@ -102,6 +106,8 @@ const PERSISTED_ENV_KEYS = [
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TRANSCRIPTION_API_KEY",
+	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
 	"WEB_PORT",
@@ -154,6 +160,14 @@ const defaultTranscriptionProviderForAiType = (
 	aiType: SupportedAiTypes | undefined,
 ): TranscriptionProvider => (aiType === "openrouter" ? "openrouter" : "openai");
 
+const canReusePrimaryAiCredentialsForTranscription = (
+	aiType: SupportedAiTypes | undefined,
+	transcriptionProvider: TranscriptionProvider | undefined,
+): boolean =>
+	transcriptionProvider !== undefined &&
+	(aiType === "openai" || aiType === "openrouter") &&
+	aiType === transcriptionProvider;
+
 export const readConfigFromEnv = (
 	persistedValues: PersistedEnvValues = {},
 ): Partial<AppConfig> => {
@@ -185,6 +199,23 @@ export const readConfigFromEnv = (
 			: checkTranscriptionProvider(transcriptionProviderRaw)
 				? transcriptionProviderRaw
 				: undefined;
+	const transcriptionApiKeyRaw = getEnv(
+		"TRANSCRIPTION_API_KEY",
+		persistedValues,
+	);
+	const transcriptionApiKey =
+		transcriptionApiKeyRaw !== ""
+			? transcriptionApiKeyRaw
+			: canReusePrimaryAiCredentialsForTranscription(
+					aiType,
+					transcriptionProvider,
+				)
+				? getEnv("AI_API_KEY", persistedValues)
+				: "";
+	const transcriptionBaseUrl = getEnv(
+		"TRANSCRIPTION_BASE_URL",
+		persistedValues,
+	);
 
 	const webPortRaw = getEnv("WEB_PORT", persistedValues);
 	const webPort =
@@ -213,6 +244,8 @@ export const readConfigFromEnv = (
 		enableExecute,
 		enableVoiceMessages,
 		transcriptionProvider,
+		transcriptionApiKey,
+		transcriptionBaseUrl,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 	};
@@ -287,6 +320,23 @@ export const findConfigIssues = (
 		issues.push({
 			field: "TELEGRAM_BOT_TOKEN",
 			reason: "TELEGRAM_BOT_TOKEN is required when APP_ENTRYPOINT is telegram.",
+		});
+	}
+
+	if (
+		config.appEntrypoint === "telegram" &&
+		config.enableVoiceMessages !== false &&
+		!canReusePrimaryAiCredentialsForTranscription(
+			config.aiType,
+			config.transcriptionProvider,
+		) &&
+		(config.transcriptionApiKey === undefined ||
+			config.transcriptionApiKey === "")
+	) {
+		issues.push({
+			field: "TRANSCRIPTION_API_KEY",
+			reason:
+				"TRANSCRIPTION_API_KEY is required when Telegram voice messages use transcription credentials different from AI_API_KEY.",
 		});
 	}
 
@@ -548,6 +598,30 @@ This is the credential used to call the selected model provider.> `,
 Press enter to use the provider default.> `,
 		initialConfig.aiBaseUrl ?? "",
 	);
+	const transcriptionProvider =
+		initialConfig.transcriptionProvider ??
+		defaultTranscriptionProviderForAiType(aiType);
+	const transcriptionApiKey =
+		initialConfig.transcriptionApiKey && initialConfig.transcriptionApiKey !== ""
+			? initialConfig.transcriptionApiKey
+			: canReusePrimaryAiCredentialsForTranscription(
+					aiType,
+					transcriptionProvider,
+				)
+				? aiApiKey
+				: appEntrypoint === "telegram" &&
+					  (initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES)
+					? promptRequiredValue(
+							promptUser,
+							`Voice step. Enter TRANSCRIPTION_API_KEY for ${transcriptionProvider}.
+This credential is used for Telegram voice transcription when it cannot reuse AI_API_KEY.> `,
+							(value) =>
+								value === ""
+									? "TRANSCRIPTION_API_KEY cannot be empty."
+									: null,
+						)
+					: "";
+	const transcriptionBaseUrl = initialConfig.transcriptionBaseUrl ?? "";
 
 	const usingMode = await promptUsingMode(initialConfig, selectValue);
 
@@ -613,9 +687,9 @@ Press enter to allow any chat the bot is added to.> `,
 		enableExecute: initialConfig.enableExecute ?? true,
 		enableVoiceMessages:
 			initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
-		transcriptionProvider:
-			initialConfig.transcriptionProvider ??
-			defaultTranscriptionProviderForAiType(aiType),
+		transcriptionProvider,
+		transcriptionApiKey,
+		transcriptionBaseUrl,
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
@@ -655,6 +729,10 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "TRANSCRIPTION_API_KEY":
+			return `${key}=${escapeEnvValue(config.transcriptionApiKey)}`;
+		case "TRANSCRIPTION_BASE_URL":
+			return `${key}=${escapeEnvValue(config.transcriptionBaseUrl)}`;
 		case "TRANSCRIPTION_PROVIDER":
 			return `${key}=${escapeEnvValue(config.transcriptionProvider)}`;
 		case "USING_MODE":
@@ -697,7 +775,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -727,7 +805,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -790,6 +868,8 @@ export const resolveConfig = async (
 			transcriptionProvider:
 				config.transcriptionProvider ??
 				defaultTranscriptionProviderForAiType(config.aiType),
+			transcriptionApiKey: config.transcriptionApiKey ?? "",
+			transcriptionBaseUrl: config.transcriptionBaseUrl ?? "",
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 		};
