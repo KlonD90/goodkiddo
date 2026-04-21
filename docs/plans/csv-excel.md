@@ -59,10 +59,10 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Add `csv_parser.test.ts` and `excel_parser.test.ts` with mocked data covering: valid CSV/excel, empty file, quoted fields, different delimiters, corrupt file
 
 ### Task 3: Add spreadsheet capability helpers and constants
-- [ ] Create `src/capabilities/spreadsheet/constants.ts` with `SPREADSHEET_MAX_BYTES = 10 * 1024 * 1024` (10 MB hard cap)
-- [ ] Create `src/capabilities/spreadsheet/renderer.ts` with `renderSpreadsheet(result, filename): string` — renders as markdown tables with a header: `"_Spreadsheet: <filename> — <rowCount> rows, <colCount> columns_\n\n<sheet 1 name>\n| H1 | H2 | ... |\n| --- | --- | ... |\n| ... | ... | ... |\n\n<sheet 2 name>..."`
-- [ ] For single-sheet (CSV): omit sheet name header, just the table
-- [ ] Create `src/capabilities/spreadsheet/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler
+- [x] Create `src/capabilities/spreadsheet/constants.ts` with `SPREADSHEET_MAX_BYTES = 10 * 1024 * 1024` (10 MB hard cap)
+- [x] Create `src/capabilities/spreadsheet/renderer.ts` with `renderSpreadsheet(result, filename): string` — renders as markdown tables with a header: `"_Spreadsheet: <filename> — <rowCount> rows, <colCount> columns_\n\n<sheet 1 name>\n| H1 | H2 | ... |\n| --- | --- | ... |\n| ... | ... | ... |\n\n<sheet 2 name>..."`
+- [x] For single-sheet (CSV): omit sheet name header, just the table
+- [x] Create `src/capabilities/spreadsheet/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler
 
 ### Task 4: Wire parser into telegram channel
 - [ ] Add `spreadsheetParser?: SpreadsheetParser` field to `ChannelRunOptions` in `src/channels/types.ts`
