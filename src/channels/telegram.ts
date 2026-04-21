@@ -1,6 +1,9 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
+import { buildVoiceContent } from "../capabilities/voice/content";
+import { VOICE_MAX_BYTES, VOICE_MIME_TYPE } from "../capabilities/voice/constants";
+import { fetchVoiceBytes } from "../capabilities/voice/fetch";
 import {
 	NoOpTranscriber,
 	type Transcriber,
@@ -107,6 +110,10 @@ type TelegramUserInput =
 type TelegramQueuedTurn = {
 	content: TelegramUserInput;
 	commandText: string;
+};
+
+type TelegramVoiceFile = {
+	file_size?: number;
 };
 
 type TelegramListState = { type: "bullet" } | { type: "ordered"; next: number };
@@ -1845,6 +1852,90 @@ async function handleTelegramControlInput(
 	return false;
 }
 
+export async function handleTelegramVoiceMessage(
+	params: {
+		session: TelegramAgentSession;
+		bot: Bot;
+		chatId: string;
+		caller: Caller;
+		store: PermissionsStore;
+		webShare: ChannelRunOptions["webShare"];
+		botToken: string;
+		voice: TelegramVoiceFile;
+		caption?: string | null;
+		getFile: () => Promise<{ file_path?: string }>;
+	},
+	deps?: {
+		fetchVoice?: typeof fetchVoiceBytes;
+		queueTurn?: typeof handleTelegramQueuedTurn;
+		sendMessage?: typeof sendTelegramMessage;
+	},
+): Promise<void> {
+	const sendMessage = deps?.sendMessage ?? sendTelegramMessage;
+	const fetchVoice = deps?.fetchVoice ?? fetchVoiceBytes;
+	const queueTurn = deps?.queueTurn ?? handleTelegramQueuedTurn;
+
+	if (params.session.transcriber instanceof NoOpTranscriber) {
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			"Voice messages are not supported on this server.",
+		);
+		return;
+	}
+
+	if (
+		typeof params.voice.file_size === "number" &&
+		params.voice.file_size > VOICE_MAX_BYTES
+	) {
+		await sendMessage(params.bot, params.chatId, "Voice message is too large");
+		return;
+	}
+
+	let downloaded: { data: Uint8Array; filePath: string };
+	try {
+		const file = await params.getFile();
+		downloaded = await fetchVoice(file, params.botToken);
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Unknown voice download error";
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Failed to download voice message: ${message}`,
+		);
+		return;
+	}
+
+	try {
+		const transcript = await params.session.transcriber.transcribe(
+			downloaded.data,
+			VOICE_MIME_TYPE,
+		);
+		const content = buildVoiceContent(transcript, params.caption);
+		await queueTurn(
+			params.session,
+			params.bot,
+			params.chatId,
+			"",
+			content,
+			params.caller,
+			params.store,
+			params.webShare,
+		);
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "Unknown voice transcription error";
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Transcription failed: ${message}`,
+		);
+	}
+}
+
 async function handleTelegramQueuedTurn(
 	session: TelegramAgentSession,
 	bot: Bot,
@@ -2034,6 +2125,42 @@ export const telegramChannel: AppChannel = {
 					`Request failed: ${message}`,
 				);
 			}
+		});
+
+		bot.on("message:voice", async (ctx) => {
+			const chatIdString = String(ctx.chat.id);
+			const caller = await getTelegramCaller(store, chatIdString);
+			if (!caller) {
+				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+				return;
+			}
+
+			const session = await ensureTelegramSession(
+				chatIdString,
+				caller,
+				config,
+				db,
+				dialect,
+				store,
+				bot,
+				sessions,
+				outbound,
+				webShare,
+				transcriber,
+			);
+
+			await handleTelegramVoiceMessage({
+				session,
+				bot,
+				chatId: chatIdString,
+				caller,
+				store,
+				webShare,
+				botToken: config.telegramBotToken,
+				voice: ctx.message.voice,
+				caption: normalizeTelegramCommandText(ctx.message.caption),
+				getFile: () => ctx.getFile(),
+			});
 		});
 
 		bot.catch(async (error) => {

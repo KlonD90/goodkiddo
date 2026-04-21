@@ -58,16 +58,16 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Add `transcriber: Transcriber` field to `TelegramAgentSession`
 
 ### Task 5: Add `message:voice` handler in telegram.ts
-- [ ] Add `bot.on("message:voice", ...)` handler mirroring `message:photo` structure
-- [ ] On entry: check caller permission, get or create session
-- [ ] Check `session.transcriber` — if `NoOpTranscriber`, reply with `"Voice messages are not supported on this server."` and return
-- [ ] Check audio file size via `ctx.message.voice` properties (`file_size` if available) — reject with `"Voice message is too large"` if exceeds `VOICE_MAX_BYTES`
-- [ ] Download the voice file via `fetchVoiceBytes(file, botToken)` from the voice capability
-- [ ] Call `transcriber.transcribe(downloaded.data, VOICE_MIME_TYPE)`
-- [ ] Build text content with `buildVoiceContent(transcript, caption)`
-- [ ] Queue via `handleTelegramQueuedTurn` with the text content (empty commandText)
-- [ ] On transcription error: catch, reply `"Transcription failed: <message>"`
-- [ ] On download error: reply `"Failed to download voice message: <message>"`
+- [x] Add `bot.on("message:voice", ...)` handler mirroring `message:photo` structure
+- [x] On entry: check caller permission, get or create session
+- [x] Check `session.transcriber` — if `NoOpTranscriber`, reply with `"Voice messages are not supported on this server."` and return
+- [x] Check audio file size via `ctx.message.voice` properties (`file_size` if available) — reject with `"Voice message is too large"` if exceeds `VOICE_MAX_BYTES`
+- [x] Download the voice file via `fetchVoiceBytes(file, botToken)` from the voice capability
+- [x] Call `transcriber.transcribe(downloaded.data, VOICE_MIME_TYPE)`
+- [x] Build text content with `buildVoiceContent(transcript, caption)`
+- [x] Queue via `handleTelegramQueuedTurn` with the text content (empty commandText)
+- [x] On transcription error: catch, reply `"Transcription failed: <message>"`
+- [x] On download error: reply `"Failed to download voice message: <message>"`
 
 ### Task 6: Add config flags and defaults
 - [ ] Add `enableVoiceMessages: boolean` (default `true`) and `transcriptionProvider: "openai" | "openrouter"` to `AppConfig` in `src/config.ts`
