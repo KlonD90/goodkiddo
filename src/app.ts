@@ -14,6 +14,7 @@ import type { Caller } from "./permissions/types";
 import { TaskStore } from "./tasks/store";
 import { createExecutionToolset } from "./tools";
 import type { WebShareOptions } from "./tools/factory";
+import { wrapToolWithGuard } from "./tools/guard";
 import type { GuardContext } from "./tools/guard";
 import type { StatusEmitter } from "./tools/status_emitter";
 import type { SupportedLocale } from "./i18n/locale";
@@ -84,6 +85,8 @@ export const createAppAgent = async (
 		store: options.store,
 		broker: options.broker,
 		audit: options.audit,
+		statusEmitter: options.statusEmitter,
+		locale: options.locale,
 	};
 
 	const executionTools = await createExecutionToolset({
@@ -107,9 +110,10 @@ export const createAppAgent = async (
 		locale: options.locale,
 	});
 
-	const tools = options.timerTools
-		? [...executionTools, ...options.timerTools]
-		: executionTools;
+	const guardedTimerTools = options.timerTools
+		? options.timerTools.map((t) => wrapToolWithGuard(t, guard))
+		: [];
+	const tools = [...executionTools, ...guardedTimerTools];
 
 	const systemPrompt = await buildSystemPrompt({
 		identityPrompt: DO_IT_MD,
