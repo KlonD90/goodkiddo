@@ -21,6 +21,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Voice Messages](feature-voice-messages.md) | Legacy task lists in `docs/plan/` |
 | [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
 | [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |
+| [Tool Activity Status Messages](feature-tool-activity-status.md) | [RALPHEX plan](../plans/tool-activity-status.md) |
 
 ---
 
