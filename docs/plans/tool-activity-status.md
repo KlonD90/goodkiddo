@@ -19,10 +19,10 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add unit tests for the default emitter and the wrap-vs-no-op fallback behavior.
 
 ### Task 2: Build locale resolution utilities
-- [ ] Create a small `src/i18n/locale.ts` module that defines the set of supported locales (`en`, `ru`, `es`) and a `resolveLocale(hint)` function that normalizes inputs (strips region, lowercases), falls back to `defaultStatusLocale` from config, then to `en`.
-- [ ] Add helpers that extract a locale hint from Telegram (`user.language_code`) and from the CLI environment (`LANG` / `LC_ALL`).
-- [ ] Ensure unknown or malformed locale strings never throw — they resolve to the default.
-- [ ] Add tests covering: exact match, region-stripped match (`es-MX` → `es`), unknown locale fallback, missing hint fallback, and config default override.
+- [x] Create a small `src/i18n/locale.ts` module that defines the set of supported locales (`en`, `ru`, `es`) and a `resolveLocale(hint)` function that normalizes inputs (strips region, lowercases), falls back to `defaultStatusLocale` from config, then to `en`.
+- [x] Add helpers that extract a locale hint from Telegram (`user.language_code`) and from the CLI environment (`LANG` / `LC_ALL`).
+- [x] Ensure unknown or malformed locale strings never throw — they resolve to the default.
+- [x] Add tests covering: exact match, region-stripped match (`es-MX` → `es`), unknown locale fallback, missing hint fallback, and config default override.
 
 ### Task 3: Build per-tool status templates with i18n
 - [ ] Create a `status_templates` module exposing a `renderStatus(toolName, args, locale)` function that returns a localized string or `null`.
