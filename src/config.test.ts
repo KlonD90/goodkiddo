@@ -19,6 +19,7 @@ const CONFIG_KEYS = [
 	"BLOCKED_USER_MESSAGE",
 	"ENABLE_EXECUTE",
 	"ENABLE_PDF_DOCUMENTS",
+	"ENABLE_SPREADSHEETS",
 	"ENABLE_VOICE_MESSAGES",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
@@ -110,6 +111,7 @@ describe("config", () => {
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
 					enablePdfDocuments: true,
+					enableSpreadsheets: true,
 					enableVoiceMessages: false,
 					transcriptionProvider: "openrouter",
 					transcriptionApiKey: "voice-key",
@@ -163,6 +165,37 @@ describe("config", () => {
 			() => {
 				const config = readConfigFromEnv();
 				expect(config.enablePdfDocuments).toBe(false);
+			},
+		);
+	});
+
+	test("defaults enableSpreadsheets to true when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableSpreadsheets).toBe(true);
+			},
+		);
+	});
+
+	test("respects ENABLE_SPREADSHEETS=false env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_SPREADSHEETS: "false",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableSpreadsheets).toBe(false);
 			},
 		);
 	});
@@ -294,6 +327,7 @@ describe("config", () => {
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
 					enablePdfDocuments: true,
+					enableSpreadsheets: true,
 					enableVoiceMessages: true,
 					transcriptionProvider: "openai",
 					transcriptionApiKey: "wizard-key",
@@ -348,6 +382,7 @@ describe("config", () => {
 				databaseUrl: "sqlite://./state.db",
 				enableExecute: true,
 				enablePdfDocuments: true,
+				enableSpreadsheets: true,
 				enableVoiceMessages: true,
 				transcriptionProvider: "openai",
 				transcriptionApiKey: "selector-key",

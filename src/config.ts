@@ -27,6 +27,7 @@ export type AppConfig = {
 	enableExecute: boolean;
 	enableVoiceMessages: boolean;
 	enablePdfDocuments: boolean;
+	enableSpreadsheets: boolean;
 	transcriptionProvider: TranscriptionProvider;
 	transcriptionApiKey: string;
 	transcriptionBaseUrl: string;
@@ -43,6 +44,7 @@ const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
 const DEFAULT_ENABLE_VOICE_MESSAGES = true;
 const DEFAULT_ENABLE_PDF_DOCUMENTS = true;
+const DEFAULT_ENABLE_SPREADSHEETS = true;
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
 	"openai",
 	"openrouter",
@@ -57,6 +59,7 @@ type ConfigIssueField =
 	| "BLOCKED_USER_MESSAGE"
 	| "ENABLE_EXECUTE"
 	| "ENABLE_PDF_DOCUMENTS"
+	| "ENABLE_SPREADSHEETS"
 	| "ENABLE_VOICE_MESSAGES"
 	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
@@ -105,6 +108,7 @@ const PERSISTED_ENV_KEYS = [
 	"BLOCKED_USER_MESSAGE",
 	"ENABLE_EXECUTE",
 	"ENABLE_PDF_DOCUMENTS",
+	"ENABLE_SPREADSHEETS",
 	"ENABLE_VOICE_MESSAGES",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
@@ -198,6 +202,12 @@ export const readConfigFromEnv = (
 			? DEFAULT_ENABLE_PDF_DOCUMENTS
 			: enablePdfDocumentsRaw !== "false";
 
+	const enableSpreadsheetsRaw = getEnv("ENABLE_SPREADSHEETS", persistedValues);
+	const enableSpreadsheets =
+		enableSpreadsheetsRaw === ""
+			? DEFAULT_ENABLE_SPREADSHEETS
+			: enableSpreadsheetsRaw !== "false";
+
 	const aiType = checkAiType(aiTypeValue) ? aiTypeValue : undefined;
 	const transcriptionProviderRaw = getEnv(
 		"TRANSCRIPTION_PROVIDER",
@@ -254,6 +264,7 @@ export const readConfigFromEnv = (
 		enableExecute,
 		enableVoiceMessages,
 		enablePdfDocuments,
+		enableSpreadsheets,
 		transcriptionProvider,
 		transcriptionApiKey,
 		transcriptionBaseUrl,
@@ -700,6 +711,8 @@ Press enter to allow any chat the bot is added to.> `,
 			initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
 		enablePdfDocuments:
 			initialConfig.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
+		enableSpreadsheets:
+			initialConfig.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
 		transcriptionProvider,
 		transcriptionApiKey,
 		transcriptionBaseUrl,
@@ -733,6 +746,10 @@ const formatPersistedEnvLine = (
 		case "ENABLE_PDF_DOCUMENTS":
 			return `${key}=${escapeEnvValue(
 				config.enablePdfDocuments ? "true" : "false",
+			)}`;
+		case "ENABLE_SPREADSHEETS":
+			return `${key}=${escapeEnvValue(
+				config.enableSpreadsheets ? "true" : "false",
 			)}`;
 		case "ENABLE_VOICE_MESSAGES":
 			return `${key}=${escapeEnvValue(
@@ -792,7 +809,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -822,7 +839,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -884,6 +901,8 @@ export const resolveConfig = async (
 				config.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
 			enablePdfDocuments:
 				config.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
+			enableSpreadsheets:
+				config.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
 			transcriptionProvider:
 				config.transcriptionProvider ??
 				defaultTranscriptionProviderForAiType(config.aiType),

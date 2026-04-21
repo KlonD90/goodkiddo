@@ -75,6 +75,7 @@ const TEST_CONFIG: AppConfig = {
 	databaseUrl: "sqlite://:memory:",
 	enableExecute: false,
 	enablePdfDocuments: true,
+	enableSpreadsheets: true,
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
