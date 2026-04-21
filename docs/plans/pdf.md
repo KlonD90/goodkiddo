@@ -63,17 +63,17 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Add `pdfExtractor: PdfExtractor` field to `TelegramAgentSession`
 
 ### Task 5: Add PDF `message:document` handler in telegram.ts
-- [ ] Add `bot.on("message:document", ...)` handler that checks `ctx.message.document.mime_type === "application/pdf"`
-- [ ] If not a PDF: return early (no error reply — other document types are out of scope)
-- [ ] On entry: check caller permission, get or create session
-- [ ] Check audio file size (`file_size` field) — reject with `"PDF is too large (max 20 MB)."` if exceeds `PDF_MAX_BYTES`
-- [ ] Download the file via `fetchTelegramFileBytes(file, botToken)`
-- [ ] Call `pdfExtractor.extract(downloaded.data, filename)`
-- [ ] If `isEncrypted`: reply `"This PDF is password-protected and cannot be read."` and return
-- [ ] If `isCorrupt`: reply `"Failed to read PDF: <reason>"` and return
-- [ ] If all pages have empty text: reply `"This PDF appears to contain no text."` and return
-- [ ] Build text content with `buildPdfContent(result.pages, filename)`
-- [ ] Queue via `handleTelegramQueuedTurn` with the text content
+- [x] Add `bot.on("message:document", ...)` handler that checks `ctx.message.document.mime_type === "application/pdf"`
+- [x] If not a PDF: return early (no error reply — other document types are out of scope)
+- [x] On entry: check caller permission, get or create session
+- [x] Check audio file size (`file_size` field) — reject with `"PDF is too large (max 20 MB)."` if exceeds `PDF_MAX_BYTES`
+- [x] Download the file via `fetchTelegramFileBytes(file, botToken)`
+- [x] Call `pdfExtractor.extract(downloaded.data, filename)`
+- [x] If `isEncrypted`: reply `"This PDF is password-protected and cannot be read."` and return
+- [x] If `isCorrupt`: reply `"Failed to read PDF: <reason>"` and return
+- [x] If all pages have empty text: reply `"This PDF appears to contain no text."` and return
+- [x] Build text content with `buildPdfContent(result.pages, filename)`
+- [x] Queue via `handleTelegramQueuedTurn` with the text content
 
 ### Task 6: Add config flags
 - [ ] Add `enablePdfDocuments: boolean` (default `true`) to `AppConfig` in `src/config.ts`

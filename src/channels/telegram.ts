@@ -17,6 +17,10 @@ import {
 } from "../capabilities/voice/transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import {
+	PDF_MAX_BYTES,
+} from "../capabilities/pdf/constants";
+import { buildPdfContent } from "../capabilities/pdf/content";
+import {
 	type PdfExtractor,
 	NoOpPdfExtractor,
 } from "../capabilities/pdf/extractor";
@@ -126,6 +130,10 @@ type TelegramQueuedTurn = {
 };
 
 type TelegramVoiceFile = {
+	file_size?: number;
+};
+
+type TelegramDocumentFile = {
 	file_size?: number;
 };
 
@@ -1950,6 +1958,104 @@ export async function handleTelegramVoiceMessage(
 	}
 }
 
+export async function handleTelegramPdfMessage(
+	params: {
+		session: TelegramAgentSession;
+		bot: Bot;
+		chatId: string;
+		caller: Caller;
+		store: PermissionsStore;
+		webShare: ChannelRunOptions["webShare"];
+		botToken: string;
+		document: TelegramDocumentFile;
+		filename: string;
+		getFile: () => Promise<{ file_path?: string }>;
+	},
+	deps?: {
+		fetchPdf?: typeof fetchTelegramFileBytes;
+		queueTurn?: typeof handleTelegramQueuedTurn;
+		sendMessage?: typeof sendTelegramMessage;
+	},
+): Promise<void> {
+	const sendMessage = deps?.sendMessage ?? sendTelegramMessage;
+	const fetchPdf = deps?.fetchPdf ?? fetchTelegramFileBytes;
+	const queueTurn = deps?.queueTurn ?? handleTelegramQueuedTurn;
+
+	if (
+		typeof params.document.file_size === "number" &&
+		params.document.file_size > PDF_MAX_BYTES
+	) {
+		await sendMessage(params.bot, params.chatId, "PDF is too large (max 20 MB).");
+		return;
+	}
+
+	let downloaded: { data: Uint8Array; filePath: string };
+	try {
+		const file = await params.getFile();
+		downloaded = await fetchPdf(file, params.botToken);
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Unknown PDF download error";
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Failed to download PDF: ${message}`,
+		);
+		return;
+	}
+
+	try {
+		const result = await params.session.pdfExtractor.extract(
+			downloaded.data,
+			params.filename,
+		);
+
+		if (result.isEncrypted) {
+			await sendMessage(
+				params.bot,
+				params.chatId,
+				"This PDF is password-protected and cannot be read.",
+			);
+			return;
+		}
+
+		if (result.isCorrupt) {
+			await sendMessage(
+				params.bot,
+				params.chatId,
+				`Failed to read PDF: ${result.isCorrupt}`,
+			);
+			return;
+		}
+
+		const allPagesEmpty = result.pages.every((page) => page.text.trim() === "");
+		if (allPagesEmpty) {
+			await sendMessage(
+				params.bot,
+				params.chatId,
+				"This PDF appears to contain no text.",
+			);
+			return;
+		}
+
+		const content = buildPdfContent(result.pages, params.filename);
+		await queueTurn(
+			params.session,
+			params.bot,
+			params.chatId,
+			"",
+			content,
+			params.caller,
+			params.store,
+			params.webShare,
+		);
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "Unknown PDF extraction error";
+		await sendMessage(params.bot, params.chatId, `Failed to read PDF: ${message}`);
+	}
+}
+
 async function handleTelegramQueuedTurn(
 	session: TelegramAgentSession,
 	bot: Bot,
@@ -2180,6 +2286,47 @@ export const telegramChannel: AppChannel = {
 				botToken: config.telegramBotToken,
 				voice: ctx.message.voice,
 				caption: normalizeTelegramCommandText(ctx.message.caption),
+				getFile: () => ctx.getFile(),
+			});
+		});
+
+		bot.on("message:document", async (ctx) => {
+			if (ctx.message.document.mime_type !== "application/pdf") {
+				return;
+			}
+
+			const chatIdString = String(ctx.chat.id);
+			const caller = await getTelegramCaller(store, chatIdString);
+			if (!caller) {
+				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+				return;
+			}
+
+			const session = await ensureTelegramSession(
+				chatIdString,
+				caller,
+				config,
+				db,
+				dialect,
+				store,
+				bot,
+				sessions,
+				outbound,
+				webShare,
+				transcriber,
+				pdfExtractor,
+			);
+
+			await handleTelegramPdfMessage({
+				session,
+				bot,
+				chatId: chatIdString,
+				caller,
+				store,
+				webShare,
+				botToken: config.telegramBotToken,
+				document: ctx.message.document,
+				filename: ctx.message.document.file_name ?? "document.pdf",
 				getFile: () => ctx.getFile(),
 			});
 		});
