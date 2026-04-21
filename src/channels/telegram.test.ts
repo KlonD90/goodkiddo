@@ -45,6 +45,8 @@ const TEST_CONFIG: AppConfig = {
 	permissionsMode: "disabled",
 	databaseUrl: "sqlite://:memory:",
 	enableExecute: false,
+	enableVoiceMessages: true,
+	transcriptionProvider: "openai",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 };
@@ -73,13 +75,15 @@ describe("telegram channel", () => {
 		const transcriber = createTelegramTranscriber({
 			...TEST_CONFIG,
 			enableVoiceMessages: false,
-			transcriptionProvider: "openai",
-		} as AppConfig & {
-			enableVoiceMessages: boolean;
-			transcriptionProvider: "openai";
 		});
 
 		expect(transcriber).toBeInstanceOf(NoOpTranscriber);
+	});
+
+	test("createTelegramTranscriber returns whisper when voice messages are enabled", () => {
+		const transcriber = createTelegramTranscriber(TEST_CONFIG);
+
+		expect(transcriber).toBeInstanceOf(WhisperTranscriber);
 	});
 
 	test("createTelegramTranscriber uses the OpenRouter whisper endpoint", async () => {
@@ -102,7 +106,7 @@ describe("telegram channel", () => {
 			const transcriber = createTelegramTranscriber({
 				...TEST_CONFIG,
 				transcriptionProvider: "openrouter",
-			} as AppConfig & { transcriptionProvider: "openrouter" });
+			});
 
 			expect(transcriber).toBeInstanceOf(WhisperTranscriber);
 			await expect(

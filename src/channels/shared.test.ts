@@ -74,6 +74,8 @@ const TEST_CONFIG: AppConfig = {
 	permissionsMode: "disabled",
 	databaseUrl: "sqlite://:memory:",
 	enableExecute: false,
+	enableVoiceMessages: true,
+	transcriptionProvider: "openai",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 };

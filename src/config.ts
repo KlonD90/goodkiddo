@@ -25,15 +25,24 @@ export type AppConfig = {
 	permissionsMode: "enforce" | "disabled";
 	databaseUrl: string;
 	enableExecute: boolean;
+	enableVoiceMessages: boolean;
+	transcriptionProvider: TranscriptionProvider;
 	webPort: number;
 	webPublicBaseUrl: string;
 };
+
+export type TranscriptionProvider = "openai" | "openrouter";
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
 const DEFAULT_DATABASE_URL = "sqlite://./state.db";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
+const DEFAULT_ENABLE_VOICE_MESSAGES = true;
+const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
+	"openai",
+	"openrouter",
+];
 
 type ConfigIssueField =
 	| "AI_API_KEY"
@@ -43,10 +52,12 @@ type ConfigIssueField =
 	| "APP_ENTRYPOINT"
 	| "BLOCKED_USER_MESSAGE"
 	| "ENABLE_EXECUTE"
+	| "ENABLE_VOICE_MESSAGES"
 	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
+	| "TRANSCRIPTION_PROVIDER"
 	| "USING_MODE"
 	| "WEB_PORT"
 	| "WEB_PUBLIC_BASE_URL";
@@ -86,10 +97,12 @@ const PERSISTED_ENV_KEYS = [
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
 	"ENABLE_EXECUTE",
+	"ENABLE_VOICE_MESSAGES",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
 	"WEB_PORT",
 	"WEB_PUBLIC_BASE_URL",
@@ -132,6 +145,15 @@ const USING_MODE_OPTIONS: readonly WizardOption<UsingMode>[] =
 				: "multi: reserve multi-agent mode",
 	}));
 
+const checkTranscriptionProvider = (
+	value: string,
+): value is TranscriptionProvider =>
+	SUPPORTED_TRANSCRIPTION_PROVIDERS.includes(value as TranscriptionProvider);
+
+const defaultTranscriptionProviderForAiType = (
+	aiType: SupportedAiTypes | undefined,
+): TranscriptionProvider => (aiType === "openrouter" ? "openrouter" : "openai");
+
 export const readConfigFromEnv = (
 	persistedValues: PersistedEnvValues = {},
 ): Partial<AppConfig> => {
@@ -146,6 +168,24 @@ export const readConfigFromEnv = (
 	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
 	const enableExecute = enableExecuteRaw !== "false";
 
+	const enableVoiceMessagesRaw = getEnv("ENABLE_VOICE_MESSAGES", persistedValues);
+	const enableVoiceMessages =
+		enableVoiceMessagesRaw === ""
+			? DEFAULT_ENABLE_VOICE_MESSAGES
+			: enableVoiceMessagesRaw !== "false";
+
+	const aiType = checkAiType(aiTypeValue) ? aiTypeValue : undefined;
+	const transcriptionProviderRaw = getEnv(
+		"TRANSCRIPTION_PROVIDER",
+		persistedValues,
+	);
+	const transcriptionProvider =
+		transcriptionProviderRaw === ""
+			? defaultTranscriptionProviderForAiType(aiType)
+			: checkTranscriptionProvider(transcriptionProviderRaw)
+				? transcriptionProviderRaw
+				: undefined;
+
 	const webPortRaw = getEnv("WEB_PORT", persistedValues);
 	const webPort =
 		webPortRaw === "" ? DEFAULT_WEB_PORT : Number.parseInt(webPortRaw, 10);
@@ -158,7 +198,7 @@ export const readConfigFromEnv = (
 		appEntrypoint: checkAppEntrypoint(entrypointValue)
 			? entrypointValue
 			: undefined,
-		aiType: checkAiType(aiTypeValue) ? aiTypeValue : undefined,
+		aiType,
 		telegramAllowedChatId: getEnv(
 			"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 			persistedValues,
@@ -171,6 +211,8 @@ export const readConfigFromEnv = (
 		permissionsMode,
 		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
+		enableVoiceMessages,
+		transcriptionProvider,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 	};
@@ -184,6 +226,10 @@ export const findConfigIssues = (
 	const rawAiType = getEnv("AI_TYPE", persistedValues);
 	const rawUsingMode = getEnv("USING_MODE", persistedValues);
 	const rawEntrypoint = getEnv("APP_ENTRYPOINT", persistedValues);
+	const rawTranscriptionProvider = getEnv(
+		"TRANSCRIPTION_PROVIDER",
+		persistedValues,
+	);
 
 	if (rawAiType !== "" && !checkAiType(rawAiType)) {
 		issues.push({
@@ -203,6 +249,16 @@ export const findConfigIssues = (
 		issues.push({
 			field: "APP_ENTRYPOINT",
 			reason: `Invalid APP_ENTRYPOINT "${rawEntrypoint}". Supported values: ${SUPPORTED_APP_ENTRYPOINTS.join(", ")}`,
+		});
+	}
+
+	if (
+		rawTranscriptionProvider !== "" &&
+		!checkTranscriptionProvider(rawTranscriptionProvider)
+	) {
+		issues.push({
+			field: "TRANSCRIPTION_PROVIDER",
+			reason: `Invalid TRANSCRIPTION_PROVIDER "${rawTranscriptionProvider}". Supported values: ${SUPPORTED_TRANSCRIPTION_PROVIDERS.join(", ")}`,
 		});
 	}
 
@@ -555,6 +611,11 @@ Press enter to allow any chat the bot is added to.> `,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		databaseUrl: initialConfig.databaseUrl ?? DEFAULT_DATABASE_URL,
 		enableExecute: initialConfig.enableExecute ?? true,
+		enableVoiceMessages:
+			initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
+		transcriptionProvider:
+			initialConfig.transcriptionProvider ??
+			defaultTranscriptionProviderForAiType(aiType),
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
@@ -582,6 +643,10 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.blockedUserMessage)}`;
 		case "ENABLE_EXECUTE":
 			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
+		case "ENABLE_VOICE_MESSAGES":
+			return `${key}=${escapeEnvValue(
+				config.enableVoiceMessages ? "true" : "false",
+			)}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "DATABASE_URL":
@@ -590,6 +655,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "TRANSCRIPTION_PROVIDER":
+			return `${key}=${escapeEnvValue(config.transcriptionProvider)}`;
 		case "USING_MODE":
 			return `${key}=${escapeEnvValue(config.usingMode)}`;
 		case "WEB_PORT":
@@ -630,7 +697,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -660,7 +727,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -718,6 +785,11 @@ export const resolveConfig = async (
 			permissionsMode: config.permissionsMode ?? "enforce",
 			databaseUrl: config.databaseUrl ?? DEFAULT_DATABASE_URL,
 			enableExecute: config.enableExecute ?? true,
+			enableVoiceMessages:
+				config.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
+			transcriptionProvider:
+				config.transcriptionProvider ??
+				defaultTranscriptionProviderForAiType(config.aiType),
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 		};

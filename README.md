@@ -13,6 +13,10 @@ Security-aware AI agent harness built with TypeScript and Bun.
 Requirements: `bun`, `docker`, model API access.
 
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
+Telegram voice messages are enabled by default. Use `ENABLE_VOICE_MESSAGES=false`
+to disable them, and `TRANSCRIPTION_PROVIDER=openai|openrouter` to choose the
+OpenAI-compatible transcription backend. If `TRANSCRIPTION_PROVIDER` is unset,
+the app defaults to `openrouter` when `AI_TYPE=openrouter`, otherwise `openai`.
 
 ```bash
 ./dev.sh

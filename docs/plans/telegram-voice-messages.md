@@ -70,10 +70,10 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] On download error: reply `"Failed to download voice message: <message>"`
 
 ### Task 6: Add config flags and defaults
-- [ ] Add `enableVoiceMessages: boolean` (default `true`) and `transcriptionProvider: "openai" | "openrouter"` to `AppConfig` in `src/config.ts`
-- [ ] Wire `transcriptionProvider` to construct the appropriate `Transcriber` in `telegramChannel.run()`
-- [ ] Follow the existing `.env` persistence pattern for the new flags
-- [ ] Add tests covering flag-on and flag-off behavior
+- [x] Add `enableVoiceMessages: boolean` (default `true`) and `transcriptionProvider: "openai" | "openrouter"` to `AppConfig` in `src/config.ts`
+- [x] Wire `transcriptionProvider` to construct the appropriate `Transcriber` in `telegramChannel.run()`
+- [x] Follow the existing `.env` persistence pattern for the new flags
+- [x] Add tests covering flag-on and flag-off behavior
 
 ### Task 7: Add telegram channel tests for voice messages
 - [ ] Add `message:voice` test cases to `src/channels/telegram.test.ts`

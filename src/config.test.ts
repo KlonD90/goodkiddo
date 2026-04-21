@@ -17,11 +17,16 @@ const CONFIG_KEYS = [
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
+	"ENABLE_EXECUTE",
+	"ENABLE_VOICE_MESSAGES",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
+	"WEB_PORT",
+	"WEB_PUBLIC_BASE_URL",
 ] as const;
 
 const withEnv = async (
@@ -79,8 +84,10 @@ describe("config", () => {
 				AI_MODEL_NAME: "gpt-4.1-mini",
 				AI_TYPE: "openai",
 				APP_ENTRYPOINT: "telegram",
+				ENABLE_VOICE_MESSAGES: "false",
 				TELEGRAM_BOT_ALLOWED_CHAT_ID: "12345",
 				TELEGRAM_BOT_TOKEN: "telegram-token",
+				TRANSCRIPTION_PROVIDER: "openrouter",
 				USING_MODE: "multi",
 			},
 			() => {
@@ -97,9 +104,23 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
+					enableVoiceMessages: false,
+					transcriptionProvider: "openrouter",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 				});
+			},
+		);
+	});
+
+	test("defaults voice transcription settings when not configured", async () => {
+		await withEnv(
+			{
+				AI_TYPE: "openrouter",
+			},
+			() => {
+				expect(readConfigFromEnv().enableVoiceMessages).toBe(true);
+				expect(readConfigFromEnv().transcriptionProvider).toBe("openrouter");
 			},
 		);
 	});
@@ -182,6 +203,8 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
+					enableVoiceMessages: true,
+					transcriptionProvider: "openai",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 				});
@@ -231,6 +254,8 @@ describe("config", () => {
 				permissionsMode: "enforce",
 				databaseUrl: "sqlite://./state.db",
 				enableExecute: true,
+				enableVoiceMessages: true,
+				transcriptionProvider: "openai",
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",
 			});
@@ -265,6 +290,12 @@ describe("config", () => {
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'APP_ENTRYPOINT="cli"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'ENABLE_VOICE_MESSAGES="true"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'TRANSCRIPTION_PROVIDER="openai"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'USING_MODE="single"',
@@ -303,6 +334,8 @@ describe("config", () => {
 			expect(config.aiModelName).toBe("gpt-4.1-mini");
 			expect(config.aiType).toBe("anthropic");
 			expect(config.appEntrypoint).toBe("cli");
+			expect(config.enableVoiceMessages).toBe(true);
+			expect(config.transcriptionProvider).toBe("openai");
 			expect(config.usingMode).toBe("single");
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'CUSTOM_FLAG="keep-me"',
@@ -320,6 +353,8 @@ describe("config", () => {
 					'AI_MODEL_NAME="persisted-model"',
 					'AI_TYPE="openai"',
 					'APP_ENTRYPOINT="cli"',
+					'ENABLE_VOICE_MESSAGES="false"',
+					'TRANSCRIPTION_PROVIDER="openrouter"',
 					'USING_MODE="single"',
 				].join("\n"),
 				"utf8",
@@ -328,6 +363,8 @@ describe("config", () => {
 			const config = await resolveConfig({ envFilePath });
 
 			expect(config.aiApiKey).toBe("persisted-key");
+			expect(config.enableVoiceMessages).toBe(false);
+			expect(config.transcriptionProvider).toBe("openrouter");
 			expect(process.env.AI_API_KEY).toBeUndefined();
 			expect(process.env.AI_MODEL_NAME).toBeUndefined();
 			expect(process.env.AI_TYPE).toBeUndefined();

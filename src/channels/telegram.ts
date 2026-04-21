@@ -1481,18 +1481,12 @@ class TelegramApprovalBroker implements ApprovalBroker {
 	}
 }
 
-type TelegramVoiceRuntimeConfig = {
-	enableVoiceMessages?: boolean;
-	transcriptionProvider?: "openai" | "openrouter";
-};
-
 export function createTelegramTranscriber(config: AppConfig): Transcriber {
-	const voiceConfig = config as AppConfig & TelegramVoiceRuntimeConfig;
-	if (voiceConfig.enableVoiceMessages === false) {
+	if (config.enableVoiceMessages === false) {
 		return new NoOpTranscriber();
 	}
 
-	switch (voiceConfig.transcriptionProvider) {
+	switch (config.transcriptionProvider) {
 		case "openai":
 			return new WhisperTranscriber({
 				apiKey: config.aiApiKey,
@@ -1503,8 +1497,6 @@ export function createTelegramTranscriber(config: AppConfig): Transcriber {
 				apiKey: config.aiApiKey,
 				baseUrl: config.aiBaseUrl || OPENROUTER_TRANSCRIPTION_BASE_URL,
 			});
-		default:
-			return new NoOpTranscriber();
 	}
 }
 
