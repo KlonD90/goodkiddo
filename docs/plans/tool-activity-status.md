@@ -63,10 +63,10 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add tests covering flag-on and flag-off behavior at the factory level, and default-locale override behavior.
 
 ### Task 7: Confirm ephemerality and isolation from conversation state
-- [ ] Verify status messages do not appear in stored `full_history` for either channel.
-- [ ] Verify status messages are not included in rebuilt `runtime_context` and do not count toward compaction budgets.
-- [ ] Add regression tests proving that a turn with many tool calls produces many status messages but does not grow the stored assistant output beyond the actual reply.
-- [ ] Cross-reference the forced-checkpoints feature (`full_history != runtime_context`) in the test comments so the invariant is explicit.
+- [x] Verify status messages do not appear in stored `full_history` for either channel.
+- [x] Verify status messages are not included in rebuilt `runtime_context` and do not count toward compaction budgets.
+- [x] Add regression tests proving that a turn with many tool calls produces many status messages but does not grow the stored assistant output beyond the actual reply.
+- [x] Cross-reference the forced-checkpoints feature (`full_history != runtime_context`) in the test comments so the invariant is explicit.
 
 ### Task 8: Docs and rollout
 - [ ] Update `docs/plan/README.md` active-plans table with this feature and link to this execution plan.
