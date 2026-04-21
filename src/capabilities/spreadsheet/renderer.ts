@@ -24,14 +24,18 @@ export function renderSpreadsheet(result: SpreadsheetParseResult, filename: stri
 	return `${header}\n\n${sheetsContent}`;
 }
 
+function escapeCell(s: string): string {
+	return s.replace(/\|/g, "\\|");
+}
+
 function renderTable(headers: string[], rows: string[][]): string {
 	if (headers.length === 0 && rows.length === 0) {
 		return "";
 	}
 
-	const headerRow = `| ${headers.join(" | ")} |`;
+	const headerRow = `| ${headers.map(escapeCell).join(" | ")} |`;
 	const separatorRow = `| ${headers.map(() => "---").join(" | ")} |`;
-	const dataRows = rows.map((row) => `| ${row.join(" | ")} |`);
+	const dataRows = rows.map((row) => `| ${row.map(escapeCell).join(" | ")} |`);
 
 	return [headerRow, separatorRow, ...dataRows].join("\n");
 }
