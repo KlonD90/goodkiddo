@@ -81,6 +81,6 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Mock the transcriber and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
-- [ ] Update `src/channels/README.md` to document voice message support, limits, and configuration
-- [ ] Add `src/capabilities/voice/README.md` describing the capability structure and how to add a new transcription provider
-- [ ] Add a short note to `CLAUDE.md` pointing at the new docs so future contributors know voice support exists
+- [x] Update `src/channels/README.md` to document voice message support, limits, and configuration
+- [x] Add `src/capabilities/voice/README.md` describing the capability structure and how to add a new transcription provider
+- [x] Add a short note to `CLAUDE.md` pointing at the new docs so future contributors know voice support exists

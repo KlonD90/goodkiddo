@@ -135,6 +135,24 @@ Photo handling:
 - the largest Telegram photo variant is downloaded and sent to the model as an image content block
 - if the streamed response yields no visible text, Telegram falls back to the latest assistant text in final agent state instead of a generic placeholder or trailing user text
 
+Voice handling:
+
+- Telegram `message:voice` updates are accepted
+- voice messages are enabled by default and can be disabled with `ENABLE_VOICE_MESSAGES=false`
+- supported voice payloads are capped at `1_048_576` bytes and are downloaded as `audio/ogg`
+- the channel transcribes voice audio in memory, prefixes it as `_Transcribed: ..._`, and appends any caption text after the transcript
+- transcription uses the configured OpenAI-compatible backend selected by `TRANSCRIPTION_PROVIDER=openai|openrouter`
+- disabled voice support replies with `Voice messages are not supported on this server.`
+- oversized audio replies with `Voice message is too large`
+- download failures reply with `Failed to download voice message: <message>`
+- transcription failures reply with `Transcription failed: <message>`
+
+Relevant voice files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/voice/README.md`
+
 Recommended workflow:
 
 1. Update rendering or chunking logic in `src/channels/telegram.ts`
@@ -153,6 +171,7 @@ When editing this path:
 - treat stream chunking and final message chunking as separate problems
 - preserve table header context when splitting
 - prefer readable Telegram output over literal Markdown fidelity
+- keep voice downloads in memory only and route new transcription logic through `src/capabilities/voice/`
 
 ## Telegram troubleshooting
 
