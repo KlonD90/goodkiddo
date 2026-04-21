@@ -174,6 +174,26 @@ Relevant PDF files:
 - `src/channels/telegram.test.ts`
 - `src/capabilities/pdf/README.md`
 
+Spreadsheet handling:
+
+- Telegram `message:document` updates are accepted for CSV and Excel files (.csv, .xlsx, .xls)
+- supported MIME types: `text/csv`, `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- spreadsheets are enabled by default and can be disabled with `ENABLE_SPREADSHEETS=false`
+- spreadsheets are capped at 10 MB (hard limit defined in `SPREADSHEET_MAX_BYTES`)
+- the channel downloads the file, parses all sheets, and injects it as `_Spreadsheet: <filename> — N rows, M columns_` prefixed content with markdown tables
+- CSV files render as a single markdown table (sheet name header omitted)
+- Excel files render all sheets with sheet name headers as separators
+- corrupt or invalid files reply with `Failed to read spreadsheet: <reason>`
+- empty spreadsheets (no data rows) reply with `This spreadsheet appears to be empty.`
+- oversized spreadsheets reply with `Spreadsheet is too large (max 10 MB).`
+- non-spreadsheet documents are silently ignored (no error reply)
+
+Relevant spreadsheet files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/spreadsheet/README.md`
+
 Recommended workflow:
 
 1. Update rendering or chunking logic in `src/channels/telegram.ts`

@@ -93,6 +93,6 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Mock the parser and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
-- [ ] Update `src/channels/README.md` to document spreadsheet support, limits, and configuration
-- [ ] Add `src/capabilities/spreadsheet/README.md` describing the parser interface and how to add a new format
-- [ ] Add a short note to `CLAUDE.md` pointing at the new docs
+- [x] Update `src/channels/README.md` to document spreadsheet support, limits, and configuration
+- [x] Add `src/capabilities/spreadsheet/README.md` describing the parser interface and how to add a new format
+- [x] Add a short note to `CLAUDE.md` pointing at the new docs
