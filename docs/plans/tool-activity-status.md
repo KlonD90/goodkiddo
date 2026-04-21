@@ -25,14 +25,14 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add tests covering: exact match, region-stripped match (`es-MX` → `es`), unknown locale fallback, missing hint fallback, and config default override.
 
 ### Task 3: Build per-tool status templates with i18n
-- [ ] Create a `status_templates` module exposing a `renderStatus(toolName, args, locale)` function that returns a localized string or `null`.
-- [ ] Back it with a dictionary structured as `locale → toolName → template` so new locales are a single file addition. Ship `en`, `ru`, `es` at launch.
-- [ ] Cover all current tools: `filesystem_tools` (ls/read/write/edit/glob/grep), `browser_tools` (snapshot/action), `execute_tools` (workspace run), `memory_tools` (write/append/log/skill_write), `task_tools` (add/complete/dismiss/list), `send_file_tool`, `share_tools`.
-- [ ] Keep placeholder names identical across locales (e.g. `{path}`, `{pattern}`) so arg interpolation is uniform.
-- [ ] Enforce an argument allowlist per template — paths, short identifiers, search patterns, small enums only. Never include raw file contents, credentials, or long inputs.
-- [ ] Truncate interpolated values to a safe maximum length and strip newlines.
-- [ ] On missing translation for a tool in the resolved locale, fall back to English rather than returning `null`.
-- [ ] Add tests that cover: every tool template in every supported locale, English fallback when a locale is missing a key, redaction of oversized/forbidden args, and the "no template" fallback returning `null`.
+- [x] Create a `status_templates` module exposing a `renderStatus(toolName, args, locale)` function that returns a localized string or `null`.
+- [x] Back it with a dictionary structured as `locale → toolName → template` so new locales are a single file addition. Ship `en`, `ru`, `es` at launch.
+- [x] Cover all current tools: `filesystem_tools` (ls/read/write/edit/glob/grep), `browser_tools` (snapshot/action), `execute_tools` (workspace run), `memory_tools` (write/append/log/skill_write), `task_tools` (add/complete/dismiss/list), `send_file_tool`, `share_tools`.
+- [x] Keep placeholder names identical across locales (e.g. `{path}`, `{pattern}`) so arg interpolation is uniform.
+- [x] Enforce an argument allowlist per template — paths, short identifiers, search patterns, small enums only. Never include raw file contents, credentials, or long inputs.
+- [x] Truncate interpolated values to a safe maximum length and strip newlines.
+- [x] On missing translation for a tool in the resolved locale, fall back to English rather than returning `null`.
+- [x] Add tests that cover: every tool template in every supported locale, English fallback when a locale is missing a key, redaction of oversized/forbidden args, and the "no template" fallback returning `null`.
 
 ### Task 3: Extend the outbound channel abstraction
 - [ ] Add `sendStatus(callerId: string, message: string): Promise<void>` to the `OutboundChannel` interface in `src/channels/outbound.ts`.
