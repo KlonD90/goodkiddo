@@ -38,7 +38,12 @@ export class ExcelParser implements SpreadsheetParser {
 				const rows = nonEmptyRows.slice(1).map((row) =>
 					row.map((cell) => {
 						if (cell === null || cell === undefined) return "";
-						if (typeof cell === "object" && "v" in cell) return String((cell as { v: unknown }).v).trim();
+						if (typeof cell === "object" && "v" in cell) {
+							const value = (cell as { v: unknown }).v;
+							if (value instanceof Date) return value.toISOString().slice(0, 10);
+							if (typeof value === "object" && value !== null) return JSON.stringify(value);
+							return String(value).trim();
+						}
 						return String(cell).trim();
 					})
 				);

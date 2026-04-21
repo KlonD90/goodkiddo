@@ -25,9 +25,8 @@ import {
 	NoOpPdfExtractor,
 } from "../capabilities/pdf/extractor";
 import { PdfExtractExtractor } from "../capabilities/pdf/pdf_extract_extractor";
-import {
-	type SpreadsheetParser,
-	NoOpSpreadsheetParser,
+import type {
+	SpreadsheetParser,
 } from "../capabilities/spreadsheet/parser";
 import { CsvParser } from "../capabilities/spreadsheet/csv_parser";
 import { ExcelParser } from "../capabilities/spreadsheet/excel_parser";
@@ -74,7 +73,6 @@ class CombinedSpreadsheetParser implements SpreadsheetParser {
 	async parse(data: Uint8Array, filename: string, mimeType: string) {
 		if (
 			mimeType === "text/csv" ||
-			mimeType === "application/csv" ||
 			filename.endsWith(".csv")
 		) {
 			return this.csvParser.parse(data, filename, mimeType);
@@ -2521,8 +2519,9 @@ export const telegramChannel: AppChannel = {
 			if (
 				config.enableSpreadsheets !== false &&
 				(mimeType === "text/csv" ||
-					mimeType === "application/csv" ||
 					filename.endsWith(".csv") ||
+					filename.endsWith(".xlsx") ||
+					filename.endsWith(".xls") ||
 					mimeType === "application/vnd.ms-excel" ||
 					mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 			) {

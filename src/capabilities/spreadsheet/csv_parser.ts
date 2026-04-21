@@ -4,7 +4,7 @@ import type { SpreadsheetParser, SpreadsheetParseResult } from "./parser";
 export class CsvParser implements SpreadsheetParser {
 	async parse(data: Uint8Array, _filename: string, _mimeType: string): Promise<SpreadsheetParseResult> {
 		try {
-			const text = new TextDecoder("utf-8", { fatal: false }).decode(data);
+			const text = new TextDecoder("utf-8", { fatal: true }).decode(data);
 			if (!text.trim()) {
 				return {
 					sheets: [{
