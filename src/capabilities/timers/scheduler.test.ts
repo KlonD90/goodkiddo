@@ -84,7 +84,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});
@@ -92,7 +92,7 @@ describe("startScheduler", () => {
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
 		expect(mockStore.findDue._calls.length).toBeGreaterThan(0);
-		expect(mockReadMdFile._calls).toEqual([["test.md"]]);
+		expect(mockReadMdFile._calls).toEqual([[timer, "test.md"]]);
 		expect(mockOnTick._calls).toEqual([[timer, "Hello world"]]);
 		expect(mockStore.touchRun._calls.length).toBe(1);
 	});
@@ -102,7 +102,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});
@@ -123,7 +123,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});
@@ -146,7 +146,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});
@@ -167,7 +167,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});
@@ -186,7 +186,7 @@ describe("startScheduler", () => {
 
 		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
 			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
 			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 		});

@@ -2039,14 +2039,14 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
 				intervalMs: 10_000_000,
-				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
 				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 			});
 
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
-			expect(mockReadMdFile._calls).toEqual([["daily-news.md"]]);
+			expect(mockReadMdFile._calls).toEqual([[timer, "daily-news.md"]]);
 			expect(mockOnTick._calls).toEqual([[timer, "What is the news today?"]]);
 
 			scheduler.stop();
@@ -2159,7 +2159,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
 				intervalMs: 10_000_000,
-				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
 				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 			});
@@ -2205,7 +2205,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
 				intervalMs: 10_000_000,
-				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
 				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
 				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
 			});

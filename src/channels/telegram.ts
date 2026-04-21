@@ -2621,8 +2621,16 @@ export const telegramChannel: AppChannel = {
 			console.error("Telegram bot error:", error.error);
 		});
 
-		const readMdFile = async (path: string): Promise<string> => {
-			throw new Error("readMdFile called but should not be used directly");
+		const readMdFile = async (
+			timer: TimerRecord,
+			path: string,
+		): Promise<string> => {
+			const session = sessions.get(timer.chatId);
+			if (!session) {
+				throw new Error(`No session found for chatId ${timer.chatId}`);
+			}
+			const data = await session.workspace.readRaw(path);
+			return fileDataToString(data);
 		};
 
 		const onTick = async (
@@ -2719,7 +2727,6 @@ export const telegramChannel: AppChannel = {
 			},
 		});
 
-		stopScheduler();
 		if (!options?.db) {
 			await db.close();
 		}

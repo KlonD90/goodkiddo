@@ -73,9 +73,8 @@ export function createTimerTools(
 				return "Error: Invalid schedule. Try '0 10 * * 1-5' for every workday at 10 AM.";
 			}
 
-			let fileContents: string;
 			try {
-				fileContents = await options.readMdFile(mdFilePath);
+				await options.readMdFile(mdFilePath);
 			} catch {
 				return `Error: Memory file not found: ${mdFilePath}`;
 			}

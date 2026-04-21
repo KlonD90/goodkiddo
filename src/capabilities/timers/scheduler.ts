@@ -3,7 +3,7 @@ import type { TimerStore, TimerRecord } from "./store.js";
 
 export interface SchedulerOptions {
 	intervalMs: number;
-	readMdFile: (path: string) => Promise<string>;
+	readMdFile: (timer: TimerRecord, path: string) => Promise<string>;
 	onTick: (timer: TimerRecord, promptText: string) => Promise<void>;
 	notifyUser: (userId: string, message: string) => Promise<void>;
 }
@@ -31,7 +31,7 @@ export function startScheduler(
 
 			let promptText: string;
 			try {
-				promptText = await readMdFile(timer.mdFilePath);
+				promptText = await readMdFile(timer, timer.mdFilePath);
 			} catch {
 				await store.delete(timer.id, timer.userId);
 				try {
