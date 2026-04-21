@@ -94,16 +94,16 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `scheduler.test.ts` with mocked store and readMdFile: fires due timers, skips non-due, handles onTick errors, md file not found causes timer deletion and user notification (not retry)
 
 ### Task 3: Define LLM timer tools interface
-- [ ] Create `src/capabilities/timers/tools.ts` — `createTimerTools(store, options)` function
-- [ ] Options: `{ timezone: string, computeNextRun(cronExpression, fromDate?): number }` (pure function for computing next run timestamp)
-- [ ] Returns an array of tool definitions compatible with the agent tool system
-- [ ] `create_timer(mdFilePath, cronExpression, timezone?)` — validates cron and mdFilePath format, verifies file exists via `readMdFile`, creates timer, returns `{ timerId, nextRunAt, message }`; if file not found: returns error "Memory file not found: <path>"
-- [ ] `list_timers()` — returns `{ timers: Array<{ timerId, mdFilePath, cronExpression, timezone, nextRunAt, lastRunAt, consecutiveFailures }> }`
-- [ ] `update_timer(timerId, updates)` — `updates: { cronExpression?, timezone?, enabled? }`, returns confirmation of what changed
-- [ ] `delete_timer(timerId)` — hard deletes, returns confirmation
-- [ ] Cron validation: use `cron-parser` or `cron-validate`; parse the expression and compute next run to validate
-- [ ] `create_timer` error cases: invalid cron → "Invalid schedule..."; mdFilePath doesn't match expected pattern → "Memory file path must be inside /memory/"
-- [ ] Add `tools.test.ts` with mocked store: create valid timer, create with missing file (error), create invalid cron, list timers, update timer cron, update non-owned timer rejected, delete timer, delete non-owned timer rejected
+- [x] Create `src/capabilities/timers/tools.ts` — `createTimerTools(store, options)` function
+- [x] Options: `{ timezone: string, computeNextRun(cronExpression, fromDate?): number }` (pure function for computing next run timestamp)
+- [x] Returns an array of tool definitions compatible with the agent tool system
+- [x] `create_timer(mdFilePath, cronExpression, timezone?)` — validates cron and mdFilePath format, verifies file exists via `readMdFile`, creates timer, returns `{ timerId, nextRunAt, message }`; if file not found: returns error "Memory file not found: <path>"
+- [x] `list_timers()` — returns `{ timers: Array<{ timerId, mdFilePath, cronExpression, timezone, nextRunAt, lastRunAt, consecutiveFailures }> }`
+- [x] `update_timer(timerId, updates)` — `updates: { cronExpression?, timezone?, enabled? }`, returns confirmation of what changed
+- [x] `delete_timer(timerId)` — hard deletes, returns confirmation
+- [x] Cron validation: use `cron-parser` or `cron-validate`; parse the expression and compute next run to validate
+- [x] `create_timer` error cases: invalid cron → "Invalid schedule..."; mdFilePath doesn't match expected pattern → "Memory file path must be inside /memory/"
+- [x] Add `tools.test.ts` with mocked store: create valid timer, create with missing file (error), create invalid cron, list timers, update timer cron, update non-owned timer rejected, delete timer, delete non-owned timer rejected
 
 ### Task 4: Wire timer tools into agent
 - [ ] Add `timerTools?: ReturnType<typeof createTimerTools>` to `CreateAppAgentOptions` in `src/app.ts`
