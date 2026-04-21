@@ -57,6 +57,7 @@ export interface CreateExecutionToolsetOptions {
 	webShare?: WebShareOptions;
 	statusEmitter?: ReturnType<typeof createStatusEmitter>;
 	locale?: SupportedLocale;
+	enableToolStatus?: boolean;
 }
 
 const UNGUARDED_TOOL_NAMES = new Set<string>(["send_file", "grant_fs_access"]);
@@ -154,8 +155,10 @@ export async function createExecutionToolset(
 	];
 
 	if (!options.guard) return tools;
-	const statusEmitter =
-		options.statusEmitter ?? (options.outbound ? createStatusEmitter(options.outbound) : noopStatusEmitter);
+	const enableToolStatus = options.enableToolStatus ?? true;
+	const statusEmitter = enableToolStatus
+		? (options.statusEmitter ?? (options.outbound ? createStatusEmitter(options.outbound) : noopStatusEmitter))
+		: noopStatusEmitter;
 	const effectiveLocale = options.locale ?? "en";
 	const guard: GuardContext = {
 		...options.guard,

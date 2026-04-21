@@ -105,7 +105,7 @@ export const cliChannel: AppChannel = {
 		const outbound = new CliOutboundChannel();
 		const statusEmitter = createStatusEmitter(outbound);
 		const localeHint = extractLocaleFromCli();
-		const locale = resolveLocale(localeHint);
+		const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			db,

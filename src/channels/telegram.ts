@@ -2398,7 +2398,7 @@ export const telegramChannel: AppChannel = {
 			}
 
 			const localeHint = ctx.from.language_code;
-			const locale = resolveLocale(localeHint);
+			const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 
 			const session = await ensureTelegramSession(
 				chatIdString,
@@ -2441,7 +2441,7 @@ export const telegramChannel: AppChannel = {
 			}
 
 			const localeHint = ctx.from.language_code;
-			const locale = resolveLocale(localeHint);
+			const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 
 			const session = await ensureTelegramSession(
 				chatIdString,
@@ -2521,7 +2521,7 @@ export const telegramChannel: AppChannel = {
 			}
 
 			const localeHint = ctx.from.language_code;
-			const locale = resolveLocale(localeHint);
+			const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 
 			const session = await ensureTelegramSession(
 				chatIdString,
@@ -2570,7 +2570,7 @@ export const telegramChannel: AppChannel = {
 				}
 
 				const localeHint = ctx.from.language_code;
-				const locale = resolveLocale(localeHint);
+				const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 
 				const session = await ensureTelegramSession(
 					chatIdString,
@@ -2624,7 +2624,7 @@ export const telegramChannel: AppChannel = {
 				}
 
 				const localeHint = ctx.from.language_code;
-				const locale = resolveLocale(localeHint);
+				const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
 
 				const session = await ensureTelegramSession(
 					chatIdString,

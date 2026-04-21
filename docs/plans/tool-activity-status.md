@@ -56,11 +56,11 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add channel-level tests that assert a tool invocation during a fake turn produces the expected status output on the right destination in the expected language.
 
 ### Task 6: Add config flags and safe defaults
-- [ ] Add `enableToolStatus` (default `true`) and `defaultStatusLocale` (default `"en"`) to `AppConfig` in `src/config.ts`.
-- [ ] Wire `enableToolStatus` through the tool factory so when disabled, the wrapper uses the no-op emitter and no status is sent.
-- [ ] Wire `defaultStatusLocale` into `resolveLocale` as the final step before the hardcoded English fallback.
-- [ ] Follow the existing `.env` persistence pattern (`PERSISTED_ENV_KEYS`) if the flags need runtime override.
-- [ ] Add tests covering flag-on and flag-off behavior at the factory level, and default-locale override behavior.
+- [x] Add `enableToolStatus` (default `true`) and `defaultStatusLocale` (default `"en"`) to `AppConfig` in `src/config.ts`.
+- [x] Wire `enableToolStatus` through the tool factory so when disabled, the wrapper uses the no-op emitter and no status is sent.
+- [x] Wire `defaultStatusLocale` into `resolveLocale` as the final step before the hardcoded English fallback.
+- [x] Follow the existing `.env` persistence pattern (`PERSISTED_ENV_KEYS`) if the flags need runtime override.
+- [x] Add tests covering flag-on and flag-off behavior at the factory level, and default-locale override behavior.
 
 ### Task 7: Confirm ephemerality and isolation from conversation state
 - [ ] Verify status messages do not appear in stored `full_history` for either channel.

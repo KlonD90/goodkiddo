@@ -76,6 +76,8 @@ const TEST_CONFIG: AppConfig = {
 	enableExecute: false,
 	enablePdfDocuments: true,
 	enableSpreadsheets: true,
+	enableToolStatus: true,
+	defaultStatusLocale: "en",
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
