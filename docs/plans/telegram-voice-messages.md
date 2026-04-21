@@ -40,11 +40,11 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Add `transcriber.test.ts` covering: `NoOpTranscriber` throws, interface contract
 
 ### Task 2: Implement Whisper-based transcription provider
-- [ ] Create `src/capabilities/voice/whisper_transcriber.ts` with a `WhisperTranscriber` class implementing `Transcriber`
-- [ ] Constructor accepts `{ apiKey, baseUrl?, modelName? }` — mirror the model chooser pattern for consistency
-- [ ] `transcribe` makes an HTTP request to the configured endpoint (OpenAI-compatible), sends audio as multipart/form-data, returns the `text` field from the response
-- [ ] Handle HTTP errors gracefully; map to `"Transcription request failed: <message>"`
-- [ ] Add `whisper_transcriber.test.ts` with mocked fetch covering: success, API error, network error
+- [x] Create `src/capabilities/voice/whisper_transcriber.ts` with a `WhisperTranscriber` class implementing `Transcriber`
+- [x] Constructor accepts `{ apiKey, baseUrl?, modelName? }` — mirror the model chooser pattern for consistency
+- [x] `transcribe` makes an HTTP request to the configured endpoint (OpenAI-compatible), sends audio as multipart/form-data, returns the `text` field from the response
+- [x] Handle HTTP errors gracefully; map to `"Transcription request failed: <message>"`
+- [x] Add `whisper_transcriber.test.ts` with mocked fetch covering: success, API error, network error
 
 ### Task 3: Add voice capability helpers and constants
 - [ ] Create `src/capabilities/voice/constants.ts` with `VOICE_MAX_BYTES = 1_048_576` (1 MB hard cap) and `VOICE_MIME_TYPE = "audio/ogg"`
