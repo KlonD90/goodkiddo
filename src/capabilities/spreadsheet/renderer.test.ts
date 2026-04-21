@@ -93,7 +93,7 @@ Products
 
 		const output = renderSpreadsheet(result, "single.csv");
 		expect(output).not.toContain("Data\n|");
-		expect(output).toContain("_Spreadsheet: single.csv — 1 rows, 1 columns_");
+		expect(output).toContain("_Spreadsheet: single.csv — 1 row, 1 column_");
 		expect(output).toContain("| A |");
 	});
 

@@ -60,7 +60,8 @@ export class ExcelParser implements SpreadsheetParser {
 				isEmpty: allRowsEmpty,
 				isCorrupt: false
 			};
-		} catch (_err) {
+		} catch (err) {
+			console.error("Excel parse error:", err);
 			return {
 				sheets: [{
 					name: "Sheet1",

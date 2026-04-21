@@ -50,7 +50,8 @@ export class CsvParser implements SpreadsheetParser {
 				isEmpty: nonEmptyRows.length === 0,
 				isCorrupt: false
 			};
-		} catch {
+		} catch (err) {
+			console.error("CSV parse error:", err);
 			return {
 				sheets: [{
 					name: "Sheet1",

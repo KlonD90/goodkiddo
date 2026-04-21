@@ -1,10 +1,14 @@
 import type { SpreadsheetParseResult } from "./parser.js";
 
+function plural(count: number, singular: string, plural: string): string {
+	return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export function renderSpreadsheet(result: SpreadsheetParseResult, filename: string): string {
 	const totalRowCount = result.sheets.reduce((sum, sheet) => sum + sheet.rowCount, 0);
 	const totalColCount = result.sheets.reduce((max, sheet) => Math.max(max, sheet.colCount), 0);
 
-	const header = `_Spreadsheet: ${filename} — ${totalRowCount} rows, ${totalColCount} columns_`;
+	const header = `_Spreadsheet: ${filename} — ${plural(totalRowCount, "row", "rows")}, ${plural(totalColCount, "column", "columns")}_`;
 
 	if (result.sheets.length === 1) {
 		const sheet = result.sheets[0];

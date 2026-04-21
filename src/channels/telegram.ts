@@ -2155,7 +2155,7 @@ export async function handleTelegramSpreadsheetMessage(
 	const queueTurn = deps?.queueTurn ?? handleTelegramQueuedTurn;
 
 	if (
-		typeof params.document.file_size === "number" &&
+		params.document.file_size === undefined ||
 		params.document.file_size > SPREADSHEET_MAX_BYTES
 	) {
 		await sendMessage(
@@ -2519,11 +2519,12 @@ export const telegramChannel: AppChannel = {
 			}
 
 			if (
-				mimeType === "text/csv" ||
-				mimeType === "application/csv" ||
-				filename.endsWith(".csv") ||
-				mimeType === "application/vnd.ms-excel" ||
-				mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+				config.enableSpreadsheets !== false &&
+				(mimeType === "text/csv" ||
+					mimeType === "application/csv" ||
+					filename.endsWith(".csv") ||
+					mimeType === "application/vnd.ms-excel" ||
+					mimeType === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 			) {
 				const chatIdString = String(ctx.chat.id);
 				const caller = await getTelegramCaller(store, chatIdString);
