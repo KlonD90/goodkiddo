@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test, vi } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
 import { PassThrough } from "node:stream";
 import type { Bot } from "grammy";
 import { CliOutboundChannel } from "./cli";

@@ -109,7 +109,7 @@ function truncate(value: string, maxLength: number): { value: string; truncated:
 	if (cleaned.length <= maxLength) {
 		return { value: cleaned, truncated: false };
 	}
-	return { value: cleaned.slice(0, maxLength - 3) + "...", truncated: true };
+	return { value: `${cleaned.slice(0, maxLength - 3)}...`, truncated: true };
 }
 
 function formatValue(value: unknown): { value: string; truncated: boolean } {

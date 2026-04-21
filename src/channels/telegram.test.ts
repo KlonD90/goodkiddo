@@ -1969,7 +1969,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		function createAsyncMockFn(): AsyncMockFn {
 			const calls: unknown[][] = [];
 			let resolved = true;
-			let mockValue: unknown = undefined;
+			let mockValue: unknown ;
 			const mockFn = ((...args: unknown[]) => {
 				calls.push(args);
 				if (resolved) {

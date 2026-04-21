@@ -30,7 +30,7 @@ import type { Caller } from "../permissions/types";
 import { reconcileActiveTasksAtBoundary } from "../tasks/reconcile";
 import { TaskStore } from "../tasks/store";
 import type { WebShareOptions } from "../tools/factory";
-import { createTimerTools } from "../capabilities/timers/tools";
+import type { createTimerTools } from "../capabilities/timers/tools";
 import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
 import type { StatusEmitter } from "../tools/status_emitter";

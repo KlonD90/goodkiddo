@@ -3,7 +3,6 @@ import type { OutboundChannel, OutboundSendFileArgs } from "../channels/outbound
 import {
 	createStatusEmitter,
 	noopStatusEmitter,
-	type StatusEmitter,
 } from "./status_emitter";
 
 class FakeOutboundChannel implements OutboundChannel {

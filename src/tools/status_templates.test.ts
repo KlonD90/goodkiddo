@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { renderStatus, hasTemplate } from "./status_templates";
-import type { StatusTemplateArgs } from "./status_templates";
 
 describe("status_templates", () => {
 	describe("hasTemplate", () => {

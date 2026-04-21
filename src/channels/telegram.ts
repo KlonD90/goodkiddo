@@ -66,12 +66,11 @@ import {
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 import { TimerStore, type TimerRecord } from "../capabilities/timers/store";
-import { startScheduler } from "../capabilities/timers/scheduler";
 import { createTimerTools } from "../capabilities/timers/tools";
 import { CronExpressionParser } from "cron-parser";
 import { fileDataToString } from "../utils/filesystem";
 import { createStatusEmitter } from "../tools/status_emitter";
-import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
+import { resolveLocale } from "../i18n/locale";
 
 class CombinedSpreadsheetParser implements SpreadsheetParser {
 	private readonly csvParser = new CsvParser();

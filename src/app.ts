@@ -18,7 +18,7 @@ import { wrapToolWithGuard } from "./tools/guard";
 import type { GuardContext } from "./tools/guard";
 import type { StatusEmitter } from "./tools/status_emitter";
 import type { SupportedLocale } from "./i18n/locale";
-import { createTimerTools } from "./capabilities/timers/tools";
+import type { createTimerTools } from "./capabilities/timers/tools";
 
 type TimerTools = ReturnType<typeof createTimerTools>;
 
