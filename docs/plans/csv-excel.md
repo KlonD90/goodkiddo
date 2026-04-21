@@ -65,10 +65,10 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Create `src/capabilities/spreadsheet/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler
 
 ### Task 4: Wire parser into telegram channel
-- [ ] Add `spreadsheetParser?: SpreadsheetParser` field to `ChannelRunOptions` in `src/channels/types.ts`
-- [ ] In `telegramChannel.run()`, construct a `SpreadsheetParser` (combining CSV + Excel parsers, or a union), pass via `ChannelRunOptions`
-- [ ] In `ensureTelegramSession`, receive `spreadsheetParser` from options and attach to the session
-- [ ] Add `spreadsheetParser: SpreadsheetParser` field to `TelegramAgentSession`
+- [x] Add `spreadsheetParser?: SpreadsheetParser` field to `ChannelRunOptions` in `src/channels/types.ts`
+- [x] In `telegramChannel.run()`, construct a `SpreadsheetParser` (combining CSV + Excel parsers, or a union), pass via `ChannelRunOptions`
+- [x] In `ensureTelegramSession`, receive `spreadsheetParser` from options and attach to the session
+- [x] Add `spreadsheetParser: SpreadsheetParser` field to `TelegramAgentSession`
 
 ### Task 5: Add spreadsheet `message:document` handler in telegram.ts
 - [ ] In the existing `bot.on("message:document", ...)` handler, check `mime_type` for CSV or Excel variants

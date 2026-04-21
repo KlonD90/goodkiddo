@@ -11,6 +11,10 @@ import {
 	type PdfExtractor,
 	type PdfExtractionResult,
 } from "../capabilities/pdf/extractor";
+import {
+	NoOpSpreadsheetParser,
+	type SpreadsheetParser,
+} from "../capabilities/spreadsheet/parser";
 import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -73,6 +77,7 @@ const createTelegramSessionFixture = (
 			throw new Error("PDF extraction not configured");
 		},
 	};
+	const mockSpreadsheetParser: SpreadsheetParser = new NoOpSpreadsheetParser();
 	return {
 		agent: {} as never,
 		running: false,
@@ -83,6 +88,7 @@ const createTelegramSessionFixture = (
 		refreshAgent: async () => {},
 		transcriber,
 		pdfExtractor: mockPdfExtractor,
+		spreadsheetParser: mockSpreadsheetParser,
 		pendingApprovals: new Map(),
 	} as Awaited<ReturnType<typeof ensureTelegramSession>>;
 };
@@ -199,6 +205,7 @@ describe("telegram channel", () => {
 				undefined,
 				transcriber,
 				new NoOpPdfExtractor(),
+				new NoOpSpreadsheetParser(),
 			);
 
 			expect(session.transcriber).toBe(transcriber);
@@ -1282,6 +1289,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
 			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -1325,6 +1333,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
 			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map(),
 		};
 
@@ -1373,6 +1382,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
 			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",

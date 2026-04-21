@@ -25,6 +25,12 @@ import {
 	NoOpPdfExtractor,
 } from "../capabilities/pdf/extractor";
 import { PdfExtractExtractor } from "../capabilities/pdf/pdf_extract_extractor";
+import {
+	type SpreadsheetParser,
+	NoOpSpreadsheetParser,
+} from "../capabilities/spreadsheet/parser";
+import { CsvParser } from "../capabilities/spreadsheet/csv_parser";
+import { ExcelParser } from "../capabilities/spreadsheet/excel_parser";
 import type { AppConfig } from "../config";
 import { canReusePrimaryAiCredentialsForTranscription } from "../config";
 import { createDb, detectDialect } from "../db/index";
@@ -58,6 +64,26 @@ import {
 	maybeRunPendingTaskCheck,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
+
+class CombinedSpreadsheetParser implements SpreadsheetParser {
+	private readonly csvParser = new CsvParser();
+	private readonly excelParser = new ExcelParser();
+
+	async parse(data: Uint8Array, filename: string, mimeType: string) {
+		if (
+			mimeType === "text/csv" ||
+			mimeType === "application/csv" ||
+			filename.endsWith(".csv")
+		) {
+			return this.csvParser.parse(data, filename, mimeType);
+		}
+		return this.excelParser.parse(data, filename, mimeType);
+	}
+}
+
+function createSpreadsheetParser(_config: AppConfig): SpreadsheetParser {
+	return new CombinedSpreadsheetParser();
+}
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
@@ -107,6 +133,7 @@ type TelegramAgentSession = ChannelAgentSession & {
 	pendingApprovals: Map<string, PendingApproval>;
 	transcriber: Transcriber;
 	pdfExtractor: PdfExtractor;
+	spreadsheetParser: SpreadsheetParser;
 };
 
 type TelegramTextContentBlock = {
@@ -1548,6 +1575,7 @@ export async function ensureTelegramSession(
 	webShare: ChannelRunOptions["webShare"],
 	transcriber: Transcriber,
 	pdfExtractor: PdfExtractor,
+	spreadsheetParser: SpreadsheetParser,
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1572,6 +1600,7 @@ export async function ensureTelegramSession(
 		pendingApprovals: new Map(),
 		transcriber,
 		pdfExtractor,
+		spreadsheetParser,
 	};
 	sessions.set(chatId, telegramSession);
 	return telegramSession;
@@ -2139,6 +2168,8 @@ export const telegramChannel: AppChannel = {
 			(config.enablePdfDocuments === false
 				? new NoOpPdfExtractor()
 				: new PdfExtractExtractor());
+		const spreadsheetParser =
+			options?.spreadsheetParser ?? createSpreadsheetParser(config);
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });
@@ -2213,6 +2244,7 @@ export const telegramChannel: AppChannel = {
 				webShare,
 				transcriber,
 				pdfExtractor,
+				spreadsheetParser,
 			);
 
 			await handleTelegramQueuedTurn(
@@ -2248,6 +2280,7 @@ export const telegramChannel: AppChannel = {
 				webShare,
 				transcriber,
 				pdfExtractor,
+				spreadsheetParser,
 			);
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
@@ -2320,6 +2353,7 @@ export const telegramChannel: AppChannel = {
 				webShare,
 				transcriber,
 				pdfExtractor,
+				spreadsheetParser,
 			);
 
 			await handleTelegramVoiceMessage({
@@ -2361,6 +2395,7 @@ export const telegramChannel: AppChannel = {
 				webShare,
 				transcriber,
 				pdfExtractor,
+				spreadsheetParser,
 			);
 
 			await handleTelegramPdfMessage({
