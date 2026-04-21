@@ -41,7 +41,7 @@ function hasDismissConfirmation(
 	const normalized = normalizeTurnText(currentUserText);
 	if (normalized === "") return false;
 	return new RegExp(
-		`^(?:yes|confirm|confirmed)(?:\\s+please)?\\s+dismiss\\s+task\\s+${taskId}$`,
+		`(?:^|\\s)(?:yes|confirm|confirmed)(?:\\s+please)?\\s+dismiss\\s+task\\s+${taskId}$`,
 		"i",
 	).test(normalized);
 }
