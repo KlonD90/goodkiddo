@@ -1,6 +1,7 @@
 import { context, tool } from "langchain";
 import { z } from "zod";
 import { formatActiveTaskSnapshot, type TaskStore } from "../tasks/store";
+import { compactInline } from "../utils/text";
 
 const TASK_ADD_PROMPT = context`Create a caller-scoped active task in SQL.
 
@@ -24,10 +25,6 @@ const TASK_LIST_ACTIVE_PROMPT = context`List the caller's current active tasks.
 
 Use this when you need the latest SQL-backed task state before planning or
 closing a loop.`;
-
-function compactText(value: string): string {
-	return value.replace(/\s+/g, " ").trim();
-}
 
 function normalizeTurnText(value: string | undefined): string {
 	return value
@@ -55,8 +52,8 @@ function formatTaskLine(task: {
 	title: string;
 	note: string | null;
 }): string {
-	const note = task.note ? `\nNote: ${compactText(task.note)}` : "";
-	return `- [${task.id}] ${task.listName}: ${compactText(task.title)}${note}`;
+	const note = task.note ? `\nNote: ${compactInline(task.note)}` : "";
+	return `- [${task.id}] ${task.listName}: ${compactInline(task.title)}${note}`;
 }
 
 export interface TaskToolContext {
@@ -169,7 +166,7 @@ export function createTaskDismissTool(contextValue: TaskToolContext) {
 					return `Task ${taskId} was not found, does not belong to this caller, or is already closed.`;
 				}
 				const reasonLine = task.statusReason
-					? `Reason: ${compactText(task.statusReason)}`
+					? `Reason: ${compactInline(task.statusReason)}`
 					: null;
 				return [
 					`Dismissed task ${task.id}.`,

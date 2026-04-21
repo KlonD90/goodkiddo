@@ -34,10 +34,14 @@ export function startScheduler(
 				promptText = await readMdFile(timer.mdFilePath);
 			} catch {
 				await store.delete(timer.id, timer.userId);
-				await notifyUser(
-					timer.userId,
-					`Timer for '${timer.mdFilePath}' was deleted because the memory file no longer exists.`,
-				);
+				try {
+					await notifyUser(
+						timer.userId,
+						`Timer for '${timer.mdFilePath}' was deleted because the memory file no longer exists.`,
+					);
+				} catch {
+					// notification failed, timer already deleted
+				}
 				continue;
 			}
 
@@ -49,10 +53,14 @@ export function startScheduler(
 				const message = err instanceof Error ? err.message : String(err);
 				const consecutiveFailures = await store.touchError(timer.id, message);
 				if (consecutiveFailures >= 3) {
-					await notifyUser(
-						timer.userId,
-						`Timer '${timer.mdFilePath}' has failed 3 times in a row. Last error: ${message}. The timer will continue running.`,
-					);
+					try {
+						await notifyUser(
+							timer.userId,
+							`Timer '${timer.mdFilePath}' has failed 3 times in a row. Last error: ${message}. The timer will continue running.`,
+						);
+					} catch {
+						// notification failed, error already logged
+					}
 				}
 			}
 		}

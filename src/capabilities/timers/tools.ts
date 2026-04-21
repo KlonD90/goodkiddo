@@ -11,9 +11,13 @@ export interface TimerToolsOptions {
 }
 
 function isValidMemoryPath(path: string): boolean {
-	if (!path || path.trim() === "") return false;
-	if (path.includes("..")) return false;
-	if (path.startsWith("/") && !path.startsWith("/memory/")) return false;
+	if (!path) return false;
+	const trimmed = path.trim();
+	if (trimmed === "") return false;
+	if (trimmed.includes("..")) return false;
+	if (trimmed.startsWith("/") && !trimmed.startsWith("/memory/")) return false;
+	const normalized = trimmed.replace(/\\/g, "/");
+	if (normalized.includes("..")) return false;
 	return true;
 }
 
@@ -173,6 +177,11 @@ last run time, and consecutive failure count for each timer.`,
 
 			if (!updated) {
 				return `Error: Timer ${timerId} not found or access denied.`;
+			}
+
+			if (cronExpression) {
+				const nextRunAt = options.computeNextRun(cronExpression);
+				await store.touchRun(timerId, nextRunAt);
 			}
 
 			const changes: string[] = [];
