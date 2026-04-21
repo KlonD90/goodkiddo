@@ -132,7 +132,9 @@ export class TaskStore {
 		this.dialect = options.dialect;
 		this.now = options.now ?? (() => Date.now());
 		this._ready = this.init();
-		this._ready.catch(() => {});
+		this._ready.catch((err) => {
+			console.error("TaskStore initialization failed:", err);
+		});
 	}
 
 	private async init(): Promise<void> {
