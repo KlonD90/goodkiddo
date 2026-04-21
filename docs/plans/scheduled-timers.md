@@ -128,15 +128,15 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] For the timer tools, `create_timer` accepts an optional `timezone` override; defaults to `config.timezone`
 
 ### Task 7: Add telegram channel integration tests
-- [ ] Add test: timer fires → reads md file → LLM executes → result sent to correct chat
-- [ ] Add test: timer creation via agent tool call → timer stored in DB with correct fields
-- [ ] Add test: update timer via agent tool call → cron and next_run_at updated in DB
-- [ ] Add test: delete timer via agent tool call → timer removed from DB
-- [ ] Add test: delete non-owned timer → rejected with error
-- [ ] Add test: 3 consecutive failures → warning message sent to user
-- [ ] Add test: invalid cron → error returned to agent, no timer created
-- [ ] Add test: md file not found at execution → timer deleted, user notified
-- [ ] Mock the scheduler store, readMdFile, and LLM in tests
+- [x] Add test: timer fires → reads md file → LLM executes → result sent to correct chat
+- [x] Add test: timer creation via agent tool call → timer stored in DB with correct fields
+- [x] Add test: update timer via agent tool call → cron and next_run_at updated in DB
+- [x] Add test: delete timer via agent tool call → timer removed from DB
+- [x] Add test: delete non-owned timer → rejected with error
+- [x] Add test: 3 consecutive failures → warning message sent to user
+- [x] Add test: invalid cron → error returned to agent, no timer created
+- [x] Add test: md file not found at execution → timer deleted, user notified
+- [x] Mock the scheduler store, readMdFile, and LLM in tests
 
 ### Task 8: Docs and cleanup
 - [ ] Update `src/channels/README.md` to document timer feature, limits

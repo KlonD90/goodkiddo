@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "bun:test";
 import type { Bot } from "grammy";
 import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
 import {
@@ -20,6 +20,9 @@ import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { TimerStore } from "../capabilities/timers/store";
+import { startScheduler, type SchedulerOptions } from "../capabilities/timers/scheduler";
+import type { TimerRecord } from "../capabilities/timers/store";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
@@ -1947,5 +1950,272 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(outcomes).toEqual([]);
 		expect(session.pendingApprovals.has("prompt-1")).toBe(true);
 		expect(session.pendingApprovals.has("prompt-2")).toBe(true);
+	});
+
+	describe("timer tools integration", () => {
+		interface AsyncMockFn {
+			(...args: unknown[]): Promise<unknown>;
+			_calls: unknown[][];
+			mockResolvedValue(value: unknown): void;
+			mockRejectedValue(error: Error): void;
+		}
+
+		function createAsyncMockFn(): AsyncMockFn {
+			const calls: unknown[][] = [];
+			let resolved = true;
+			let mockValue: unknown = undefined;
+			const mockFn = ((...args: unknown[]) => {
+				calls.push(args);
+				if (resolved) {
+					return Promise.resolve(mockValue);
+				} else {
+					return Promise.reject(mockValue);
+				}
+			}) as AsyncMockFn;
+			mockFn._calls = calls;
+			mockFn.mockResolvedValue = (value: unknown) => {
+				resolved = true;
+				mockValue = value;
+			};
+			mockFn.mockRejectedValue = (error: Error) => {
+				resolved = false;
+				mockValue = error;
+			};
+			return mockFn;
+		}
+
+		type MockTimerStore = {
+			[K in keyof TimerStore]: AsyncMockFn;
+		};
+
+		function createMockTimerStore(): MockTimerStore {
+			const mockStore = {
+				create: createAsyncMockFn(),
+				findByUser: createAsyncMockFn(),
+				getById: createAsyncMockFn(),
+				update: createAsyncMockFn(),
+				delete: createAsyncMockFn(),
+				touchRun: createAsyncMockFn(),
+				touchError: createAsyncMockFn(),
+				findDue: createAsyncMockFn(),
+				ready: createAsyncMockFn(),
+				close: createAsyncMockFn(),
+			} as MockTimerStore;
+			mockStore.ready.mockResolvedValue(undefined);
+			return mockStore;
+		}
+
+		function createTimer(overrides: Partial<TimerRecord> = {}): TimerRecord {
+			return {
+				id: "timer-1",
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				enabled: true,
+				lastRunAt: null,
+				lastError: null,
+				consecutiveFailures: 0,
+				nextRunAt: 1000,
+				createdAt: 100,
+				...overrides,
+			};
+		}
+
+		test("timer fires → reads md file → LLM executes → result sent to correct chat", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer({ chatId: "telegram:123", mdFilePath: "daily-news.md" });
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockResolvedValue("What is the news today?");
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockResolvedValue(undefined);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
+				intervalMs: 10_000_000,
+				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
+				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
+			});
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockReadMdFile._calls).toEqual([["daily-news.md"]]);
+			expect(mockOnTick._calls).toEqual([[timer, "What is the news today?"]]);
+
+			scheduler.stop();
+		});
+
+		test("timer creation via agent tool call → timer stored in DB with correct fields", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const timers = await timerStore.findByUser("telegram:123");
+			expect(timers).toHaveLength(1);
+			expect(timers[0]?.mdFilePath).toBe("test.md");
+			expect(timers[0]?.cronExpression).toBe("0 10 * * *");
+			expect(timers[0]?.timezone).toBe("UTC");
+
+			await db.close();
+		});
+
+		test("update timer via agent tool call → cron and next_run_at updated in DB", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			await timerStore.update(timer.id, "telegram:123", {
+				cronExpression: "0 14 * * *",
+			});
+
+			const updated = await timerStore.getById(timer.id);
+			expect(updated?.cronExpression).toBe("0 14 * * *");
+
+			await db.close();
+		});
+
+		test("delete timer via agent tool call → timer removed from DB", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const deleted = await timerStore.delete(timer.id, "telegram:123");
+			expect(deleted).toBe(true);
+
+			const found = await timerStore.getById(timer.id);
+			expect(found).toBeNull();
+
+			await db.close();
+		});
+
+		test("delete non-owned timer → rejected with error", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const deleted = await timerStore.delete(timer.id, "telegram:999");
+			expect(deleted).toBe(false);
+
+			const found = await timerStore.getById(timer.id);
+			expect(found).not.toBeNull();
+
+			await db.close();
+		});
+
+		test("3 consecutive failures → warning message sent to user", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer();
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockResolvedValue("prompt");
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockRejectedValue(new Error("LLM failed"));
+
+			mockTimerStore.touchError.mockResolvedValue(3);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
+				intervalMs: 10_000_000,
+				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
+				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
+			});
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockTimerStore.touchError._calls).toEqual([["timer-1", "LLM failed"]]);
+			expect(mockNotifyUser._calls).toEqual([
+				["telegram:123", expect.stringContaining("failed 3 times")],
+			]);
+
+			scheduler.stop();
+		});
+
+		test("invalid cron → error returned to agent, no timer created", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timersBefore = await timerStore.findByUser("telegram:123");
+			expect(timersBefore).toHaveLength(0);
+
+			await db.close();
+		});
+
+		test("md file not found at execution → timer deleted, user notified", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer({ mdFilePath: "/memory/deleted.md" });
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockRejectedValue(new Error("File not found"));
+
+			mockTimerStore.delete.mockResolvedValue(true);
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockResolvedValue(undefined);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(mockTimerStore as unknown as TimerStore, {
+				intervalMs: 10_000_000,
+				readMdFile: mockReadMdFile as (path: string) => Promise<string>,
+				onTick: mockOnTick as (timer: TimerRecord, promptText: string) => Promise<void>,
+				notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
+			});
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockTimerStore.delete._calls).toEqual([["timer-1", "telegram:123"]]);
+			expect(mockNotifyUser._calls).toEqual([
+				["telegram:123", "Timer for '/memory/deleted.md' was deleted because the memory file no longer exists."],
+			]);
+			expect(mockOnTick._calls.length).toBe(0);
+
+			scheduler.stop();
+		});
 	});
 });
