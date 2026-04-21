@@ -231,8 +231,8 @@ describe("TimerStore", () => {
 			nextRunAt: 2000,
 		});
 
-		await store.touchError(timer.id, "Some error");
-		await store.touchError(timer.id, "Another error");
+		await store.touchError(timer.id, "telegram:1", "Some error");
+		await store.touchError(timer.id, "telegram:1", "Another error");
 
 		const afterErrors = await store.getById(timer.id);
 		expect(afterErrors?.consecutiveFailures).toBe(2);
@@ -257,13 +257,13 @@ describe("TimerStore", () => {
 			nextRunAt: 2000,
 		});
 
-		const count1 = await store.touchError(timer.id, "Error 1");
+		const count1 = await store.touchError(timer.id, "telegram:1", "Error 1");
 		expect(count1).toBe(1);
 
-		const count2 = await store.touchError(timer.id, "Error 2");
+		const count2 = await store.touchError(timer.id, "telegram:1", "Error 2");
 		expect(count2).toBe(2);
 
-		const count3 = await store.touchError(timer.id, "Error 3");
+		const count3 = await store.touchError(timer.id, "telegram:1", "Error 3");
 		expect(count3).toBe(3);
 
 		const after = await store.getById(timer.id);
@@ -294,7 +294,7 @@ describe("TimerStore", () => {
 	});
 
 	test("touchError with non-existent id returns 0", async () => {
-		const count = await store.touchError("non-existent-id", "Error");
+		const count = await store.touchError("non-existent-id", "telegram:1", "Error");
 		expect(count).toBe(0);
 	});
 
@@ -312,7 +312,7 @@ describe("TimerStore", () => {
 			nextRunAt: 2000,
 		});
 
-		await store.touchError(timer.id, "Error", 10000);
+		await store.touchError(timer.id, "telegram:1", "Error", 10000);
 
 		const after = await store.getById(timer.id);
 		expect(after?.nextRunAt).toBe(10000);

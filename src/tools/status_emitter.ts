@@ -19,7 +19,7 @@ export function createStatusEmitter(
 		return noopStatusEmitter;
 	}
 	const channelWithStatus = outbound as OutboundChannelWithStatus;
-		return {
+	return {
 		emit: async (callerId: string, message: string): Promise<void> => {
 			try {
 				await channelWithStatus.sendStatus(callerId, message);

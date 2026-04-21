@@ -52,7 +52,7 @@ export function startScheduler(
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				const nextRunAt = computeNextRunAt(timer.cronExpression);
-				const consecutiveFailures = await store.touchError(timer.id, message, nextRunAt);
+				const consecutiveFailures = await store.touchError(timer.id, timer.userId, message, nextRunAt);
 				if (consecutiveFailures >= 3) {
 					try {
 						await notifyUser(

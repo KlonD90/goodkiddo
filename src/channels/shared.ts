@@ -132,7 +132,7 @@ export async function createChannelAgentSession(
 			webShare: options.webShare,
 			timerTools: options.timerTools,
 			statusEmitter: options.statusEmitter,
-			locale: options.locale,
+			locale: session?.locale ?? options.locale,
 		});
 	let bundle = await makeBundle();
 

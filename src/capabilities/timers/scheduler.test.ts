@@ -132,8 +132,9 @@ describe("startScheduler", () => {
 
 		expect(mockStore.touchError._calls.length).toBe(1);
 		expect(mockStore.touchError._calls[0][0]).toBe("timer-1");
-		expect(mockStore.touchError._calls[0][1]).toBe("LLM failed");
-		expect(typeof mockStore.touchError._calls[0][2]).toBe("number");
+		expect(mockStore.touchError._calls[0][1]).toBe("telegram:1");
+		expect(mockStore.touchError._calls[0][2]).toBe("LLM failed");
+		expect(typeof mockStore.touchError._calls[0][3]).toBe("number");
 		expect(mockNotifyUser._calls.length).toBe(0);
 	});
 

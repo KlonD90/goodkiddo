@@ -97,7 +97,6 @@ nav.scrolled {
 }
 
 .logo-icon {
-    color: var(--accent);
     flex-shrink: 0;
 }
 

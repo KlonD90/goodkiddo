@@ -1336,7 +1336,8 @@ export class TelegramOutboundChannel implements OutboundChannel {
 		if (!chatId) return;
 		try {
 			await this.bot.api.sendMessage(chatId, message);
-		} catch {
+		} catch (err) {
+			console.error("[TelegramOutboundChannel] sendStatus failed:", err);
 		}
 	}
 }
@@ -1816,9 +1817,12 @@ async function pumpQueue(
 	bot: Bot,
 	chatId: string,
 ): Promise<void> {
-	if (session.running) return;
 	const next = session.queue.shift();
 	if (next === undefined) return;
+	if (session.running) {
+		session.queue.unshift(next);
+		return;
+	}
 	session.running = true;
 	try {
 		await runAgentTurn(session, bot, chatId, next);
