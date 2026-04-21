@@ -42,10 +42,10 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 ---
 
 ### Task 1: Define the spreadsheet parser interface
-- [ ] Create `src/capabilities/spreadsheet/parser.ts` exporting a `SpreadsheetParser` interface: `parse(data: Uint8Array, filename: string, mimeType: string): Promise<SpreadsheetParseResult>`
-- [ ] `SpreadsheetParseResult` shape: `{ sheets: Array<{ name: string; headers: string[]; rows: string[][]; rowCount: number; colCount: number }>; isEmpty: boolean; isCorrupt: boolean }`
-- [ ] Export a `NoOpSpreadsheetParser` that throws `"Spreadsheet parsing not configured"`
-- [ ] Add `parser.test.ts` covering: `NoOpSpreadsheetParser` throws, interface contract
+- [x] Create `src/capabilities/spreadsheet/parser.ts` exporting a `SpreadsheetParser` interface: `parse(data: Uint8Array, filename: string, mimeType: string): Promise<SpreadsheetParseResult>`
+- [x] `SpreadsheetParseResult` shape: `{ sheets: Array<{ name: string; headers: string[]; rows: string[][]; rowCount: number; colCount: number }>; isEmpty: boolean; isCorrupt: boolean }`
+- [x] Export a `NoOpSpreadsheetParser` that throws `"Spreadsheet parsing not configured"`
+- [x] Add `parser.test.ts` covering: `NoOpSpreadsheetParser` throws, interface contract
 
 ### Task 2: Implement CSV and Excel parsers
 - [ ] Create `src/capabilities/spreadsheet/csv_parser.ts` with a `CsvParser` implementing `SpreadsheetParser`
