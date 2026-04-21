@@ -86,6 +86,6 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Mock the extractor and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
-- [ ] Update `src/channels/README.md` to document PDF support, limits, and configuration
-- [ ] Add `src/capabilities/pdf/README.md` describing the extractor interface and how to add a new parser
-- [ ] Add a short note to `CLAUDE.md` pointing at the new docs
+- [x] Update `src/channels/README.md` to document PDF support, limits, and configuration
+- [x] Add `src/capabilities/pdf/README.md` describing the extractor interface and how to add a new parser
+- [x] Add a short note to `CLAUDE.md` pointing at the new docs

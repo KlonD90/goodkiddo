@@ -156,6 +156,24 @@ Relevant voice files:
 - `src/channels/telegram.test.ts`
 - `src/capabilities/voice/README.md`
 
+PDF handling:
+
+- Telegram `message:document` updates are accepted when `mime_type === "application/pdf"`
+- PDF documents are enabled by default and can be disabled with `ENABLE_PDF_DOCUMENTS=false`
+- PDFs are capped at 20 MB (hard limit defined in `PDF_MAX_BYTES`)
+- the channel downloads the file, extracts text per page, and injects it as `_Document: <filename> — N pages_` prefixed content
+- encrypted/password-protected PDFs reply with `This PDF is password-protected and cannot be read.`
+- corrupt or invalid PDFs reply with `Failed to read PDF: <reason>`
+- empty PDFs (no extractable text) reply with `This PDF appears to contain no text.`
+- oversized PDFs reply with `PDF is too large (max 20 MB).`
+- non-PDF documents are silently ignored (no error reply)
+
+Relevant PDF files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/pdf/README.md`
+
 Recommended workflow:
 
 1. Update rendering or chunking logic in `src/channels/telegram.ts`
