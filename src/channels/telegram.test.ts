@@ -14,6 +14,7 @@ import {
 import {
 	NoOpSpreadsheetParser,
 	type SpreadsheetParser,
+	type SpreadsheetParseResult,
 } from "../capabilities/spreadsheet/parser";
 import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
@@ -31,6 +32,7 @@ import {
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
 	handleTelegramPdfMessage,
+	handleTelegramSpreadsheetMessage,
 	handleTelegramVoiceMessage,
 	maybeHandleTelegramApprovalReply,
 	mergeTelegramStreamText,
@@ -1188,6 +1190,509 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			expect(sentMessages).toEqual([
 				"Failed to read PDF: extraction failed",
 			]);
+		});
+	});
+
+	describe("message:spreadsheet", () => {
+		class MockSpreadsheetParser implements SpreadsheetParser {
+			constructor(private result: SpreadsheetParseResult) {}
+			async parse(_data: Uint8Array, _filename: string, _mimeType: string): Promise<SpreadsheetParseResult> {
+				return this.result;
+			}
+		}
+
+		test("queues CSV spreadsheet content with rendered table", async () => {
+			const queuedTurns: Array<{
+				commandText: string;
+				content: unknown;
+				currentUserText?: string;
+			}> = [];
+			const sentMessages: string[] = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [{
+					name: "Sheet1",
+					headers: ["Name", "Age"],
+					rows: [["Alice", "30"], ["Bob", "25"]],
+					rowCount: 2,
+					colCount: 2,
+				}],
+				isEmpty: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "data.csv",
+					mimeType: "text/csv",
+					getFile: async () => ({ file_path: "documents/data.csv" }),
+				},
+				{
+					fetchSpreadsheet: async (file, botToken) => {
+						expect(file).toEqual({ file_path: "documents/data.csv" });
+						expect(botToken).toBe("telegram-token");
+						return {
+							data: Uint8Array.from([1, 2, 3]),
+							filePath: "documents/data.csv",
+						};
+					},
+					queueTurn: async (
+						_session,
+						_bot,
+						_chatId,
+						commandText,
+						content,
+						_caller,
+						_store,
+						_webShare,
+						currentUserText,
+					) => {
+						queuedTurns.push({ commandText, content, currentUserText });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(queuedTurns).toHaveLength(1);
+			expect(queuedTurns[0]?.commandText).toBe("");
+			expect(queuedTurns[0]?.content).toContain("_Spreadsheet: data.csv — 2 rows, 2 columns_");
+			expect(queuedTurns[0]?.content).toContain("| Name | Age |");
+			expect(queuedTurns[0]?.content).toContain("Alice");
+			expect(queuedTurns[0]?.content).toContain("Bob");
+			expect(sentMessages).toEqual([]);
+		});
+
+		test("queues single-sheet Excel spreadsheet content", async () => {
+			const queuedTurns: Array<{
+				commandText: string;
+				content: unknown;
+				currentUserText?: string;
+			}> = [];
+			const sentMessages: string[] = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [{
+					name: "Products",
+					headers: ["Product", "Price"],
+					rows: [["Apple", "1.5"], ["Banana", "0.75"]],
+					rowCount: 2,
+					colCount: 2,
+				}],
+				isEmpty: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 2048 },
+					filename: "prices.xlsx",
+					mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					getFile: async () => ({ file_path: "documents/prices.xlsx" }),
+				},
+				{
+					fetchSpreadsheet: async (file, botToken) => {
+						expect(file).toEqual({ file_path: "documents/prices.xlsx" });
+						expect(botToken).toBe("telegram-token");
+						return {
+							data: Uint8Array.from([1, 2, 3]),
+							filePath: "documents/prices.xlsx",
+						};
+					},
+					queueTurn: async (
+						_session,
+						_bot,
+						_chatId,
+						commandText,
+						content,
+						_caller,
+						_store,
+						_webShare,
+						currentUserText,
+					) => {
+						queuedTurns.push({ commandText, content, currentUserText });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(queuedTurns).toHaveLength(1);
+			expect(queuedTurns[0]?.content).toContain("_Spreadsheet: prices.xlsx — 2 rows, 2 columns_");
+			expect(queuedTurns[0]?.content).toContain("| Product | Price |");
+			expect(queuedTurns[0]?.content).toContain("Apple");
+			expect(queuedTurns[0]?.content).toContain("Banana");
+			expect(sentMessages).toEqual([]);
+		});
+
+		test("queues multi-sheet Excel spreadsheet content with sheet names", async () => {
+			const queuedTurns: Array<{
+				commandText: string;
+				content: unknown;
+				currentUserText?: string;
+			}> = [];
+			const sentMessages: string[] = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [
+					{
+						name: "Users",
+						headers: ["Name", "Age"],
+						rows: [["Alice", "30"]],
+						rowCount: 1,
+						colCount: 2,
+					},
+					{
+						name: "Products",
+						headers: ["Product", "Price"],
+						rows: [["Apple", "1.5"]],
+						rowCount: 1,
+						colCount: 2,
+					},
+				],
+				isEmpty: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 2048 },
+					filename: "multi.xlsx",
+					mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					getFile: async () => ({ file_path: "documents/multi.xlsx" }),
+				},
+				{
+					fetchSpreadsheet: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/multi.xlsx",
+					}),
+					queueTurn: async (
+						_session,
+						_bot,
+						_chatId,
+						commandText,
+						content,
+						_caller,
+						_store,
+						_webShare,
+						currentUserText,
+					) => {
+						queuedTurns.push({ commandText, content, currentUserText });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(queuedTurns).toHaveLength(1);
+			expect(queuedTurns[0]?.content).toContain("_Spreadsheet: multi.xlsx — 2 rows, 2 columns_");
+			expect(queuedTurns[0]?.content).toContain("Users");
+			expect(queuedTurns[0]?.content).toContain("Products");
+			expect(queuedTurns[0]?.content).toContain("Alice");
+			expect(queuedTurns[0]?.content).toContain("Apple");
+			expect(sentMessages).toEqual([]);
+		});
+
+		test("replies when spreadsheet is empty", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [{
+					name: "Sheet1",
+					headers: [],
+					rows: [],
+					rowCount: 0,
+					colCount: 0,
+				}],
+				isEmpty: true,
+				isCorrupt: false,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "empty.csv",
+					mimeType: "text/csv",
+					getFile: async () => ({ file_path: "documents/empty.csv" }),
+				},
+				{
+					fetchSpreadsheet: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/empty.csv",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["This spreadsheet appears to be empty."]);
+			expect(queuedTurns).toEqual([]);
+		});
+
+		test("rejects oversized spreadsheet before download", async () => {
+			const sentMessages: string[] = [];
+			let fetched = false;
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => "ignored",
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 11 * 1024 * 1024 },
+					filename: "large.xlsx",
+					mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					getFile: async () => {
+						fetched = true;
+						return { file_path: "documents/large.xlsx" };
+					},
+				},
+				{
+					fetchSpreadsheet: async () => {
+						fetched = true;
+						return {
+							data: Uint8Array.from([1]),
+							filePath: "documents/large.xlsx",
+						};
+					},
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["Spreadsheet is too large (max 10 MB)."]);
+			expect(fetched).toBe(false);
+		});
+
+		test("replies when spreadsheet is corrupt", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [{
+					name: "Sheet1",
+					headers: [],
+					rows: [],
+					rowCount: 0,
+					colCount: 0,
+				}],
+				isEmpty: false,
+				isCorrupt: true,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "corrupt.xlsx",
+					mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					getFile: async () => ({ file_path: "documents/corrupt.xlsx" }),
+				},
+				{
+					fetchSpreadsheet: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/corrupt.xlsx",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["Failed to read spreadsheet: parsing failed"]);
+			expect(queuedTurns).toEqual([]);
+		});
+
+		test("surfaces download errors", async () => {
+			const sentMessages: string[] = [];
+			let parsed = false;
+
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new MockSpreadsheetParser({
+				sheets: [{
+					name: "Sheet1",
+					headers: [],
+					rows: [],
+					rowCount: 0,
+					colCount: 0,
+				}],
+				isEmpty: false,
+				isCorrupt: false,
+			});
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "test.csv",
+					mimeType: "text/csv",
+					getFile: async () => ({ file_path: "documents/test.csv" }),
+				},
+				{
+					fetchSpreadsheet: async () => {
+						throw new Error("status 404");
+					},
+					queueTurn: async () => {
+						parsed = true;
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["Failed to download spreadsheet: status 404"]);
+			expect(parsed).toBe(false);
+		});
+
+		test("surfaces parse errors", async () => {
+			const sentMessages: string[] = [];
+			const queuedTurns: Array<{ content: unknown }> = [];
+
+			class ErrorSpreadsheetParser implements SpreadsheetParser {
+				async parse(_data: Uint8Array, _filename: string, _mimeType: string): Promise<SpreadsheetParseResult> {
+					throw new Error("parse failed");
+				}
+			}
+
+			const session = createTelegramSessionFixture({
+				transcribe: async () => "ignored",
+			});
+			session.spreadsheetParser = new ErrorSpreadsheetParser();
+
+			await handleTelegramSpreadsheetMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					document: { file_size: 1024 },
+					filename: "test.csv",
+					mimeType: "text/csv",
+					getFile: async () => ({ file_path: "documents/test.csv" }),
+				},
+				{
+					fetchSpreadsheet: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
+						filePath: "documents/test.csv",
+					}),
+					queueTurn: async (_session, _bot, _chatId, _command, content) => {
+						queuedTurns.push({ content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual(["Failed to read spreadsheet: parse failed"]);
+			expect(queuedTurns).toEqual([]);
 		});
 	});
 

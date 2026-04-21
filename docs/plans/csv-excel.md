@@ -88,9 +88,9 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Add tests covering flag-on and flag-off behavior
 
 ### Task 7: Add telegram channel tests for spreadsheets
-- [ ] Add `message:document` test cases for CSV and Excel to `src/channels/telegram.test.ts`
-- [ ] Cover: valid CSV extraction, valid Excel extraction (single sheet), multi-sheet Excel, empty file, oversized file, corrupt file, unsupported document type ignored
-- [ ] Mock the parser and fetchTelegramFileBytes in tests
+- [x] Add `message:document` test cases for CSV and Excel to `src/channels/telegram.test.ts`
+- [x] Cover: valid CSV extraction, valid Excel extraction (single sheet), multi-sheet Excel, empty file, oversized file, corrupt file, unsupported document type ignored
+- [x] Mock the parser and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
 - [ ] Update `src/channels/README.md` to document spreadsheet support, limits, and configuration
