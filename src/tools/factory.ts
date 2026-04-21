@@ -6,6 +6,7 @@ import { ExecutionOrchestrator } from "../execution/orchestrator";
 import type { CreateSandboxBackendOptions } from "../sandbox/factory";
 import { createSandboxBackend } from "../sandbox/factory";
 import type { AccessStore } from "../server/access_store";
+import type { SupportedLocale } from "../i18n/locale.js";
 import {
 	createBrowserActionTool,
 	createBrowserSnapshotTool,
@@ -28,6 +29,7 @@ import {
 } from "./memory_tools";
 import { createSendFileTool } from "./send_file_tool";
 import { createGrantFsAccessTool } from "./share_tools";
+import { createStatusEmitter, noopStatusEmitter } from "./status_emitter";
 import {
 	createTaskAddTool,
 	createTaskCompleteTool,
@@ -53,6 +55,8 @@ export interface CreateExecutionToolsetOptions {
 	taskStore?: TaskStore;
 	outbound?: OutboundChannel;
 	webShare?: WebShareOptions;
+	statusEmitter?: ReturnType<typeof createStatusEmitter>;
+	locale?: SupportedLocale;
 }
 
 const UNGUARDED_TOOL_NAMES = new Set<string>(["send_file", "grant_fs_access"]);
@@ -150,7 +154,14 @@ export async function createExecutionToolset(
 	];
 
 	if (!options.guard) return tools;
-	const guard = options.guard;
+	const statusEmitter =
+		options.statusEmitter ?? (options.outbound ? createStatusEmitter(options.outbound) : noopStatusEmitter);
+	const effectiveLocale = options.locale ?? "en";
+	const guard: GuardContext = {
+		...options.guard,
+		statusEmitter,
+		locale: effectiveLocale,
+	};
 	return tools.map((original) => {
 		if (UNGUARDED_TOOL_NAMES.has(original.name)) return original;
 		return wrapToolWithGuard(original, guard);

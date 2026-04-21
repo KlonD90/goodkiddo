@@ -42,11 +42,11 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add tests per channel verifying output format, failure swallowing, and the callerId → destination mapping.
 
 ### Task 4: Hook status emission into the tool wrapping layer
-- [ ] Pass a `StatusEmitter` (derived from the active outbound channel) and a resolved locale into the tool factory/guard via session context, mirroring how other channel-aware tools are plumbed today.
-- [ ] In the tool wrapper, before delegating to the tool body, call `renderStatus(toolName, args, locale)` and emit the result when non-null.
-- [ ] Ensure a template or emission failure logs but never blocks or mutates tool execution.
-- [ ] Confirm status emission happens after permission/guard checks pass, not before, so the user is not told about tool calls that never run (revisit if this turns out to be the wrong call — see open questions in the feature doc).
-- [ ] Add tests covering: successful status for a representative tool in each supported locale, null-template tool (no status), emitter throwing, and guard-rejected tool (no status).
+- [x] Pass a `StatusEmitter` (derived from the active outbound channel) and a resolved locale into the tool factory/guard via session context, mirroring how other channel-aware tools are plumbed today.
+- [x] In the tool wrapper, before delegating to the tool body, call `renderStatus(toolName, args, locale)` and emit the result when non-null.
+- [x] Ensure a template or emission failure logs but never blocks or mutates tool execution.
+- [x] Confirm status emission happens after permission/guard checks pass, not before, so the user is not told about tool calls that never run (revisit if this turns out to be the wrong call — see open questions in the feature doc).
+- [x] Add tests covering: successful status for a representative tool in each supported locale, null-template tool (no status), emitter throwing, and guard-rejected tool (no status).
 
 ### Task 5: Wire channels to pass the emitter and locale into sessions
 - [ ] Update CLI session setup in `src/channels/cli.ts` to construct a `StatusEmitter` from the CLI outbound channel, resolve the locale from the environment, and pass both into the tool factory.

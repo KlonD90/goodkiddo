@@ -1,19 +1,42 @@
 import { tool } from "langchain";
+import type { SupportedLocale } from "../i18n/locale.js";
 import { type ApprovalBroker, outcomeApproves } from "../permissions/approval";
 import type { AuditLogger } from "../permissions/audit";
 import { resolveDecision } from "../permissions/engine";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { renderStatus } from "./status_templates";
+import type { StatusEmitter } from "./status_emitter";
 
 export type GuardContext = {
 	caller: Caller;
 	store: PermissionsStore;
 	broker: ApprovalBroker;
 	audit: AuditLogger;
+	statusEmitter?: StatusEmitter;
+	locale?: SupportedLocale;
 };
 
 // biome-ignore lint/suspicious/noExplicitAny: LangChain tool typings are deeply generic; we treat tools structurally.
 type ToolLike = any;
+
+async function emitStatus(
+	emitter: StatusEmitter | undefined,
+	callerId: string,
+	toolName: string,
+	args: unknown,
+	locale: SupportedLocale | undefined,
+): Promise<void> {
+	if (!emitter || !locale) return;
+	try {
+		const result = renderStatus(toolName, args as Record<string, unknown>, locale);
+		if (result) {
+			await emitter.emit(callerId, result.message);
+		}
+	} catch {
+		// Status emission failures must never propagate to the tool caller
+	}
+}
 
 export function wrapToolWithGuard(
 	original: ToolLike,
@@ -60,6 +83,13 @@ export function wrapToolWithGuard(
 				ruleId: resolved.ruleId,
 				outcome: "allowed",
 			});
+			await emitStatus(
+				context.statusEmitter,
+				context.caller.id,
+				original.name,
+				input,
+				context.locale,
+			);
 			return await original.invoke(input);
 		}
 
@@ -71,6 +101,13 @@ export function wrapToolWithGuard(
 			ruleId: resolved.ruleId,
 			outcome: "allowed",
 		});
+		await emitStatus(
+			context.statusEmitter,
+			context.caller.id,
+			original.name,
+			input,
+			context.locale,
+		);
 		return await original.invoke(input);
 	};
 
