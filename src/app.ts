@@ -79,15 +79,12 @@ export const createAppAgent = async (
 		options.caller.id,
 	);
 
-	const guard: GuardContext | undefined =
-		config.permissionsMode === "enforce"
-			? {
-					caller: options.caller,
-					store: options.store,
-					broker: options.broker,
-					audit: options.audit,
-				}
-			: undefined;
+	const guard: GuardContext = {
+		caller: options.caller,
+		store: options.store,
+		broker: options.broker,
+		audit: options.audit,
+	};
 
 	const executionTools = await createExecutionToolset({
 		workspace,

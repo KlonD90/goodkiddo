@@ -33,8 +33,8 @@ async function emitStatus(
 		if (result) {
 			await emitter.emit(callerId, result.message);
 		}
-	} catch {
-		// Status emission failures must never propagate to the tool caller
+	} catch (err) {
+		console.error("[StatusEmitter] renderStatus failed:", err);
 	}
 }
 
