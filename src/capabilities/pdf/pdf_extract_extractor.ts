@@ -54,7 +54,7 @@ export class PdfExtractExtractor implements PdfExtractor {
 				return {
 					pages: [],
 					isEncrypted: false,
-					isCorrupt: error instanceof Error ? error.message : "Invalid or corrupted PDF",
+					isCorrupt: "Invalid or corrupted PDF",
 				};
 			}
 

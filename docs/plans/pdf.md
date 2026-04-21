@@ -39,7 +39,7 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 
 ### Task 1: Define the PDF extractor interface
 - [x] Create `src/capabilities/pdf/extractor.ts` exporting a `PdfExtractor` interface: `extract(pdfBytes: Uint8Array, filename: string): Promise<PdfExtractionResult>`
-- [x] `PdfExtractionResult` shape: `{ pages: Array<{ pageNumber: number; text: string }>; isEncrypted: boolean; isCorrupt: boolean }`
+- [x] `PdfExtractionResult` shape: `{ pages: Array<{ pageNumber: number; text: string }>; isEncrypted: boolean; isCorrupt: string }`
 - [x] Export a `NoOpPdfExtractor` that throws `"PDF extraction not configured"` — used when no extractor is wired
 - [x] Add `extractor.test.ts` covering: `NoOpPdfExtractor` throws, interface contract
 

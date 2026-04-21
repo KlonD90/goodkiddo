@@ -71,7 +71,7 @@ describe("PdfExtractExtractor", () => {
 		expect(result.isCorrupt).toBe("");
 	});
 
-test("detects corrupt PDF and sets isCorrupt flag", async () => {
+	test("detects corrupt PDF and sets isCorrupt flag", async () => {
 		const mockFactory: PdfParserFactory = () => ({
 			getText: async () => {
 				throw new (await import("pdf-parse")).InvalidPDFException(
@@ -86,7 +86,7 @@ test("detects corrupt PDF and sets isCorrupt flag", async () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe("Invalid PDF structure");
+		expect(result.isCorrupt).toBe("Invalid or corrupted PDF");
 	});
 
 	test("handles FormatError as corrupt PDF", async () => {
@@ -107,7 +107,7 @@ test("detects corrupt PDF and sets isCorrupt flag", async () => {
 
 		expect(result.pages).toEqual([]);
 		expect(result.isEncrypted).toBe(false);
-		expect(result.isCorrupt).toBe("Malformed PDF content");
+		expect(result.isCorrupt).toBe("Invalid or corrupted PDF");
 	});
 
 	test("handles unknown errors as corrupt PDF", async () => {

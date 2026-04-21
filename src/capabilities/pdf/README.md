@@ -20,8 +20,8 @@ export interface PdfPage {
 
 export interface PdfExtractionResult {
   pages: PdfPage[];
-  isEncrypted: boolean;
-  isCorrupt: boolean;
+isEncrypted: boolean;
+isCorrupt: string;
 }
 
 export interface PdfExtractor {
