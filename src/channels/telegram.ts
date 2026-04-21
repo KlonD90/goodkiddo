@@ -2416,7 +2416,7 @@ export const telegramChannel: AppChannel = {
 				spreadsheetParser,
 				timerStore,
 				statusEmitter,
-				localeHint,
+				locale,
 			);
 			session.locale = locale;
 
@@ -2459,7 +2459,7 @@ export const telegramChannel: AppChannel = {
 				spreadsheetParser,
 				timerStore,
 				statusEmitter,
-				localeHint,
+				locale,
 			);
 			session.locale = locale;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
@@ -2539,7 +2539,7 @@ export const telegramChannel: AppChannel = {
 				spreadsheetParser,
 				timerStore,
 				statusEmitter,
-				localeHint,
+				locale,
 			);
 			session.locale = locale;
 
@@ -2588,7 +2588,7 @@ export const telegramChannel: AppChannel = {
 					spreadsheetParser,
 					timerStore,
 					statusEmitter,
-					localeHint,
+					locale,
 				);
 				session.locale = locale;
 
@@ -2642,7 +2642,7 @@ export const telegramChannel: AppChannel = {
 					spreadsheetParser,
 					timerStore,
 					statusEmitter,
-					localeHint,
+					locale,
 				);
 				session.locale = locale;
 

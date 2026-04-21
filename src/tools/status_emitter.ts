@@ -19,12 +19,12 @@ export function createStatusEmitter(
 		return noopStatusEmitter;
 	}
 	const channelWithStatus = outbound as OutboundChannelWithStatus;
-	return {
+		return {
 		emit: async (callerId: string, message: string): Promise<void> => {
 			try {
 				await channelWithStatus.sendStatus(callerId, message);
-			} catch {
-				// Status emission failures must never propagate to the tool caller
+			} catch (err) {
+				console.error("[StatusEmitter] sendStatus failed:", err);
 			}
 		},
 	};
