@@ -69,19 +69,19 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 ---
 
 ### Task 1: Define timer store interface
-- [ ] Create `src/capabilities/timers/store.ts` — `TimerStore` class
-- [ ] `TimerStore` constructor: `constructor({ db: SQL, dialect: 'sqlite' | 'postgres' })`
-- [ ] DDL: `CREATE TABLE timers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, chat_id TEXT NOT NULL, md_file_path TEXT NOT NULL, cron_expression TEXT NOT NULL, timezone TEXT NOT NULL DEFAULT 'UTC', enabled INTEGER NOT NULL DEFAULT 1, last_run_at INTEGER, last_error TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_run_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`
-- [ ] Index on `(enabled, next_run_at)` for efficient due-timer queries
-- [ ] Methods: `create(params)`, `findDue()`, `findByUser(userId)`, `getById(id)`, `update(id, userId, updates)`, `delete(id, userId)`, `touchRun(id, nextRunAt)`, `touchError(id, error, resetFailures?)`
-- [ ] `create(params)`: `{ userId, chatId, mdFilePath, cronExpression, timezone, nextRunAt }` → returns full timer record including `id`
-- [ ] `update(id, userId, updates)`: `{ cronExpression?, timezone?, enabled? }` → validates user ownership, updates only provided fields, recomputes `next_run_at` if cron changed
-- [ ] `delete(id, userId)`: hard deletes, validates ownership
-- [ ] `findDue()`: returns timers where `enabled = 1 AND next_run_at <= now`
-- [ ] `touchRun`: sets `last_run_at = now`, `last_error = null`, `consecutive_failures = 0`, updates `next_run_at`
-- [ ] `touchError`: increments `consecutive_failures`, sets `last_error`, does NOT update `next_run_at` (fires again next cycle)
-- [ ] All methods async, use Bun.sql tagged templates
-- [ ] Add `store.test.ts` with in-memory DB: create, find due, update cron, delete by owner, delete by non-owner rejected, touchRun resets failures, touchError increments counter
+- [x] Create `src/capabilities/timers/store.ts` — `TimerStore` class
+- [x] `TimerStore` constructor: `constructor({ db: SQL, dialect: 'sqlite' | 'postgres' })`
+- [x] DDL: `CREATE TABLE timers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, chat_id TEXT NOT NULL, md_file_path TEXT NOT NULL, cron_expression TEXT NOT NULL, timezone TEXT NOT NULL DEFAULT 'UTC', enabled INTEGER NOT NULL DEFAULT 1, last_run_at INTEGER, last_error TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_run_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`
+- [x] Index on `(enabled, next_run_at)` for efficient due-timer queries
+- [x] Methods: `create(params)`, `findDue()`, `findByUser(userId)`, `getById(id)`, `update(id, userId, updates)`, `delete(id, userId)`, `touchRun(id, nextRunAt)`, `touchError(id, error, resetFailures?)`
+- [x] `create(params)`: `{ userId, chatId, mdFilePath, cronExpression, timezone, nextRunAt }` → returns full timer record including `id`
+- [x] `update(id, userId, updates)`: `{ cronExpression?, timezone?, enabled? }` → validates user ownership, updates only provided fields, recomputes `next_run_at` if cron changed
+- [x] `delete(id, userId)`: hard deletes, validates ownership
+- [x] `findDue()`: returns timers where `enabled = 1 AND next_run_at <= now`
+- [x] `touchRun`: sets `last_run_at = now`, `last_error = null`, `consecutive_failures = 0`, updates `next_run_at`
+- [x] `touchError`: increments `consecutive_failures`, sets `last_error`, does NOT update `next_run_at` (fires again next cycle)
+- [x] All methods async, use Bun.sql tagged templates
+- [x] Add `store.test.ts` with in-memory DB: create, find due, update cron, delete by owner, delete by non-owner rejected, touchRun resets failures, touchError increments counter
 
 ### Task 2: Implement background scheduler loop
 - [ ] Create `src/capabilities/timers/scheduler.ts` — `startScheduler(store, options)` function
