@@ -30,8 +30,11 @@ import type { Caller } from "../permissions/types";
 import { reconcileActiveTasksAtBoundary } from "../tasks/reconcile";
 import { TaskStore } from "../tasks/store";
 import type { WebShareOptions } from "../tools/factory";
+import { createTimerTools } from "../capabilities/timers/tools";
 import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
+
+type TimerTools = ReturnType<typeof createTimerTools>;
 
 export type AgentInstance = AppAgentBundle["agent"];
 
@@ -86,6 +89,7 @@ export async function createChannelAgentSession(
 		threadId: string;
 		outbound?: OutboundChannel;
 		webShare?: WebShareOptions;
+		timerTools?: TimerTools;
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
@@ -118,6 +122,7 @@ export async function createChannelAgentSession(
 			outbound: options.outbound,
 			runtimeContextBlock: renderSessionRuntimeContext(session),
 			webShare: options.webShare,
+			timerTools: options.timerTools,
 		});
 	let bundle = await makeBundle();
 

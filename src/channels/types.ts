@@ -4,8 +4,10 @@ import type { AppEntrypoint } from "../types";
 import type { PdfExtractor } from "../capabilities/pdf/extractor";
 import type { SpreadsheetParser } from "../capabilities/spreadsheet/parser";
 import type { Transcriber } from "../capabilities/voice/transcriber";
+import { createTimerTools } from "../capabilities/timers/tools";
 
 type SQL = InstanceType<typeof Bun.SQL>;
+type TimerTools = ReturnType<typeof createTimerTools>;
 
 export interface WebShareRuntime {
 	access: AccessStore;
@@ -19,6 +21,10 @@ export interface ChannelRunOptions {
 	transcriber?: Transcriber;
 	pdfExtractor?: PdfExtractor;
 	spreadsheetParser?: SpreadsheetParser;
+	timerTools?: TimerTools;
+	timerScheduler?: {
+		start(): { stop(): void };
+	};
 }
 
 export interface AppChannel {

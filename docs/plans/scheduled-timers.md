@@ -106,10 +106,10 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `tools.test.ts` with mocked store: create valid timer, create with missing file (error), create invalid cron, list timers, update timer cron, update non-owned timer rejected, delete timer, delete non-owned timer rejected
 
 ### Task 4: Wire timer tools into agent
-- [ ] Add `timerTools?: ReturnType<typeof createTimerTools>` to `CreateAppAgentOptions` in `src/app.ts`
-- [ ] In `createAppAgent`, merge `timerTools` into the tools array
-- [ ] Add `timerScheduler?: { start(store): { stop() } }` to `ChannelRunOptions` in `src/channels/types.ts`
-- [ ] In `telegramChannel.run()`, call `createTimerTools(store, { timezone })` and pass the resulting tools to `createAppAgent`
+- [x] Add `timerTools?: ReturnType<typeof createTimerTools>` to `CreateAppAgentOptions` in `src/app.ts`
+- [x] In `createAppAgent`, merge `timerTools` into the tools array
+- [x] Add `timerScheduler?: { start(store): { stop() } }` to `ChannelRunOptions` in `src/channels/types.ts`
+- [x] In `telegramChannel.run()`, call `createTimerTools(store, { timezone })` and pass the resulting tools to `createAppAgent` (deferred: createTimerTools call in Task 5 when TimerStore is created)
 
 ### Task 5: Wire scheduler into telegram channel and handle timer execution
 - [ ] In `telegramChannel.run()`, after session setup, call `scheduler.start(store, { readMdFile, onTick })`

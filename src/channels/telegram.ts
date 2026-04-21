@@ -1576,6 +1576,7 @@ export async function ensureTelegramSession(
 	transcriber: Transcriber,
 	pdfExtractor: PdfExtractor,
 	spreadsheetParser: SpreadsheetParser,
+	timerTools?: ChannelRunOptions["timerTools"],
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1591,6 +1592,7 @@ export async function ensureTelegramSession(
 		threadId: baseThreadId,
 		outbound,
 		webShare,
+		timerTools,
 	});
 
 	const telegramSession: TelegramAgentSession = {

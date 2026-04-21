@@ -15,6 +15,9 @@ import { TaskStore } from "./tasks/store";
 import { createExecutionToolset } from "./tools";
 import type { WebShareOptions } from "./tools/factory";
 import type { GuardContext } from "./tools/guard";
+import { createTimerTools } from "./capabilities/timers/tools";
+
+type TimerTools = ReturnType<typeof createTimerTools>;
 
 export interface CreateAppAgentOptions {
 	caller: Caller;
@@ -30,6 +33,7 @@ export interface CreateAppAgentOptions {
 	outbound?: OutboundChannel;
 	runtimeContextBlock?: string;
 	webShare?: WebShareOptions;
+	timerTools?: TimerTools;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -81,7 +85,7 @@ export const createAppAgent = async (
 				}
 			: undefined;
 
-	const tools = await createExecutionToolset({
+	const executionTools = await createExecutionToolset({
 		workspace,
 		backend: {
 			backend: "auto",
@@ -99,6 +103,10 @@ export const createAppAgent = async (
 		outbound: options.outbound,
 		webShare: options.webShare,
 	});
+
+	const tools = options.timerTools
+		? [...executionTools, ...options.timerTools]
+		: executionTools;
 
 	const systemPrompt = await buildSystemPrompt({
 		identityPrompt: DO_IT_MD,
