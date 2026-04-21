@@ -1747,13 +1747,17 @@ async function runAgentTurn(
 				"The agent completed the task but did not return a text response.",
 			);
 		}
-		clearPendingCompactionSeed(session);
-		clearPendingTaskCheckContext(session);
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "Unknown Telegram bot error";
-		await sendTelegramMessage(bot, chatId, `Request failed: ${message}`);
+		await sendTelegramMessage(
+			bot,
+			chatId,
+			`Request failed: ${escapeTelegramHtml(message)}`,
+		);
 	} finally {
+		clearPendingCompactionSeed(session);
+		clearPendingTaskCheckContext(session);
 		session.currentUserText = undefined;
 		stopTyping();
 	}
@@ -2005,7 +2009,7 @@ export async function handleTelegramVoiceMessage(
 		await sendMessage(
 			params.bot,
 			params.chatId,
-			`Transcription failed: ${message}`,
+			`Transcription failed: ${escapeTelegramHtml(message)}`,
 		);
 	}
 }
@@ -2124,7 +2128,11 @@ export async function handleTelegramPdfMessage(
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "Unknown PDF extraction error";
-		await sendMessage(params.bot, params.chatId, `Failed to read PDF: ${message}`);
+		await sendMessage(
+			params.bot,
+			params.chatId,
+			`Failed to read PDF: ${escapeTelegramHtml(message)}`,
+		);
 	}
 }
 

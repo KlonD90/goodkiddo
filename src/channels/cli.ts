@@ -214,8 +214,6 @@ export const cliChannel: AppChannel = {
 					{ messages: invokeMessages },
 					{ configurable: { thread_id: session.threadId } },
 				);
-				clearPendingCompactionSeed(session);
-				clearPendingTaskCheckContext(session);
 				const reply = extractAgentReply(result);
 
 				clearInterval(spinner);
@@ -228,6 +226,8 @@ export const cliChannel: AppChannel = {
 				process.stdout.write("\rAssistant: ");
 				console.log(`Request failed: ${message}\n`);
 			} finally {
+				clearPendingCompactionSeed(session);
+				clearPendingTaskCheckContext(session);
 				session.currentUserText = undefined;
 			}
 		}

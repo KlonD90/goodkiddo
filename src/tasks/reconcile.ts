@@ -40,6 +40,10 @@ const DISMISS_MARKERS = [
 	" not doing ",
 	" wont do ",
 	" will not do ",
+	" stop working on ",
+] as const;
+
+const DISMISS_WORD_MARKERS = [
 	" skip ",
 	" cancel ",
 	" drop ",
@@ -47,19 +51,27 @@ const DISMISS_MARKERS = [
 	" forget ",
 	" abandon ",
 	" shelve ",
-	" stop working on ",
 ] as const;
 
 function normalizeText(value: string): string {
 	return ` ${value
 		.toLowerCase()
-		.replace(/['’]/g, "")
+		.replace(/['']/g, "")
 		.replace(/[^a-z0-9]+/g, " ")
 		.trim()} `;
 }
 
 function hasMarker(text: string, markers: readonly string[]): boolean {
 	return markers.some((marker) => text.includes(marker));
+}
+
+function hasWordMarker(text: string, markers: readonly string[]): boolean {
+	return markers.some((marker) => {
+		const trimmed = marker.trim();
+		const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+		const pattern = new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, "i");
+		return pattern.test(text);
+	});
 }
 
 function hasCompletionIntent(message: string): boolean {
@@ -91,7 +103,10 @@ function hasCompletionIntent(message: string): boolean {
 }
 
 function hasDismissIntent(message: string): boolean {
-	return hasMarker(message, DISMISS_MARKERS);
+	return (
+		hasMarker(message, DISMISS_MARKERS) ||
+		hasWordMarker(message, DISMISS_WORD_MARKERS)
+	);
 }
 
 function extractReferencedTaskId(message: string): number | null {
@@ -114,20 +129,26 @@ function findTaskMatches(message: string, activeTasks: TaskRecord[]): TaskMatch[
 		if (byId) return [{ task: byId, match: "id" }];
 	}
 
+	const normalizedMessage = normalizeText(message);
 	for (const task of activeTasks) {
-		const normalizedTitle = normalizeText(task.title);
-		if (normalizedTitle.trim().length >= 4 && message.includes(normalizedTitle)) {
-			matches.push({ task, match: "title_phrase" });
-			continue;
+		const normalizedTitle = normalizeText(task.title).trim();
+		if (normalizedTitle.length >= 4) {
+			const escaped = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const pattern = new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, "i");
+			if (pattern.test(normalizedMessage)) {
+				matches.push({ task, match: "title_phrase" });
+				continue;
+			}
 		}
 
 		if (task.note) {
-			const normalizedNote = normalizeText(task.note);
-			if (
-				normalizedNote.trim().length >= 6 &&
-				message.includes(normalizedNote)
-			) {
-				matches.push({ task, match: "note_phrase" });
+			const normalizedNote = normalizeText(task.note).trim();
+			if (normalizedNote.length >= 6) {
+				const escaped = normalizedNote.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+				const pattern = new RegExp(`(?:^|\\s)${escaped}(?:$|\\s)`, "i");
+				if (pattern.test(normalizedMessage)) {
+					matches.push({ task, match: "note_phrase" });
+				}
 			}
 		}
 	}
