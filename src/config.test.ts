@@ -18,6 +18,7 @@ const CONFIG_KEYS = [
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
 	"ENABLE_EXECUTE",
+	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_VOICE_MESSAGES",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
@@ -108,6 +109,7 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
+					enablePdfDocuments: true,
 					enableVoiceMessages: false,
 					transcriptionProvider: "openrouter",
 					transcriptionApiKey: "voice-key",
@@ -130,6 +132,37 @@ describe("config", () => {
 				expect(config.enableVoiceMessages).toBe(true);
 				expect(config.transcriptionProvider).toBe("openrouter");
 				expect(config.transcriptionApiKey).toBe("openrouter-key");
+			},
+		);
+	});
+
+	test("defaults enablePdfDocuments to true when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enablePdfDocuments).toBe(true);
+			},
+		);
+	});
+
+	test("respects ENABLE_PDF_DOCUMENTS=false env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_PDF_DOCUMENTS: "false",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enablePdfDocuments).toBe(false);
 			},
 		);
 	});
@@ -260,6 +293,7 @@ describe("config", () => {
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
+					enablePdfDocuments: true,
 					enableVoiceMessages: true,
 					transcriptionProvider: "openai",
 					transcriptionApiKey: "wizard-key",
@@ -313,6 +347,7 @@ describe("config", () => {
 				permissionsMode: "enforce",
 				databaseUrl: "sqlite://./state.db",
 				enableExecute: true,
+				enablePdfDocuments: true,
 				enableVoiceMessages: true,
 				transcriptionProvider: "openai",
 				transcriptionApiKey: "selector-key",

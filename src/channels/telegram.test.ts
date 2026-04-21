@@ -47,6 +47,7 @@ const TEST_CONFIG: AppConfig = {
 	permissionsMode: "disabled",
 	databaseUrl: "sqlite://:memory:",
 	enableExecute: false,
+	enablePdfDocuments: true,
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",

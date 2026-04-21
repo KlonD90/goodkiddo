@@ -76,9 +76,9 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Queue via `handleTelegramQueuedTurn` with the text content
 
 ### Task 6: Add config flags
-- [ ] Add `enablePdfDocuments: boolean` (default `true`) to `AppConfig` in `src/config.ts`
-- [ ] Follow the existing `.env` persistence pattern
-- [ ] Add tests covering flag-on and flag-off behavior
+- [x] Add `enablePdfDocuments: boolean` (default `true`) to `AppConfig` in `src/config.ts`
+- [x] Follow the existing `.env` persistence pattern
+- [x] Add tests covering flag-on and flag-off behavior
 
 ### Task 7: Add telegram channel tests for PDF
 - [ ] Add `message:document` test cases to `src/channels/telegram.test.ts`
