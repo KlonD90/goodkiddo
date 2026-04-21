@@ -1,6 +1,7 @@
 import type { AppConfig } from "../config";
 import type { AccessStore } from "../server/access_store";
 import type { AppEntrypoint } from "../types";
+import type { Transcriber } from "../capabilities/voice/transcriber";
 
 type SQL = InstanceType<typeof Bun.SQL>;
 
@@ -13,6 +14,7 @@ export interface ChannelRunOptions {
 	db?: SQL;
 	dialect?: "sqlite" | "postgres";
 	webShare?: WebShareRuntime;
+	transcriber?: Transcriber;
 }
 
 export interface AppChannel {

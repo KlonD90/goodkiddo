@@ -52,10 +52,10 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Create `src/capabilities/voice/fetch.ts` with `fetchVoiceBytes(file, botToken)` — reuse the same download URL pattern as photo, since voice files use the same Telegram file API
 
 ### Task 4: Wire transcriber into telegram channel
-- [ ] Add `transcriber?: Transcriber` field to `ChannelRunOptions` in `src/channels/types.ts`
-- [ ] In `telegramChannel.run()`, construct a `WhisperTranscriber` (or `NoOpTranscriber` if disabled) from `transcriptionProvider` config, and pass it via `ChannelRunOptions`
-- [ ] In `ensureTelegramSession`, receive `transcriber` from options and attach to the session
-- [ ] Add `transcriber: Transcriber` field to `TelegramAgentSession`
+- [x] Add `transcriber?: Transcriber` field to `ChannelRunOptions` in `src/channels/types.ts`
+- [x] In `telegramChannel.run()`, construct a `WhisperTranscriber` (or `NoOpTranscriber` if disabled) from `transcriptionProvider` config, and pass it via `ChannelRunOptions`
+- [x] In `ensureTelegramSession`, receive `transcriber` from options and attach to the session
+- [x] Add `transcriber: Transcriber` field to `TelegramAgentSession`
 
 ### Task 5: Add `message:voice` handler in telegram.ts
 - [ ] Add `bot.on("message:voice", ...)` handler mirroring `message:photo` structure

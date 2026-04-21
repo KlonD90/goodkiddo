@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import type { Bot } from "grammy";
+import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
+import type { Caller } from "../permissions/types";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
+	createTelegramTranscriber,
+	ensureTelegramSession,
 	chunkTelegramMessage,
 	extractTelegramCommandName,
 	extractTelegramReplyFromAgentState,
@@ -18,14 +23,119 @@ import {
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
 } from "./telegram";
+import {
+	NoOpTranscriber,
+	type Transcriber,
+} from "../capabilities/voice/transcriber";
+import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 
 let store: PermissionsStore;
+
+const TEST_CONFIG: AppConfig = {
+	aiApiKey: "test-key",
+	aiBaseUrl: "",
+	aiType: "openai",
+	aiModelName: "gpt-4o-mini",
+	appEntrypoint: "telegram",
+	telegramBotToken: "telegram-token",
+	telegramAllowedChatId: "",
+	usingMode: "single",
+	blockedUserMessage: "blocked",
+	permissionsMode: "disabled",
+	databaseUrl: "sqlite://:memory:",
+	enableExecute: false,
+	webPort: 8083,
+	webPublicBaseUrl: "http://localhost:8083",
+};
 
 afterEach(() => {
 	store?.close();
 });
 
 describe("telegram channel", () => {
+	test("createTelegramTranscriber returns no-op when voice messages are disabled", () => {
+		const transcriber = createTelegramTranscriber({
+			...TEST_CONFIG,
+			enableVoiceMessages: false,
+			transcriptionProvider: "openai",
+		} as AppConfig & {
+			enableVoiceMessages: boolean;
+			transcriptionProvider: "openai";
+		});
+
+		expect(transcriber).toBeInstanceOf(NoOpTranscriber);
+	});
+
+	test("createTelegramTranscriber uses the OpenRouter whisper endpoint", async () => {
+		const originalFetch = globalThis.fetch;
+		globalThis.fetch = (async (
+			input: string | URL | Request,
+			init?: RequestInit,
+		): Promise<Response> => {
+			expect(String(input)).toBe(
+				"https://openrouter.ai/api/v1/audio/transcriptions",
+			);
+			expect(init?.method).toBe("POST");
+			expect(init?.headers).toMatchObject({
+				Authorization: "Bearer test-key",
+			});
+			return Response.json({ text: "transcribed" });
+		}) as typeof fetch;
+
+		try {
+			const transcriber = createTelegramTranscriber({
+				...TEST_CONFIG,
+				transcriptionProvider: "openrouter",
+			} as AppConfig & { transcriptionProvider: "openrouter" });
+
+			expect(transcriber).toBeInstanceOf(WhisperTranscriber);
+			await expect(
+				transcriber.transcribe(Uint8Array.from([1, 2, 3]), "audio/ogg"),
+			).resolves.toBe("transcribed");
+		} finally {
+			globalThis.fetch = originalFetch;
+		}
+	});
+
+	test("ensureTelegramSession attaches the configured transcriber", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		try {
+			const permissionStore = new PermissionsStore({ db, dialect: "sqlite" });
+			const sessions = new Map<
+				string,
+				Awaited<ReturnType<typeof ensureTelegramSession>>
+			>();
+			const transcriber: Transcriber = new NoOpTranscriber();
+			const caller: Caller = {
+				id: "telegram:123",
+				entrypoint: "telegram",
+				externalId: "123",
+				displayName: "Chat 123",
+			};
+
+			const session = await ensureTelegramSession(
+				"123",
+				caller,
+				TEST_CONFIG,
+				db,
+				"sqlite",
+				permissionStore,
+				{} as Bot,
+				sessions,
+				{
+					sendFile: async () => ({ ok: true }),
+				},
+				undefined,
+				transcriber,
+			);
+
+			expect(session.transcriber).toBe(transcriber);
+			expect(sessions.get("123")).toBe(session);
+		} finally {
+			await db.close();
+		}
+	});
+
 	test("chunkTelegramMessage splits oversized payloads", () => {
 		const longText = "a".repeat(5000);
 		const chunks = chunkTelegramMessage(longText);
@@ -498,6 +608,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -539,6 +650,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
 			pendingApprovals: new Map(),
 		};
 
@@ -585,6 +697,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",

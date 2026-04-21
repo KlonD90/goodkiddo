@@ -1,6 +1,11 @@
 import { extname } from "node:path";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
+import {
+	NoOpTranscriber,
+	type Transcriber,
+} from "../capabilities/voice/transcriber";
+import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
 import { readThreadMessages } from "../memory/rotate_thread";
@@ -57,6 +62,7 @@ const TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS = [
 	/\n/g,
 	/\s+/g,
 ] as const;
+const OPENROUTER_TRANSCRIPTION_BASE_URL = "https://openrouter.ai/api/v1/";
 const TELEGRAM_COMMANDS = [
 	{ command: "help", description: "Show available permission commands" },
 	{ command: "policy", description: "Show your current permission rules" },
@@ -80,6 +86,7 @@ type TelegramAgentSession = ChannelAgentSession & {
 	running: boolean;
 	queue: TelegramQueuedTurn[];
 	pendingApprovals: Map<string, PendingApproval>;
+	transcriber: Transcriber;
 };
 
 type TelegramTextContentBlock = {
@@ -1467,7 +1474,34 @@ class TelegramApprovalBroker implements ApprovalBroker {
 	}
 }
 
-async function ensureTelegramSession(
+type TelegramVoiceRuntimeConfig = {
+	enableVoiceMessages?: boolean;
+	transcriptionProvider?: "openai" | "openrouter";
+};
+
+export function createTelegramTranscriber(config: AppConfig): Transcriber {
+	const voiceConfig = config as AppConfig & TelegramVoiceRuntimeConfig;
+	if (voiceConfig.enableVoiceMessages === false) {
+		return new NoOpTranscriber();
+	}
+
+	switch (voiceConfig.transcriptionProvider) {
+		case "openai":
+			return new WhisperTranscriber({
+				apiKey: config.aiApiKey,
+				baseUrl: config.aiBaseUrl || undefined,
+			});
+		case "openrouter":
+			return new WhisperTranscriber({
+				apiKey: config.aiApiKey,
+				baseUrl: config.aiBaseUrl || OPENROUTER_TRANSCRIPTION_BASE_URL,
+			});
+		default:
+			return new NoOpTranscriber();
+	}
+}
+
+export async function ensureTelegramSession(
 	chatId: string,
 	caller: Caller,
 	config: AppConfig,
@@ -1478,6 +1512,7 @@ async function ensureTelegramSession(
 	sessions: Map<string, TelegramAgentSession>,
 	outbound: OutboundChannel,
 	webShare: ChannelRunOptions["webShare"],
+	transcriber: Transcriber,
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1500,6 +1535,7 @@ async function ensureTelegramSession(
 		running: false,
 		queue: [],
 		pendingApprovals: new Map(),
+		transcriber,
 	};
 	sessions.set(chatId, telegramSession);
 	return telegramSession;
@@ -1841,6 +1877,7 @@ export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
+		const transcriber = options?.transcriber ?? createTelegramTranscriber(config);
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });
@@ -1913,6 +1950,7 @@ export const telegramChannel: AppChannel = {
 				sessions,
 				outbound,
 				webShare,
+				transcriber,
 			);
 
 			await handleTelegramQueuedTurn(
@@ -1946,6 +1984,7 @@ export const telegramChannel: AppChannel = {
 				sessions,
 				outbound,
 				webShare,
+				transcriber,
 			);
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
