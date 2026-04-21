@@ -47,9 +47,9 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Add `whisper_transcriber.test.ts` with mocked fetch covering: success, API error, network error
 
 ### Task 3: Add voice capability helpers and constants
-- [ ] Create `src/capabilities/voice/constants.ts` with `VOICE_MAX_BYTES = 1_048_576` (1 MB hard cap) and `VOICE_MIME_TYPE = "audio/ogg"`
-- [ ] Create `src/capabilities/voice/content.ts` with `buildVoiceContent(text, caption?)` — returns italic-prefixed transcript with optional caption appended, e.g. `"_Transcribed: ..._\n\n<caption>"`
-- [ ] Create `src/capabilities/voice/fetch.ts` with `fetchVoiceBytes(file, botToken)` — reuse the same download URL pattern as photo, since voice files use the same Telegram file API
+- [x] Create `src/capabilities/voice/constants.ts` with `VOICE_MAX_BYTES = 1_048_576` (1 MB hard cap) and `VOICE_MIME_TYPE = "audio/ogg"`
+- [x] Create `src/capabilities/voice/content.ts` with `buildVoiceContent(text, caption?)` — returns italic-prefixed transcript with optional caption appended, e.g. `"_Transcribed: ..._\n\n<caption>"`
+- [x] Create `src/capabilities/voice/fetch.ts` with `fetchVoiceBytes(file, botToken)` — reuse the same download URL pattern as photo, since voice files use the same Telegram file API
 
 ### Task 4: Wire transcriber into telegram channel
 - [ ] Add `transcriber?: Transcriber` field to `ChannelRunOptions` in `src/channels/types.ts`
