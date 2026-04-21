@@ -1328,6 +1328,15 @@ export class TelegramOutboundChannel implements OutboundChannel {
 			return { ok: false, error: message };
 		}
 	}
+
+	async sendStatus(callerId: string, message: string): Promise<void> {
+		const chatId = this.resolveChatId(callerId);
+		if (!chatId) return;
+		try {
+			await this.bot.api.sendMessage(chatId, message);
+		} catch {
+		}
+	}
 }
 
 function startTelegramTypingLoop(bot: Bot, chatId: string): () => void {

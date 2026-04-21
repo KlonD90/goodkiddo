@@ -208,6 +208,7 @@ describe("telegram channel", () => {
 				sessions,
 				{
 					sendFile: async () => ({ ok: true }),
+					sendStatus: async () => {},
 				},
 				undefined,
 				transcriber,

@@ -49,6 +49,13 @@ export class CliOutboundChannel implements OutboundChannel {
 		this.stream.write("--- end ---\n");
 		return { ok: true };
 	}
+
+	async sendStatus(_callerId: string, message: string): Promise<void> {
+		try {
+			this.stream.write(`[status] ${message}\n`);
+		} catch {
+		}
+	}
 }
 
 export function resolveCliCaller(): Caller {

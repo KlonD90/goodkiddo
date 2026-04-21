@@ -45,16 +45,6 @@ describe("StatusEmitter", () => {
 			await emitter.emit("caller", "test");
 		});
 
-		test("returns noop when outbound does not have sendStatus", async () => {
-			const channelWithoutStatus: OutboundChannel = {
-				async sendFile() {
-					return { ok: true };
-				},
-			};
-			const emitter = createStatusEmitter(channelWithoutStatus);
-			expect(emitter).toBe(noopStatusEmitter);
-		});
-
 		test("returns functional emitter when outbound has sendStatus", async () => {
 			const fakeChannel = new FakeOutboundChannel();
 			const emitter = createStatusEmitter(fakeChannel);

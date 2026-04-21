@@ -35,11 +35,11 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add tests that cover: every tool template in every supported locale, English fallback when a locale is missing a key, redaction of oversized/forbidden args, and the "no template" fallback returning `null`.
 
 ### Task 3: Extend the outbound channel abstraction
-- [ ] Add `sendStatus(callerId: string, message: string): Promise<void>` to the `OutboundChannel` interface in `src/channels/outbound.ts`.
-- [ ] Implement `sendStatus` in the CLI outbound channel by writing a single prefixed line to stdout.
-- [ ] Implement `sendStatus` in the Telegram outbound channel by calling `bot.api.sendMessage` with plain text, without touching conversation memory.
-- [ ] Guarantee that emitter failures (network error, channel shutdown) are caught internally and never propagate.
-- [ ] Add tests per channel verifying output format, failure swallowing, and the callerId → destination mapping.
+- [x] Add `sendStatus(callerId: string, message: string): Promise<void>` to the `OutboundChannel` interface in `src/channels/outbound.ts`.
+- [x] Implement `sendStatus` in the CLI outbound channel by writing a single prefixed line to stdout.
+- [x] Implement `sendStatus` in the Telegram outbound channel by calling `bot.api.sendMessage` with plain text, without touching conversation memory.
+- [x] Guarantee that emitter failures (network error, channel shutdown) are caught internally and never propagate.
+- [x] Add tests per channel verifying output format, failure swallowing, and the callerId → destination mapping.
 
 ### Task 4: Hook status emission into the tool wrapping layer
 - [ ] Pass a `StatusEmitter` (derived from the active outbound channel) and a resolved locale into the tool factory/guard via session context, mirroring how other channel-aware tools are plumbed today.

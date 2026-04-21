@@ -22,6 +22,8 @@ class RecordingOutbound implements OutboundChannel {
 		this.calls.push(args);
 		return this.result;
 	}
+
+	async sendStatus(_callerId: string, _message: string): Promise<void> {}
 }
 
 const CALLER_ID = "telegram:12345";
