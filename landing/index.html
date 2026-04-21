@@ -17,8 +17,13 @@
         <nav id="nav">
             <div class="container nav-inner">
                 <a href="#" class="logo">
-                    <span class="logo-dot"></span>
-                    Good Kiddo
+                    <svg class="logo-icon" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
+                        <path d="M4.5 8.5c0-1.1.9-2 2-2h.5c.3-1.5 1.5-2.5 3-2.5s2.7 1 3 2.5h.5c1.1 0 2 .9 2 2v.5c-1.5.3-2.5 1.5-2.5 3s1 2.7 2.5 3v.5c0 1.1-.9 2-2 2h-.5c-.3 1.5-1.5 2.5-3 2.5s-2.7-1-3-2.5h-.5c-1.1 0-2-.9-2-2v-.5c1.5-.3 2.5-1.5 2.5-3s-1-2.7-2.5-3v-.5z"/>
+                        <circle cx="9" cy="9" r="1.5"/>
+                        <circle cx="15" cy="9" r="1.5"/>
+                        <ellipse cx="12" cy="13" rx="2" ry="1"/>
+                    </svg>
+                    Kiddo
                 </a>
                 <ul class="nav-links">
                     <li><a href="#proactivity">Personas</a></li>
@@ -64,8 +69,8 @@
                                 </svg>
                                 Open in Telegram
                             </a>
-                            <a href="#canit" class="btn btn-ghost"
-                                >Can it solve my problem?</a
+                            <a href="#proactivity" class="btn btn-ghost"
+                                >Choose your persona</a
                             >
                         </div>
                         <div class="hero-meta">
@@ -459,115 +464,6 @@
             </div>
         </section>
 
-        <!-- Can it solve my problem -->
-        <section class="can-it" id="canit">
-            <div class="container">
-                <div class="reveal">
-                    <div class="section-label">Can it help me?</div>
-                    <h2 class="section-title">
-                        See what Good Kiddo<br />can do for you today.
-                    </h2>
-                    <p class="section-desc">
-                        Here are the things we handle well right now. If your
-                        use case isn't listed, tell us — we prioritize based on
-                        what people actually need.
-                    </p>
-                </div>
-                <div class="can-it-grid">
-                    <div class="use-cases reveal">
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Draft emails in your tone and style
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Research any topic and summarize findings
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Read and summarize PDFs, docs, spreadsheets
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Draft messages for Slack, WhatsApp, Telegram
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Remember your clients, projects, and preferences
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Remind you about follow-ups and deadlines
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Analyze financial data and reports
-                            </div>
-                        </div>
-                        <div class="use-case">
-                            <div class="use-case-check">&#10003;</div>
-                            <div class="use-case-text">
-                                Summarize web pages and articles
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="ask-box reveal">
-                        <h3>Don't see your use case?</h3>
-                        <p>
-                            Describe what you need and we'll tell you if Good
-                            Kiddo can handle it today — or add it to our
-                            roadmap.
-                        </p>
-                        <div class="ask-input-wrapper">
-                            <textarea
-                                class="ask-input"
-                                id="askInput"
-                                placeholder="e.g. I need to reconcile invoices from multiple vendors every week..."
-                            ></textarea>
-                        </div>
-                        <button
-                            class="btn btn-primary ask-submit"
-                            id="askBtn"
-                            onclick="handleAsk()"
-                        >
-                            Ask Good Kiddo
-                        </button>
-                        <div class="ask-response" id="askResponse">
-                            <div
-                                class="ask-response-title"
-                                id="askResponseTitle"
-                            ></div>
-                            <div
-                                class="ask-response-text"
-                                id="askResponseText"
-                            ></div>
-                        </div>
-                        <div class="ask-note">
-                            Not ready yet?
-                            <a href="https://t.me/goodkiddo_bot" target="_blank"
-                                >Open Good Kiddo on Telegram</a
-                            >
-                            and ask directly.
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <!-- Features -->
         <section id="features">
             <div class="container">
@@ -733,9 +629,7 @@
                             <span class="gold-icon">✨</span> Good Kiddo
                         </div>
                         <div class="pricing-price">$100<span>/mo</span></div>
-                        <div class="pricing-desc">
-                            Your Good Kiddo — thinks, drafts, improves
-                        </div>
+                        <div class="pricing-desc">Your proactive assitant</div>
                         <div class="proactivity-badge gold-badge">
                             <div class="proactivity-dots">
                                 <div class="proactivity-dot active-gold"></div>
@@ -757,9 +651,8 @@
                             </div>
                         </div>
                         <ul class="pricing-features">
-                            <li>Best available AI models</li>
                             <li>Operator persona — drafts on its own</li>
-                            <li>Self-improving: reflects after every task</li>
+                            <li>Self-improving after every task</li>
                             <li>2x task limits (200 small / 20 heavy)</li>
                             <li>Unlimited routines & nudges</li>
                             <li>Custom integrations</li>

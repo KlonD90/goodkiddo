@@ -25,6 +25,8 @@ import {
 	maybeResumeCompactAndSeed,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
+import { createStatusEmitter } from "../tools/status_emitter";
+import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
 
@@ -101,6 +103,9 @@ export const cliChannel: AppChannel = {
 
 		const broker = new CLIApprovalBroker(store);
 		const outbound = new CliOutboundChannel();
+		const statusEmitter = createStatusEmitter(outbound);
+		const localeHint = extractLocaleFromCli();
+		const locale = resolveLocale(localeHint);
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			db,
@@ -111,6 +116,8 @@ export const cliChannel: AppChannel = {
 			threadId: baseThreadId,
 			outbound,
 			webShare,
+			statusEmitter,
+			locale,
 		});
 
 		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;

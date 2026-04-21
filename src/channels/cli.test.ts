@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { PassThrough } from "node:stream";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import { seedCliUser } from "./cli";
+import { CliOutboundChannel, seedCliUser } from "./cli";
+import { createStatusEmitter } from "../tools/status_emitter";
+import { resolveLocale, extractLocaleFromCli } from "../i18n/locale";
 
 let db: InstanceType<typeof Bun.SQL>;
 let store: PermissionsStore;
@@ -40,5 +43,73 @@ describe("cli channel", () => {
 		await seedCliUser(store, caller);
 
 		expect(await store.listRulesForUser(caller.id)).toEqual([]);
+	});
+});
+
+describe("cli status emitter", () => {
+	test("createStatusEmitter from CliOutboundChannel emits to stream", async () => {
+		const stream = new PassThrough();
+		const chunks: string[] = [];
+		stream.on("data", (chunk) => chunks.push(chunk.toString()));
+
+		const outbound = new CliOutboundChannel(stream);
+		const emitter = createStatusEmitter(outbound);
+
+		await emitter.emit("cli:tester", "Reading a.md");
+
+		expect(chunks).toEqual(["[status] Reading a.md\n"]);
+	});
+
+	test("resolveLocale extracts locale from LANG environment variable when LC_ALL is unset", () => {
+		const originalLang = process.env.LANG;
+		const originalLcAll = process.env.LC_ALL;
+		try {
+			delete process.env.LC_ALL;
+			process.env.LANG = "ru_RU.UTF-8";
+			const hint = extractLocaleFromCli();
+			const locale = resolveLocale(hint);
+
+			expect(hint).toBe("ru");
+			expect(locale).toBe("ru");
+		} finally {
+			process.env.LANG = originalLang ?? "";
+			if (originalLcAll !== undefined) {
+				process.env.LC_ALL = originalLcAll;
+			}
+		}
+	});
+
+	test("resolveLocale falls back to en for unknown locale", () => {
+		const originalLang = process.env.LANG;
+		const originalLcAll = process.env.LC_ALL;
+		try {
+			delete process.env.LC_ALL;
+			process.env.LANG = "xx_YY.UTF-8";
+			const hint = extractLocaleFromCli();
+			const locale = resolveLocale(hint);
+
+			expect(hint).toBe("xx");
+			expect(locale).toBe("en");
+		} finally {
+			process.env.LANG = originalLang ?? "";
+			if (originalLcAll !== undefined) {
+				process.env.LC_ALL = originalLcAll;
+			}
+		}
+	});
+
+	test("resolveLocale uses LC_ALL over LANG", () => {
+		const originalLang = process.env.LANG;
+		const originalLcAll = process.env.LC_ALL;
+		try {
+			process.env.LANG = "en_US.UTF-8";
+			process.env.LC_ALL = "es_ES.UTF-8";
+			const hint = extractLocaleFromCli();
+
+			expect(hint).toBe("es");
+		} finally {
+			process.env.LANG = originalLang ?? "";
+			process.env.LC_ALL = originalLcAll ?? "";
+		}
 	});
 });

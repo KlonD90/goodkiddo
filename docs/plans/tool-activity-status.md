@@ -49,11 +49,11 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Add tests covering: successful status for a representative tool in each supported locale, null-template tool (no status), emitter throwing, and guard-rejected tool (no status).
 
 ### Task 5: Wire channels to pass the emitter and locale into sessions
-- [ ] Update CLI session setup in `src/channels/cli.ts` to construct a `StatusEmitter` from the CLI outbound channel, resolve the locale from the environment, and pass both into the tool factory.
-- [ ] Update Telegram session setup in `src/channels/telegram.ts` similarly, resolving the locale from the sender's `language_code` on the incoming update.
-- [ ] Ensure shared session setup code in `src/channels/shared.ts` threads the emitter and locale through so both channels go through one code path.
-- [ ] Verify the emitter target channel tracks the correct `callerId` / chat per session, and the locale is recomputed per-turn so a user's language_code change takes effect without a restart.
-- [ ] Add channel-level tests that assert a tool invocation during a fake turn produces the expected status output on the right destination in the expected language.
+- [x] Update CLI session setup in `src/channels/cli.ts` to construct a `StatusEmitter` from the CLI outbound channel, resolve the locale from the environment, and pass both into the tool factory.
+- [x] Update Telegram session setup in `src/channels/telegram.ts` similarly, resolving the locale from the sender's `language_code` on the incoming update.
+- [x] Ensure shared session setup code in `src/channels/shared.ts` threads the emitter and locale through so both channels go through one code path.
+- [x] Verify the emitter target channel tracks the correct `callerId` / chat per session, and the locale is recomputed per-turn so a user's language_code change takes effect without a restart.
+- [x] Add channel-level tests that assert a tool invocation during a fake turn produces the expected status output on the right destination in the expected language.
 
 ### Task 6: Add config flags and safe defaults
 - [ ] Add `enableToolStatus` (default `true`) and `defaultStatusLocale` (default `"en"`) to `AppConfig` in `src/config.ts`.

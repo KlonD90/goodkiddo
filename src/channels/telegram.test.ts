@@ -45,6 +45,9 @@ import {
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
 } from "./telegram";
+import { createStatusEmitter } from "../tools/status_emitter";
+import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
+import { TelegramOutboundChannel } from "./telegram";
 
 let store: PermissionsStore;
 
@@ -2221,5 +2224,69 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 
 			scheduler.stop();
 		});
+	});
+});
+
+describe("telegram status emitter", () => {
+	test("TelegramOutboundChannel sendStatus sends message to correct chat", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi.fn().mockImplementation(async (chatId: string, text: string) => {
+					sentMessages.push({ chatId, text });
+				}),
+			},
+		} as unknown as Bot;
+
+		const channel = new TelegramOutboundChannel(
+			mockBot,
+			(callerId) => (callerId === "telegram:123" ? "123" : null),
+		);
+
+		await channel.sendStatus("telegram:123", "Reading file.txt");
+
+		expect(sentMessages).toEqual([{ chatId: "123", text: "Reading file.txt" }]);
+	});
+
+	test("createStatusEmitter from TelegramOutboundChannel emits to correct chat", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi.fn().mockImplementation(async (chatId: string, text: string) => {
+					sentMessages.push({ chatId, text });
+				}),
+			},
+		} as unknown as Bot;
+
+		const outbound = new TelegramOutboundChannel(
+			mockBot,
+			(callerId) => (callerId === "telegram:456" ? "456" : null),
+		);
+		const emitter = createStatusEmitter(outbound);
+
+		await emitter.emit("telegram:456", "Searching for pattern");
+
+		expect(sentMessages).toEqual([{ chatId: "456", text: "Searching for pattern" }]);
+	});
+
+	test("extractLocaleFromTelegram normalizes language codes", () => {
+		expect(extractLocaleFromTelegram("en")).toBe("en");
+		expect(extractLocaleFromTelegram("en-US")).toBe("en");
+		expect(extractLocaleFromTelegram("ru-RU")).toBe("ru");
+		expect(extractLocaleFromTelegram("es_MX")).toBe("es");
+	});
+
+	test("extractLocaleFromTelegram returns null for undefined", () => {
+		expect(extractLocaleFromTelegram(undefined)).toBeNull();
+	});
+
+	test("resolveLocale uses Telegram language_code hint correctly", () => {
+		const locale = resolveLocale("es");
+		expect(locale).toBe("es");
+	});
+
+	test("resolveLocale falls back to en for unknown Telegram language codes", () => {
+		const locale = resolveLocale("xx");
+		expect(locale).toBe("en");
 	});
 });

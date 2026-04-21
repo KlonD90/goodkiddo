@@ -96,6 +96,11 @@ nav.scrolled {
     animation: pulse 2s ease-in-out infinite;
 }
 
+.logo-icon {
+    color: var(--accent);
+    flex-shrink: 0;
+}
+
 @keyframes pulse {
     0%,
     100% {
@@ -125,6 +130,9 @@ nav.scrolled {
 }
 .nav-links a:hover {
     color: var(--ink);
+}
+.nav-links .btn {
+    color: #fff;
 }
 
 .btn {

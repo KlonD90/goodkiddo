@@ -70,6 +70,8 @@ import { startScheduler } from "../capabilities/timers/scheduler";
 import { createTimerTools } from "../capabilities/timers/tools";
 import { CronExpressionParser } from "cron-parser";
 import { fileDataToString } from "../utils/filesystem";
+import { createStatusEmitter } from "../tools/status_emitter";
+import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
 
 class CombinedSpreadsheetParser implements SpreadsheetParser {
 	private readonly csvParser = new CsvParser();
@@ -1591,6 +1593,8 @@ export async function ensureTelegramSession(
 	pdfExtractor: PdfExtractor,
 	spreadsheetParser: SpreadsheetParser,
 	timerStore?: TimerStore,
+	statusEmitter?: ReturnType<typeof createStatusEmitter>,
+	locale?: string,
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1607,6 +1611,8 @@ export async function ensureTelegramSession(
 		outbound,
 		webShare,
 		timerTools: undefined,
+		statusEmitter,
+		locale: locale as ReturnType<typeof resolveLocale>,
 	});
 
 	const readMdFile = async (path: string): Promise<string> => {
@@ -2341,6 +2347,7 @@ export const telegramChannel: AppChannel = {
 			if (!sessions.has(chatId)) return null;
 			return chatId;
 		});
+		const statusEmitter = createStatusEmitter(outbound);
 		await syncTelegramCommands(bot);
 
 		console.log("Starting Telegram bot polling loop with grammy.");
@@ -2390,6 +2397,9 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
+			const localeHint = ctx.from.language_code;
+			const locale = resolveLocale(localeHint);
+
 			const session = await ensureTelegramSession(
 				chatIdString,
 				caller,
@@ -2405,7 +2415,10 @@ export const telegramChannel: AppChannel = {
 				pdfExtractor,
 				spreadsheetParser,
 				timerStore,
+				statusEmitter,
+				localeHint,
 			);
+			session.locale = locale;
 
 			await handleTelegramQueuedTurn(
 				session,
@@ -2427,6 +2440,9 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
+			const localeHint = ctx.from.language_code;
+			const locale = resolveLocale(localeHint);
+
 			const session = await ensureTelegramSession(
 				chatIdString,
 				caller,
@@ -2442,7 +2458,10 @@ export const telegramChannel: AppChannel = {
 				pdfExtractor,
 				spreadsheetParser,
 				timerStore,
+				statusEmitter,
+				localeHint,
 			);
+			session.locale = locale;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
 			try {
@@ -2501,6 +2520,9 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
+			const localeHint = ctx.from.language_code;
+			const locale = resolveLocale(localeHint);
+
 			const session = await ensureTelegramSession(
 				chatIdString,
 				caller,
@@ -2516,7 +2538,10 @@ export const telegramChannel: AppChannel = {
 				pdfExtractor,
 				spreadsheetParser,
 				timerStore,
+				statusEmitter,
+				localeHint,
 			);
+			session.locale = locale;
 
 			await handleTelegramVoiceMessage({
 				session,
@@ -2544,6 +2569,9 @@ export const telegramChannel: AppChannel = {
 					return;
 				}
 
+				const localeHint = ctx.from.language_code;
+				const locale = resolveLocale(localeHint);
+
 				const session = await ensureTelegramSession(
 					chatIdString,
 					caller,
@@ -2559,7 +2587,10 @@ export const telegramChannel: AppChannel = {
 					pdfExtractor,
 					spreadsheetParser,
 					timerStore,
+					statusEmitter,
+					localeHint,
 				);
+				session.locale = locale;
 
 				await handleTelegramPdfMessage({
 					session,
@@ -2592,6 +2623,9 @@ export const telegramChannel: AppChannel = {
 					return;
 				}
 
+				const localeHint = ctx.from.language_code;
+				const locale = resolveLocale(localeHint);
+
 				const session = await ensureTelegramSession(
 					chatIdString,
 					caller,
@@ -2607,7 +2641,10 @@ export const telegramChannel: AppChannel = {
 					pdfExtractor,
 					spreadsheetParser,
 					timerStore,
+					statusEmitter,
+					localeHint,
 				);
+				session.locale = locale;
 
 				await handleTelegramSpreadsheetMessage({
 					session,

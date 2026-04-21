@@ -15,6 +15,8 @@ import { TaskStore } from "./tasks/store";
 import { createExecutionToolset } from "./tools";
 import type { WebShareOptions } from "./tools/factory";
 import type { GuardContext } from "./tools/guard";
+import type { StatusEmitter } from "./tools/status_emitter";
+import type { SupportedLocale } from "./i18n/locale";
 import { createTimerTools } from "./capabilities/timers/tools";
 
 type TimerTools = ReturnType<typeof createTimerTools>;
@@ -34,6 +36,8 @@ export interface CreateAppAgentOptions {
 	runtimeContextBlock?: string;
 	webShare?: WebShareOptions;
 	timerTools?: TimerTools;
+	statusEmitter?: StatusEmitter;
+	locale?: SupportedLocale;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -102,6 +106,8 @@ export const createAppAgent = async (
 		taskStore,
 		outbound: options.outbound,
 		webShare: options.webShare,
+		statusEmitter: options.statusEmitter,
+		locale: options.locale,
 	});
 
 	const tools = options.timerTools

@@ -33,6 +33,8 @@ import type { WebShareOptions } from "../tools/factory";
 import { createTimerTools } from "../capabilities/timers/tools";
 import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
+import type { StatusEmitter } from "../tools/status_emitter";
+import type { SupportedLocale } from "../i18n/locale";
 
 type TimerTools = ReturnType<typeof createTimerTools>;
 
@@ -74,6 +76,10 @@ export type ChannelAgentSession = {
 	compactionConfig?: CompactionSessionConfig;
 	/** When set, boundary task reconciliation is checked before the next turn. */
 	taskCheckConfig?: TaskCheckSessionConfig;
+	/** Emits status messages to the active channel. */
+	statusEmitter?: StatusEmitter;
+	/** Resolved locale for status message rendering. */
+	locale?: SupportedLocale;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -90,6 +96,8 @@ export async function createChannelAgentSession(
 		outbound?: OutboundChannel;
 		webShare?: WebShareOptions;
 		timerTools?: TimerTools;
+		statusEmitter?: StatusEmitter;
+		locale?: SupportedLocale;
 	},
 ): Promise<ChannelAgentSession> {
 	const audit = new FileAuditLogger("./permissions.log");
@@ -123,6 +131,8 @@ export async function createChannelAgentSession(
 			runtimeContextBlock: renderSessionRuntimeContext(session),
 			webShare: options.webShare,
 			timerTools: options.timerTools,
+			statusEmitter: options.statusEmitter,
+			locale: options.locale,
 		});
 	let bundle = await makeBundle();
 
@@ -148,6 +158,8 @@ export async function createChannelAgentSession(
 			caller: options.caller.id,
 			store: taskStore,
 		},
+		statusEmitter: options.statusEmitter,
+		locale: options.locale,
 	};
 	session = createdSession;
 
