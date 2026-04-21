@@ -44,12 +44,12 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Add `extractor.test.ts` covering: `NoOpPdfExtractor` throws, interface contract
 
 ### Task 2: Implement PDF text extraction
-- [ ] Create `src/capabilities/pdf/pdf_extract_extractor.ts` with a `PdfExtractExtractor` class implementing `PdfExtractor`
-- [ ] Use a Bun-compatible PDF parsing library (e.g. `pdf-parse` or similar) — verify it works with Bun's fetch/buffer semantics
-- [ ] `extract` reads all pages sequentially, returns text per page
-- [ ] Detect encrypted PDFs and set `isEncrypted: true` without throwing
-- [ ] On parse failure, set `isCorrupt: true` and include the error message
-- [ ] Add `pdf_extract_extractor.test.ts` with mocked PDF bytes covering: valid PDF, empty PDF, encrypted PDF, corrupt PDF, oversized file
+- [x] Create `src/capabilities/pdf/pdf_extract_extractor.ts` with a `PdfExtractExtractor` class implementing `PdfExtractor`
+- [x] Use a Bun-compatible PDF parsing library (e.g. `pdf-parse` or similar) — verify it works with Bun's fetch/buffer semantics
+- [x] `extract` reads all pages sequentially, returns text per page
+- [x] Detect encrypted PDFs and set `isEncrypted: true` without throwing
+- [x] On parse failure, set `isCorrupt: true` and include the error message
+- [x] Add `pdf_extract_extractor.test.ts` with mocked PDF bytes covering: valid PDF, empty PDF, encrypted PDF, corrupt PDF, oversized file
 
 ### Task 3: Add PDF capability helpers and constants
 - [ ] Create `src/capabilities/pdf/constants.ts` with `PDF_MAX_BYTES = 20 * 1024 * 1024` (20 MB hard cap)

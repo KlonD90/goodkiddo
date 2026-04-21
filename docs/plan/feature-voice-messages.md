@@ -28,3 +28,6 @@ Users send voice messages (`.oga`/`.mp3` Telegram audio) to the bot and the bot 
 - Transcription errors must surface as a user-visible reply, not a silent drop — same contract as photo handling failures.
 - Voice file bytes never touch the virtual filesystem; they are transcribed in memory and discarded.
 - Open question: should the transcript be shown to the user before the agent responds, or silently consumed? Default to showing it (inline italic prefix) for transparency.
+
+## Related
+- [Execution plan: Telegram Voice Messages](../plans/telegram-voice-messages.md)
