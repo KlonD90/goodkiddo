@@ -139,7 +139,7 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Mock the scheduler store, readMdFile, and LLM in tests
 
 ### Task 8: Docs and cleanup
-- [ ] Update `src/channels/README.md` to document timer feature, limits
-- [ ] Add `src/capabilities/timers/README.md` describing the scheduler, store schema, cron format, and how to add notification backends
-- [ ] Add a short note to `CLAUDE.md` pointing at the new docs
-- [ ] Add cron format cheat sheet: `0 10 * * 1-5` = every weekday at 10 AM, `*/15 * * * *` = every 15 minutes
+- [x] Update `src/channels/README.md` to document timer feature, limits
+- [x] Add `src/capabilities/timers/README.md` describing the scheduler, store schema, cron format, and how to add notification backends
+- [x] Add a short note to `CLAUDE.md` pointing at the new docs
+- [x] Add cron format cheat sheet: `0 10 * * 1-5` = every weekday at 10 AM, `*/15 * * * *` = every 15 minutes

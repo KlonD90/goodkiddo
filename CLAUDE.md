@@ -9,6 +9,7 @@
 - Voice transcription capability structure and provider extension points are documented in `src/capabilities/voice/README.md`.
 - PDF parsing capability structure and extractor interface are documented in `src/capabilities/pdf/README.md`.
 - Spreadsheet parsing capability structure and parser interface are documented in `src/capabilities/spreadsheet/README.md`.
+- Scheduled timers capability structure, scheduler behavior, cron format, and notification backend extension points are documented in `src/capabilities/timers/README.md`.
 
 ## Memory And Tasks
 

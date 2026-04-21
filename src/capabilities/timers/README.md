@@ -1,0 +1,95 @@
+# Scheduled Timers
+
+LLM-powered scheduled jobs that run memory file prompts on cron schedules and deliver results to the user's Telegram chat.
+
+## Overview
+
+Timers let the agent execute recurring tasks on behalf of the user. Each timer references a `*.md` memory file containing the prompt to run. A background scheduler runs inside the same process, checking for due timers, reading the prompt from the referenced file, executing it via the LLM, and delivering results to the user's Telegram chat.
+
+## Store Schema
+
+Timers persist in a `timers` table:
+
+```sql
+CREATE TABLE timers (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    chat_id TEXT NOT NULL,
+    md_file_path TEXT NOT NULL,
+    cron_expression TEXT NOT NULL,
+    timezone TEXT NOT NULL DEFAULT 'UTC',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at BIGINT,
+    last_error TEXT,
+    consecutive_failures INTEGER NOT NULL DEFAULT 0,
+    next_run_at BIGINT NOT NULL,
+    created_at BIGINT NOT NULL
+);
+```
+
+Index on `(enabled, next_run_at)` for efficient due-timer queries.
+
+## Scheduler
+
+The scheduler runs as an in-process background loop (see `scheduler.ts`):
+
+- Polls every 60 seconds for timers where `enabled = 1 AND next_run_at <= now`
+- For each due timer: reads the memory file, executes the prompt via LLM, sends result to Telegram
+- On success: updates `last_run_at`, resets failure count, recomputes `next_run_at`
+- On failure: increments `consecutive_failures`, stores error message
+- After 3 consecutive failures: notifies user via Telegram
+- If memory file not found when timer fires: deletes timer and notifies user
+
+## LLM Tools
+
+The timer tools are defined in `tools.ts` and provide:
+
+- `create_timer(mdFilePath, cronExpression, timezone?)` — create a new timer
+- `list_timers()` — list all timers for the current user
+- `update_timer(timerId, updates)` — update cron, timezone, or enabled state
+- `delete_timer(timerId)` — permanently delete a timer
+
+## Cron Format
+
+Cron expressions use the format: `minute hour day-of-month month day-of-week`
+
+### Cheat Sheet
+
+| Expression | Meaning |
+|------------|---------|
+| `0 10 * * 1-5` | Every weekday at 10 AM |
+| `*/15 * * * *` | Every 15 minutes |
+| `0 9 * * *` | Every day at 9 AM |
+| `0 18 * * 1-5` | Every weekday at 6 PM |
+| `30 8 1 * *` | First day of month at 8:30 AM |
+| `0 */2 * * *` | Every 2 hours |
+| `0 10,14 * * 1-5` | Weekdays at 10 AM and 2 PM |
+
+## Adding Notification Backends
+
+The scheduler accepts a `notifyUser` callback in its options:
+
+```typescript
+interface SchedulerOptions {
+    intervalMs: number;
+    readMdFile: (path: string) => Promise<string>;
+    onTick: (timer: TimerRecord, promptText: string) => Promise<void>;
+    notifyUser: (userId: string, message: string) => Promise<void>;
+}
+```
+
+To add a new notification backend (e.g., Discord, Slack, email):
+
+1. Implement a `notifyUser(userId, message)` function for your backend
+2. Pass it to `startScheduler()` when initializing the scheduler
+
+The Telegram channel implementation uses `sendTelegramMessage` to notify users. Other backends should follow the same interface signature.
+
+## Limits
+
+- Memory file path must be inside `/memory/` directory
+- Paths with `..` are rejected for security
+- Cron expressions are validated via `cron-parser`
+- Timers are user-scoped: users can only see/modify their own timers
+- After 3 consecutive failures, a warning is sent to the user
+- If the referenced memory file is deleted, the timer is automatically removed

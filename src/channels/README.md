@@ -194,7 +194,41 @@ Relevant spreadsheet files:
 - `src/channels/telegram.test.ts`
 - `src/capabilities/spreadsheet/README.md`
 
-Recommended workflow:
+## Scheduled Timers
+
+Timers let the agent run memory file prompts on cron schedules and deliver results to the user's Telegram chat.
+
+User-facing timer operations are available via agent tools:
+
+- `create_timer(mdFilePath, cronExpression, timezone?)` — set a recurring timer
+- `list_timers()` — show all active timers
+- `update_timer(timerId, updates)` — change cron, timezone, or enabled state
+- `delete_timer(timerId)` — remove a timer
+
+The scheduler runs in-process, polling every 60 seconds for due timers. When a timer fires, the scheduler reads the referenced memory file, executes it via the LLM, and streams the result to the user's Telegram chat.
+
+Failure handling:
+
+- On LLM error: error is logged, `last_error` is stored, `next_run_at` is still updated
+- After 3 consecutive failures: warning message sent to user via Telegram
+- If memory file is deleted: timer is hard-deleted and user is notified
+
+Timers persist in the database and survive restarts. Each timer is user-scoped: `user_id` and `chat_id` are stored on creation, and all operations validate ownership.
+
+Relevant timer files:
+
+- `src/capabilities/timers/store.ts` — SQL-backed timer persistence
+- `src/capabilities/timers/scheduler.ts` — in-process background scheduler
+- `src/capabilities/timers/tools.ts` — LLM tool definitions
+- `src/capabilities/timers/README.md` — full timer documentation
+
+Cron format: `minute hour day-of-month month day-of-week`. Examples:
+
+- `0 10 * * 1-5` = every weekday at 10 AM
+- `*/15 * * * *` = every 15 minutes
+- `0 9 * * *` = every day at 9 AM
+
+## Recommended workflow:
 
 1. Update rendering or chunking logic in `src/channels/telegram.ts`
 2. Add or update regression tests in `src/channels/telegram.test.ts`
