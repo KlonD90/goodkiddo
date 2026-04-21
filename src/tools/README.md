@@ -38,6 +38,58 @@ const emitter = createStatusEmitter(outboundChannel);
 - Keep messages short (max ~120 chars after interpolation)
 - Sanitize messages: strip newlines, truncate oversized values
 
+## Status Templates
+
+The `status_templates.ts` module exposes `renderStatus(toolName, args, locale)` which returns a localized status string or `null` when no template exists for the tool.
+
+### Dictionary Layout
+
+Templates are organized as `locale → toolName → template`:
+
+```typescript
+const dictionaries: LocaleDictionary = {
+  en: { read_file: "Reading {file_path}", ... },
+  ru: { read_file: "Чтение {file_path}", ... },
+  es: { read_file: "Leyendo {file_path}", ... },
+};
+```
+
+Adding a new locale means adding a new top-level key with all tool templates. Missing translations fall back to English.
+
+### Argument Allowlist
+
+Each tool has an allowlist of safe arguments that may be interpolated:
+
+```typescript
+const ALLOWLISTED_ARGS = {
+  read_file: ["file_path", "offset", "limit", "offsetLimit"],
+  grep: ["pattern", "path", "glob", "pathGlob"],
+  // ...
+};
+```
+
+Only allowlisted args are interpolated. Values are truncated to 100 chars max, newlines are stripped, and the final message is capped at 200 chars.
+
+### Adding a Template for a New Tool
+
+1. Add the tool name to `ALLOWLISTED_ARGS` with an array of safe argument names
+2. Add the template string to each locale dictionary (`en`, `ru`, `es`) using `{placeholder}` syntax
+3. Ensure placeholder names match across all locales
+4. If the tool is browser-based, add any special arg formatting in `buildInterpolatedArgs`
+5. Add a test in `status_templates.test.ts` covering the new template in all locales
+
+### Redaction Rules
+
+- Paths and short identifiers are allowed
+- Search patterns are allowed but truncated to 100 chars
+- File contents, credentials, and long inputs are never included
+- Array args with more than 5 items render as `[N items]`
+- All newlines, carriage returns, and tabs are replaced with spaces
+
+### No-template Fallback
+
+When a tool has no entry in `ALLOWLISTED_ARGS`, `renderStatus` returns `null` and no status is emitted for that tool.
+
 - `factory.ts` — `createExecutionToolset` assembles all tools, optionally wrapping each with the permissions guard
 - `filesystem_tools.ts` — `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`
 - `execute_tools.ts` — `execute_workspace`, `execute_script` (sandbox-backed)

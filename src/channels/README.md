@@ -194,6 +194,51 @@ Relevant spreadsheet files:
 - `src/channels/telegram.test.ts`
 - `src/capabilities/spreadsheet/README.md`
 
+## Tool Activity Status
+
+Status messages surface short, human-readable lines to the active channel whenever the agent invokes a tool (e.g. "Reading a.txt", "Searching for X", "Running workspace entrypoint"). Users see what is happening between turn start and the final reply.
+
+### sendStatus Interface
+
+```typescript
+interface OutboundChannel {
+  sendStatus(callerId: string, message: string): Promise<void>;
+  // ... other methods
+}
+```
+
+- `callerId` — session identifier (e.g. `cli:username` or Telegram chat ID)
+- `message` — localized, pre-truncated status string
+- **Ephemeral** — status messages are never stored in conversation history and never replayed into runtime context
+- **Must never throw** — emitter failures are caught internally and ignored
+
+### CLI Status Output
+
+The CLI channel writes status lines to stdout with a `>` prefix:
+
+```
+> Reading a.txt
+> Searching for X
+```
+
+### Telegram Status Output
+
+The Telegram channel sends status messages as plain text via `bot.api.sendMessage`, without touching conversation memory.
+
+### Configuration
+
+- `enableToolStatus` (default `true`) — enables or disables status emission globally
+- `defaultStatusLocale` (default `"en"`) — fallback locale when user preference is unknown
+
+### Relevant Files
+
+- `src/channels/outbound.ts` — OutboundChannel interface with sendStatus
+- `src/channels/cli.ts` — CLI implementation of sendStatus
+- `src/channels/telegram.ts` — Telegram implementation of sendStatus
+- `src/tools/status_emitter.ts` — StatusEmitter factory and no-op emitter
+- `src/tools/status_templates.ts` — per-tool, per-locale status templates
+- `src/i18n/locale.ts` — locale resolution utilities
+
 ## Scheduled Timers
 
 Timers let the agent run memory file prompts on cron schedules and deliver results to the user's Telegram chat.

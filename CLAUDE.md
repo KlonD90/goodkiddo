@@ -11,6 +11,14 @@
 - Spreadsheet parsing capability structure and parser interface are documented in `src/capabilities/spreadsheet/README.md`.
 - Scheduled timers (`src/capabilities/timers/`) let the agent run memory file prompts on cron schedules. Timer tools available to the LLM: `create_timer(mdFilePath, cronExpression, timezone?)`, `list_timers()`, `update_timer(timerId, updates)`, `delete_timer(timerId)`. See `src/capabilities/timers/README.md` for cron format and notification backend extension points.
 
+## Tool Authoring
+
+When adding a new tool, author a status template alongside it so users see what the tool is doing.
+
+- Template format, redaction rules, and how to add a template for a new tool: `src/tools/README.md`
+- Locale dictionary layout and how to add a new language: `src/i18n/README.md`
+- `sendStatus` interface and ephemerality contract: `src/channels/README.md`
+
 ## Memory And Tasks
 
 - Durable facts, preferences, and reusable procedures belong in `/memory/` and `/skills/`.
