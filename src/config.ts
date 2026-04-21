@@ -164,7 +164,7 @@ const defaultTranscriptionProviderForAiType = (
 	aiType: SupportedAiTypes | undefined,
 ): TranscriptionProvider => (aiType === "openrouter" ? "openrouter" : "openai");
 
-const canReusePrimaryAiCredentialsForTranscription = (
+export const canReusePrimaryAiCredentialsForTranscription = (
 	aiType: SupportedAiTypes | undefined,
 	transcriptionProvider: TranscriptionProvider | undefined,
 ): boolean =>
@@ -347,7 +347,7 @@ export const findConfigIssues = (
 		issues.push({
 			field: "TRANSCRIPTION_API_KEY",
 			reason:
-				"TRANSCRIPTION_API_KEY is required when Telegram voice messages use transcription credentials different from AI_API_KEY.",
+				"TRANSCRIPTION_API_KEY is not set. Voice transcription will use NoOpTranscriber (transcription capability unavailable).",
 		});
 	}
 
@@ -603,12 +603,15 @@ This is the credential used to call the selected model provider.> `,
 					(value) => (value === "" ? "AI_API_KEY cannot be empty." : null),
 				);
 
-	const aiBaseUrl = promptOptionalValue(
-		promptUser,
-		`Step 5. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
+	const aiBaseUrl =
+		initialConfig.aiBaseUrl && initialConfig.aiBaseUrl !== ""
+			? initialConfig.aiBaseUrl
+			: promptOptionalValue(
+					promptUser,
+					`Step 5. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
 Press enter to use the provider default.> `,
-		initialConfig.aiBaseUrl ?? "",
-	);
+					"",
+				);
 	const transcriptionProvider =
 		initialConfig.transcriptionProvider ??
 		defaultTranscriptionProviderForAiType(aiType);
@@ -622,14 +625,11 @@ Press enter to use the provider default.> `,
 				? aiApiKey
 				: appEntrypoint === "telegram" &&
 					  (initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES)
-					? promptRequiredValue(
+					? promptOptionalValue(
 							promptUser,
 							`Voice step. Enter TRANSCRIPTION_API_KEY for ${transcriptionProvider}.
-This credential is used for Telegram voice transcription when it cannot reuse AI_API_KEY.> `,
-							(value) =>
-								value === ""
-									? "TRANSCRIPTION_API_KEY cannot be empty."
-									: null,
+Press enter to skip (transcription will not be available).> `,
+							"",
 						)
 					: "";
 	const transcriptionBaseUrl = initialConfig.transcriptionBaseUrl ?? "";

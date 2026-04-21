@@ -20,6 +20,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Voice Messages](feature-voice-messages.md) | [RALPHEX plan](../plans/telegram-voice-messages.md) |
 | [PDF Documents](feature-pdf.md) | [RALPHEX plan](../plans/pdf.md) |
 | [CSV and Excel Spreadsheets](feature-csv-excel.md) | [RALPHEX plan](../plans/csv-excel.md) |
+| [Scheduled Timers](feature-scheduled-timers.md) | [RALPHEX plan](../plans/scheduled-timers.md) |
 | [Tool Activity Status Messages](feature-tool-activity-status.md) | [RALPHEX plan](../plans/tool-activity-status.md) |
 
 ## Completed

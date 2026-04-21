@@ -195,7 +195,7 @@ describe("config", () => {
 		);
 	});
 
-	test("requires a dedicated transcription key when Telegram voice cannot reuse AI_API_KEY", async () => {
+	test("informs about missing transcription key when Telegram voice cannot reuse AI_API_KEY", async () => {
 		await withEnv(
 			{
 				AI_API_KEY: "anthropic-key",
@@ -209,7 +209,7 @@ describe("config", () => {
 				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
 					field: "TRANSCRIPTION_API_KEY",
 					reason:
-						"TRANSCRIPTION_API_KEY is required when Telegram voice messages use transcription credentials different from AI_API_KEY.",
+						"TRANSCRIPTION_API_KEY is not set. Voice transcription will use NoOpTranscriber (transcription capability unavailable).",
 				});
 			},
 		);

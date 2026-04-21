@@ -48,15 +48,15 @@ Handle Telegram `message:document` updates where the document is a CSV or Excel 
 - [x] Add `parser.test.ts` covering: `NoOpSpreadsheetParser` throws, interface contract
 
 ### Task 2: Implement CSV and Excel parsers
-- [ ] Create `src/capabilities/spreadsheet/csv_parser.ts` with a `CsvParser` implementing `SpreadsheetParser`
-- [ ] Use a Bun-compatible CSV parsing library — parse with headers as first row
-- [ ] Handle quoted fields, different delimiters (detect comma/semicolon/tab)
-- [ ] Handle encoding issues gracefully
-- [ ] Create `src/capabilities/spreadsheet/excel_parser.ts` with an `ExcelParser` implementing `SpreadsheetParser`
-- [ ] Use a Bun-compatible Excel library (e.g. `xlsx`) — read all sheets
-- [ ] Convert each sheet to `{ name, headers, rows }` — trim whitespace, skip完全 empty rows
-- [ ] On parse failure: set `isCorrupt: true`
-- [ ] Add `csv_parser.test.ts` and `excel_parser.test.ts` with mocked data covering: valid CSV/excel, empty file, quoted fields, different delimiters, corrupt file
+- [x] Create `src/capabilities/spreadsheet/csv_parser.ts` with a `CsvParser` implementing `SpreadsheetParser`
+- [x] Use a Bun-compatible CSV parsing library — parse with headers as first row
+- [x] Handle quoted fields, different delimiters (detect comma/semicolon/tab)
+- [x] Handle encoding issues gracefully
+- [x] Create `src/capabilities/spreadsheet/excel_parser.ts` with an `ExcelParser` implementing `SpreadsheetParser`
+- [x] Use a Bun-compatible Excel library (e.g. `xlsx`) — read all sheets
+- [x] Convert each sheet to `{ name, headers, rows }` — trim whitespace, skip completely empty rows
+- [x] On parse failure: set `isCorrupt: true`
+- [x] Add `csv_parser.test.ts` and `excel_parser.test.ts` with mocked data covering: valid CSV/excel, empty file, quoted fields, different delimiters, corrupt file
 
 ### Task 3: Add spreadsheet capability helpers and constants
 - [ ] Create `src/capabilities/spreadsheet/constants.ts` with `SPREADSHEET_MAX_BYTES = 10 * 1024 * 1024` (10 MB hard cap)

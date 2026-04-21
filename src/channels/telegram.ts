@@ -26,6 +26,7 @@ import {
 } from "../capabilities/pdf/extractor";
 import { PdfExtractExtractor } from "../capabilities/pdf/pdf_extract_extractor";
 import type { AppConfig } from "../config";
+import { canReusePrimaryAiCredentialsForTranscription } from "../config";
 import { createDb, detectDialect } from "../db/index";
 import { readThreadMessages } from "../memory/rotate_thread";
 import {
@@ -1504,6 +1505,17 @@ class TelegramApprovalBroker implements ApprovalBroker {
 
 export function createTelegramTranscriber(config: AppConfig): Transcriber {
 	if (config.enableVoiceMessages === false) {
+		return new NoOpTranscriber();
+	}
+
+	if (
+		!canReusePrimaryAiCredentialsForTranscription(
+			config.aiType,
+			config.transcriptionProvider,
+		) &&
+		(config.transcriptionApiKey === undefined ||
+			config.transcriptionApiKey === "")
+	) {
 		return new NoOpTranscriber();
 	}
 
