@@ -112,13 +112,13 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] In `telegramChannel.run()`, call `createTimerTools(store, { timezone })` and pass the resulting tools to `createAppAgent` (deferred: createTimerTools call in Task 5 when TimerStore is created)
 
 ### Task 5: Wire scheduler into telegram channel and handle timer execution
-- [ ] In `telegramChannel.run()`, after session setup, call `scheduler.start(store, { readMdFile, onTick })`
-- [ ] `readMdFile(path)`: reads the memory file from the workspace backend at the given path, returns contents as string; throws if not found
-- [ ] `onTick(timer, promptText)`: receives the timer record and the text from the md file
-- [ ] On scheduler tick: use the current agent (same model/tools as normal turns) to invoke with `promptText` as user message
-- [ ] Stream the LLM reply to the user's `chatId` via `sendTelegramMessage`
-- [ ] Add `stop()` call to the channel shutdown sequence
-- [ ] Add `notifyUser` callback to scheduler: send a Telegram message to the user about repeated failures
+- [x] In `telegramChannel.run()`, after session setup, call `scheduler.start(store, { readMdFile, onTick })`
+- [x] `readMdFile(path)`: reads the memory file from the workspace backend at the given path, returns contents as string; throws if not found
+- [x] `onTick(timer, promptText)`: receives the timer record and the text from the md file
+- [x] On scheduler tick: use the current agent (same model/tools as normal turns) to invoke with `promptText` as user message
+- [x] Stream the LLM reply to the user's `chatId` via `sendTelegramMessage`
+- [x] Add `stop()` call to the channel shutdown sequence
+- [x] Add `notifyUser` callback to scheduler: send a Telegram message to the user about repeated failures
 
 ### Task 6: Handle timezone for timer display and scheduling
 - [ ] Add `timezone: string` field to `AppConfig` in `src/config.ts` (default `"UTC"`)

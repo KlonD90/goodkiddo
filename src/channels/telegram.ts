@@ -65,6 +65,11 @@ import {
 	maybeRunPendingTaskCheck,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
+import { TimerStore, type TimerRecord } from "../capabilities/timers/store";
+import { startScheduler } from "../capabilities/timers/scheduler";
+import { createTimerTools } from "../capabilities/timers/tools";
+import { CronExpressionParser } from "cron-parser";
+import { fileDataToString } from "../utils/filesystem";
 
 class CombinedSpreadsheetParser implements SpreadsheetParser {
 	private readonly csvParser = new CsvParser();
@@ -1576,7 +1581,7 @@ export async function ensureTelegramSession(
 	transcriber: Transcriber,
 	pdfExtractor: PdfExtractor,
 	spreadsheetParser: SpreadsheetParser,
-	timerTools?: ChannelRunOptions["timerTools"],
+	timerStore?: TimerStore,
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1592,8 +1597,34 @@ export async function ensureTelegramSession(
 		threadId: baseThreadId,
 		outbound,
 		webShare,
-		timerTools,
+		timerTools: undefined,
 	});
+
+	const readMdFile = async (path: string): Promise<string> => {
+		const data = await session.workspace.readRaw(path);
+		return fileDataToString(data);
+	};
+
+	const timerTools = timerStore
+		? createTimerTools(timerStore, {
+				timezone: "UTC",
+				computeNextRun: (cronExpression: string) => {
+					const expr = CronExpressionParser.parse(cronExpression, {
+						currentDate: new Date(),
+					});
+					return expr.next().getTime();
+				},
+				readMdFile,
+				callerId: caller.id,
+			})
+		: undefined;
+
+	if (timerTools) {
+		(session.agent as unknown as { tools: unknown[] }).tools = [
+			...((session.agent as unknown as { tools: unknown[] }).tools ?? []),
+			...timerTools,
+		];
+	}
 
 	const telegramSession: TelegramAgentSession = {
 		...session,
@@ -2291,6 +2322,7 @@ export const telegramChannel: AppChannel = {
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });
+		const timerStore = options?.timerStore ?? new TimerStore({ db, dialect });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
 		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
@@ -2363,6 +2395,7 @@ export const telegramChannel: AppChannel = {
 				transcriber,
 				pdfExtractor,
 				spreadsheetParser,
+				timerStore,
 			);
 
 			await handleTelegramQueuedTurn(
@@ -2399,6 +2432,7 @@ export const telegramChannel: AppChannel = {
 				transcriber,
 				pdfExtractor,
 				spreadsheetParser,
+				timerStore,
 			);
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
@@ -2472,6 +2506,7 @@ export const telegramChannel: AppChannel = {
 				transcriber,
 				pdfExtractor,
 				spreadsheetParser,
+				timerStore,
 			);
 
 			await handleTelegramVoiceMessage({
@@ -2514,6 +2549,7 @@ export const telegramChannel: AppChannel = {
 					transcriber,
 					pdfExtractor,
 					spreadsheetParser,
+					timerStore,
 				);
 
 				await handleTelegramPdfMessage({
@@ -2561,6 +2597,7 @@ export const telegramChannel: AppChannel = {
 					transcriber,
 					pdfExtractor,
 					spreadsheetParser,
+					timerStore,
 				);
 
 				await handleTelegramSpreadsheetMessage({
@@ -2584,11 +2621,103 @@ export const telegramChannel: AppChannel = {
 			console.error("Telegram bot error:", error.error);
 		});
 
+		const readMdFile = async (path: string): Promise<string> => {
+			throw new Error("readMdFile called but should not be used directly");
+		};
+
+		const onTick = async (
+			timer: TimerRecord,
+			_promptText: string,
+		): Promise<void> => {
+			const session = sessions.get(timer.chatId);
+			if (!session) {
+				console.warn(
+					`Timer ${timer.mdFilePath} fired but no session found for chatId ${timer.chatId}`,
+				);
+				return;
+			}
+
+			let promptText: string;
+			try {
+				const data = await session.workspace.readRaw(timer.mdFilePath);
+				promptText = fileDataToString(data);
+			} catch {
+				await timerStore.delete(timer.chatId, timer.userId);
+				await sendTelegramMessage(
+					bot,
+					timer.chatId,
+					`Timer for '${timer.mdFilePath}' was deleted because the memory file no longer exists.`,
+				);
+				return;
+			}
+
+			const invokeMessages = buildInvokeMessages(session, {
+				role: "user",
+				content: promptText,
+			});
+
+			try {
+				const stream = await session.agent.stream(
+					{ messages: invokeMessages },
+					{
+						configurable: { thread_id: session.threadId },
+						streamMode: "messages",
+					},
+				);
+				let fullText = "";
+				const streamIterator = stream[Symbol.asyncIterator]();
+				for await (const chunk of streamIterator) {
+					if (!Array.isArray(chunk) || chunk.length < 1) continue;
+					const message = chunk[0];
+					const text =
+						"text" in message && typeof message.text === "string"
+							? message.text
+							: "content" in message
+								? extractTextFromContent(message.content)
+								: "";
+					fullText += text;
+				}
+				if (fullText.trim() !== "") {
+					await sendTelegramMessage(bot, timer.chatId, fullText);
+				}
+			} catch (err) {
+				const message = err instanceof Error ? err.message : String(err);
+				console.error(`Timer ${timer.mdFilePath} onTick error:`, message);
+				throw err;
+			}
+		};
+
+		const notifyUser = async (userId: string, message: string): Promise<void> => {
+			await sendTelegramMessage(bot, userId, message);
+		};
+
+		let schedulerStop: (() => void) | undefined;
+		if (options?.timerScheduler) {
+			schedulerStop = options.timerScheduler.start(timerStore, {
+				intervalMs: 60_000,
+				readMdFile,
+				onTick,
+				notifyUser,
+			}).stop;
+		}
+
+		const stopScheduler = () => {
+			if (schedulerStop) {
+				schedulerStop();
+				schedulerStop = undefined;
+			}
+		};
+
+		process.on("SIGINT", stopScheduler);
+		process.on("SIGTERM", stopScheduler);
+
 		await bot.start({
 			onStart: (botInfo) => {
 				console.log(`Telegram bot connected as @${botInfo.username}`);
 			},
 		});
+
+		stopScheduler();
 		if (!options?.db) {
 			await db.close();
 		}
