@@ -33,6 +33,7 @@ export type AppConfig = {
 	transcriptionBaseUrl: string;
 	webPort: number;
 	webPublicBaseUrl: string;
+	timezone: string;
 };
 
 export type TranscriptionProvider = "openai" | "openrouter";
@@ -45,6 +46,7 @@ const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
 const DEFAULT_ENABLE_VOICE_MESSAGES = true;
 const DEFAULT_ENABLE_PDF_DOCUMENTS = true;
 const DEFAULT_ENABLE_SPREADSHEETS = true;
+const DEFAULT_TIMEZONE = "UTC";
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
 	"openai",
 	"openrouter",
@@ -65,6 +67,7 @@ type ConfigIssueField =
 	| "DATABASE_URL"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
+	| "TIMEZONE"
 	| "TRANSCRIPTION_API_KEY"
 	| "TRANSCRIPTION_BASE_URL"
 	| "TRANSCRIPTION_PROVIDER"
@@ -114,6 +117,7 @@ const PERSISTED_ENV_KEYS = [
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TIMEZONE",
 	"TRANSCRIPTION_API_KEY",
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
@@ -270,6 +274,7 @@ export const readConfigFromEnv = (
 		transcriptionBaseUrl,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
+		timezone: getEnv("TIMEZONE", persistedValues) || DEFAULT_TIMEZONE,
 	};
 };
 
@@ -719,6 +724,7 @@ Press enter to allow any chat the bot is added to.> `,
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
+		timezone: initialConfig.timezone ?? DEFAULT_TIMEZONE,
 	};
 };
 
@@ -763,6 +769,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "TIMEZONE":
+			return `${key}=${escapeEnvValue(config.timezone)}`;
 		case "TRANSCRIPTION_API_KEY":
 			return `${key}=${escapeEnvValue(config.transcriptionApiKey)}`;
 		case "TRANSCRIPTION_BASE_URL":
@@ -809,7 +817,7 @@ const readPersistedEnvFile = (
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TIMEZONE|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
 		);
 		if (!match) {
 			continue;
@@ -839,7 +847,7 @@ const persistConfigToEnvFile = (
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
 		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
+			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TIMEZONE|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
 		);
 		if (!match) {
 			return line;
@@ -910,6 +918,7 @@ export const resolveConfig = async (
 			transcriptionBaseUrl: config.transcriptionBaseUrl ?? "",
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
+			timezone: config.timezone ?? DEFAULT_TIMEZONE,
 		};
 		return resolvedConfig;
 	}

@@ -25,6 +25,7 @@ const CONFIG_KEYS = [
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TIMEZONE",
 	"TRANSCRIPTION_API_KEY",
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
@@ -118,6 +119,7 @@ describe("config", () => {
 					transcriptionBaseUrl: "https://voice.example/v1",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
+					timezone: "UTC",
 				});
 			},
 		);
@@ -334,6 +336,7 @@ describe("config", () => {
 					transcriptionBaseUrl: "",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
+					timezone: "UTC",
 				});
 			},
 		);
@@ -389,6 +392,7 @@ describe("config", () => {
 				transcriptionBaseUrl: "",
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",
+				timezone: "UTC",
 			});
 		});
 	});

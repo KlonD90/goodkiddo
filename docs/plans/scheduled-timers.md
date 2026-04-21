@@ -121,11 +121,11 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `notifyUser` callback to scheduler: send a Telegram message to the user about repeated failures
 
 ### Task 6: Handle timezone for timer display and scheduling
-- [ ] Add `timezone: string` field to `AppConfig` in `src/config.ts` (default `"UTC"`)
-- [ ] Add to `.env` persistence pattern
-- [ ] When displaying next run time to user, convert from UTC to user's timezone
-- [ ] Cron expressions are always stored and evaluated in UTC internally; timezone is for display only
-- [ ] For the timer tools, `create_timer` accepts an optional `timezone` override; defaults to `config.timezone`
+- [x] Add `timezone: string` field to `AppConfig` in `src/config.ts` (default `"UTC"`)
+- [x] Add to `.env` persistence pattern
+- [x] When displaying next run time to user, convert from UTC to user's timezone
+- [x] Cron expressions are always stored and evaluated in UTC internally; timezone is for display only
+- [x] For the timer tools, `create_timer` accepts an optional `timezone` override; defaults to `config.timezone`
 
 ### Task 7: Add telegram channel integration tests
 - [ ] Add test: timer fires → reads md file → LLM executes → result sent to correct chat

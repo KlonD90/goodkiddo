@@ -17,15 +17,25 @@ function isValidMemoryPath(path: string): boolean {
 	return true;
 }
 
+function formatInTimezone(timestamp: number, timezone: string): string {
+	return new Intl.DateTimeFormat("en-US", {
+		timeZone: timezone,
+		dateStyle: "medium",
+		timeStyle: "short",
+	}).format(new Date(timestamp));
+}
+
 function formatTimerList(timers: TimerRecord[]): string {
 	if (timers.length === 0) {
 		return "No active timers.";
 	}
 	return timers
 		.map((t) => {
-			const nextRun = new Date(t.nextRunAt).toISOString();
-			const lastRun = t.lastRunAt ? new Date(t.lastRunAt).toISOString() : "never";
-			return `- ${t.id}: ${t.mdFilePath} (${t.cronExpression}, tz=${t.timezone}) next=${nextRun} last=${lastRun} failures=${t.consecutiveFailures}`;
+			const nextRun = formatInTimezone(t.nextRunAt, t.timezone);
+			const lastRun = t.lastRunAt
+				? formatInTimezone(t.lastRunAt, t.timezone)
+				: "never";
+			return `- ${t.id}: ${t.mdFilePath} (${t.cronExpression}) next=${nextRun} (${t.timezone}) last=${lastRun} failures=${t.consecutiveFailures}`;
 		})
 		.join("\n");
 }
@@ -77,7 +87,7 @@ export function createTimerTools(
 				nextRunAt,
 			});
 
-			const nextRunDate = new Date(nextRunAt).toISOString();
+			const nextRunDate = formatInTimezone(nextRunAt, effectiveTimezone);
 			return `Timer set. I'll run \`${mdFilePath}\` with cron \`${cronExpression}\` (${effectiveTimezone}) next at ${nextRunDate}. Timer ID: ${timer.id}`;
 		},
 		{

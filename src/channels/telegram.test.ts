@@ -66,6 +66,7 @@ const TEST_CONFIG: AppConfig = {
 	transcriptionBaseUrl: "",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
+	timezone: "UTC",
 };
 
 afterEach(() => {
