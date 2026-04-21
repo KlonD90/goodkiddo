@@ -142,8 +142,9 @@ Voice handling:
 - supported voice payloads are capped at `1_048_576` bytes and are downloaded as `audio/ogg`
 - the channel transcribes voice audio in memory, prefixes it as `_Transcribed: ..._`, and appends any caption text after the transcript
 - approvals and slash/session commands are parsed from the raw transcript before the prefixed agent-facing text is queued
-- transcription uses the configured OpenAI-compatible backend selected by `TRANSCRIPTION_PROVIDER=openai|openrouter`
-- set `TRANSCRIPTION_API_KEY` when voice transcription cannot reuse `AI_API_KEY`, and use `TRANSCRIPTION_BASE_URL` to override the default OpenAI/OpenRouter endpoint
+- transcription uses the configured backend selected by `TRANSCRIPTION_PROVIDER=openai|openrouter`
+- `openai` uses the Audio Transcriptions API; `openrouter` uses OpenRouter's documented `/chat/completions` audio-input flow with the default `openai/gpt-4o-mini-transcribe` model
+- set `TRANSCRIPTION_API_KEY` when voice transcription cannot reuse `AI_API_KEY`, and use `TRANSCRIPTION_BASE_URL` to override the provider endpoint used for transcription
 - disabled voice support replies with `Voice messages are not supported on this server.`
 - oversized audio replies with `Voice message is too large`
 - download failures reply with `Failed to download voice message: <message>`

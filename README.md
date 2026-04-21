@@ -19,7 +19,10 @@ OpenAI-compatible transcription backend, `TRANSCRIPTION_API_KEY` to provide a
 dedicated transcription credential when voice cannot reuse `AI_API_KEY`, and
 `TRANSCRIPTION_BASE_URL` to override the transcription endpoint. If
 `TRANSCRIPTION_PROVIDER` is unset, the app defaults to `openrouter` when
-`AI_TYPE=openrouter`, otherwise `openai`.
+`AI_TYPE=openrouter`, otherwise `openai`. The `openai` provider uses the
+Audio Transcriptions API, while the `openrouter` provider uses OpenRouter's
+documented chat-completions audio input flow with the default
+`openai/gpt-4o-mini-transcribe` model.
 
 ```bash
 ./dev.sh

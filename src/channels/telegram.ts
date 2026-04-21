@@ -11,6 +11,7 @@ import {
 	NoOpTranscriber,
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
+import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
@@ -68,7 +69,6 @@ const TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS = [
 	/\n/g,
 	/\s+/g,
 ] as const;
-const OPENROUTER_TRANSCRIPTION_BASE_URL = "https://openrouter.ai/api/v1/";
 const TELEGRAM_COMMANDS = [
 	{ command: "help", description: "Show available permission commands" },
 	{ command: "policy", description: "Show your current permission rules" },
@@ -1497,10 +1497,9 @@ export function createTelegramTranscriber(config: AppConfig): Transcriber {
 				baseUrl: config.transcriptionBaseUrl || undefined,
 			});
 		case "openrouter":
-			return new WhisperTranscriber({
+			return new OpenRouterTranscriber({
 				apiKey: config.transcriptionApiKey,
-				baseUrl:
-					config.transcriptionBaseUrl || OPENROUTER_TRANSCRIPTION_BASE_URL,
+				baseUrl: config.transcriptionBaseUrl || undefined,
 			});
 	}
 }

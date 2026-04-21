@@ -28,6 +28,7 @@ import {
 	NoOpTranscriber,
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
+import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 
 let store: PermissionsStore;
@@ -88,20 +89,50 @@ describe("telegram channel", () => {
 		expect(transcriber).toBeInstanceOf(WhisperTranscriber);
 	});
 
-	test("createTelegramTranscriber uses the OpenRouter whisper endpoint", async () => {
+	test("createTelegramTranscriber uses the OpenRouter chat completions audio endpoint", async () => {
 		const originalFetch = globalThis.fetch;
 		globalThis.fetch = (async (
 			input: string | URL | Request,
 			init?: RequestInit,
 		): Promise<Response> => {
 			expect(String(input)).toBe(
-				"https://openrouter.ai/api/v1/audio/transcriptions",
+				"https://openrouter.ai/api/v1/chat/completions",
 			);
 			expect(init?.method).toBe("POST");
 			expect(init?.headers).toMatchObject({
 				Authorization: "Bearer voice-key",
+				"Content-Type": "application/json",
 			});
-			return Response.json({ text: "transcribed" });
+			expect(init?.body).toBeString();
+			const payload = JSON.parse(String(init?.body)) as {
+				model: string;
+				messages: Array<{
+					role: string;
+					content: Array<
+						| { type: "text"; text: string }
+						| {
+								type: "input_audio";
+								input_audio: { data: string; format: string };
+						  }
+					>;
+				}>;
+			};
+			expect(payload.model).toBe("openai/gpt-4o-mini-transcribe");
+			expect(payload.messages[0]?.role).toBe("user");
+			expect(payload.messages[0]?.content[0]).toEqual({
+				type: "text",
+				text: "Transcribe this audio verbatim. Return only the transcript text.",
+			});
+			expect(payload.messages[0]?.content[1]).toEqual({
+				type: "input_audio",
+				input_audio: {
+					data: Buffer.from([1, 2, 3]).toString("base64"),
+					format: "ogg",
+				},
+			});
+			return Response.json({
+				choices: [{ message: { content: "transcribed" } }],
+			});
 		}) as typeof fetch;
 
 		try {
@@ -114,7 +145,7 @@ describe("telegram channel", () => {
 				transcriptionApiKey: "voice-key",
 			});
 
-			expect(transcriber).toBeInstanceOf(WhisperTranscriber);
+			expect(transcriber).toBeInstanceOf(OpenRouterTranscriber);
 			await expect(
 				transcriber.transcribe(Uint8Array.from([1, 2, 3]), "audio/ogg"),
 			).resolves.toBe("transcribed");
