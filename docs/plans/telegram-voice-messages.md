@@ -76,9 +76,9 @@ Handle Telegram `message:voice` updates by downloading the audio, transcribing i
 - [x] Add tests covering flag-on and flag-off behavior
 
 ### Task 7: Add telegram channel tests for voice messages
-- [ ] Add `message:voice` test cases to `src/channels/telegram.test.ts`
-- [ ] Cover: successful transcription flow, oversized audio rejection, transcription error surfacing, download error surfacing, no-transcriber configured reply, caption appending
-- [ ] Mock the transcriber and fetchTelegramFileBytes in tests
+- [x] Add `message:voice` test cases to `src/channels/telegram.test.ts`
+- [x] Cover: successful transcription flow, oversized audio rejection, transcription error surfacing, download error surfacing, no-transcriber configured reply, caption appending
+- [x] Mock the transcriber and fetchTelegramFileBytes in tests
 
 ### Task 8: Docs and cleanup
 - [ ] Update `src/channels/README.md` to document voice message support, limits, and configuration

@@ -531,228 +531,230 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		]);
 	});
 
-	test("handleTelegramVoiceMessage queues transcribed voice content with caption text", async () => {
-		const queuedTurns: Array<{ commandText: string; content: unknown }> = [];
-		const sentMessages: string[] = [];
-		const session = createTelegramSessionFixture({
-			transcribe: async (audioBytes: Uint8Array, mimeType: string) => {
-				expect(audioBytes).toEqual(Uint8Array.from([4, 5, 6]));
-				expect(mimeType).toBe("audio/ogg");
-				return "hello world";
-			},
+	describe("message:voice", () => {
+		test("queues transcribed voice content with appended caption text", async () => {
+			const queuedTurns: Array<{ commandText: string; content: unknown }> = [];
+			const sentMessages: string[] = [];
+			const session = createTelegramSessionFixture({
+				transcribe: async (audioBytes: Uint8Array, mimeType: string) => {
+					expect(audioBytes).toEqual(Uint8Array.from([4, 5, 6]));
+					expect(mimeType).toBe("audio/ogg");
+					return "hello world";
+				},
+			});
+
+			await handleTelegramVoiceMessage(
+				{
+					session,
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					voice: { file_size: 512 },
+					caption: "follow up question",
+					getFile: async () => ({ file_path: "voice/file_1.ogg" }),
+				},
+				{
+					fetchVoice: async (file, botToken) => {
+						expect(file).toEqual({ file_path: "voice/file_1.ogg" });
+						expect(botToken).toBe("telegram-token");
+						return {
+							data: Uint8Array.from([4, 5, 6]),
+							filePath: "voice/file_1.ogg",
+						};
+					},
+					queueTurn: async (_session, _bot, _chatId, commandText, content) => {
+						queuedTurns.push({ commandText, content });
+					},
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(queuedTurns).toEqual([
+				{
+					commandText: "",
+					content: "_Transcribed: hello world_\n\nfollow up question",
+				},
+			]);
+			expect(sentMessages).toEqual([]);
 		});
 
-		await handleTelegramVoiceMessage(
-			{
-				session,
-				bot: {} as Bot,
-				chatId: "123",
-				caller: {
-					id: "telegram:123",
-					entrypoint: "telegram",
-					externalId: "123",
-				},
-				store: {} as PermissionsStore,
-				webShare: undefined,
-				botToken: "telegram-token",
-				voice: { file_size: 512 },
-				caption: "follow up question",
-				getFile: async () => ({ file_path: "voice/file_1.ogg" }),
-			},
-			{
-				fetchVoice: async (file, botToken) => {
-					expect(file).toEqual({ file_path: "voice/file_1.ogg" });
-					expect(botToken).toBe("telegram-token");
-					return {
-						data: Uint8Array.from([4, 5, 6]),
-						filePath: "voice/file_1.ogg",
-					};
-				},
-				queueTurn: async (_session, _bot, _chatId, commandText, content) => {
-					queuedTurns.push({ commandText, content });
-				},
-				sendMessage: async (_bot, _chatId, text) => {
-					sentMessages.push(text);
-				},
-			},
-		);
+		test("rejects oversized audio before download", async () => {
+			const sentMessages: string[] = [];
+			let fetched = false;
+			let transcribed = false;
 
-		expect(queuedTurns).toEqual([
-			{
-				commandText: "",
-				content: "_Transcribed: hello world_\n\nfollow up question",
-			},
-		]);
-		expect(sentMessages).toEqual([]);
-	});
-
-	test("handleTelegramVoiceMessage rejects oversized audio before download", async () => {
-		const sentMessages: string[] = [];
-		let fetched = false;
-		let transcribed = false;
-
-		await handleTelegramVoiceMessage(
-			{
-				session: createTelegramSessionFixture({
-					transcribe: async () => {
-						transcribed = true;
-						return "ignored";
+			await handleTelegramVoiceMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => {
+							transcribed = true;
+							return "ignored";
+						},
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
 					},
-				}),
-				bot: {} as Bot,
-				chatId: "123",
-				caller: {
-					id: "telegram:123",
-					entrypoint: "telegram",
-					externalId: "123",
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					voice: { file_size: 1_048_577 },
+					getFile: async () => ({ file_path: "voice/file_1.ogg" }),
 				},
-				store: {} as PermissionsStore,
-				webShare: undefined,
-				botToken: "telegram-token",
-				voice: { file_size: 1_048_577 },
-				getFile: async () => ({ file_path: "voice/file_1.ogg" }),
-			},
-			{
-				fetchVoice: async () => {
-					fetched = true;
-					return {
-						data: Uint8Array.from([1]),
-						filePath: "voice/file_1.ogg",
-					};
-				},
-				queueTurn: async () => undefined,
-				sendMessage: async (_bot, _chatId, text) => {
-					sentMessages.push(text);
-				},
-			},
-		);
-
-		expect(sentMessages).toEqual(["Voice message is too large"]);
-		expect(fetched).toBe(false);
-		expect(transcribed).toBe(false);
-	});
-
-	test("handleTelegramVoiceMessage surfaces transcription errors", async () => {
-		const sentMessages: string[] = [];
-
-		await handleTelegramVoiceMessage(
-			{
-				session: createTelegramSessionFixture({
-					transcribe: async () => {
-						throw new Error("backend unavailable");
+				{
+					fetchVoice: async () => {
+						fetched = true;
+						return {
+							data: Uint8Array.from([1]),
+							filePath: "voice/file_1.ogg",
+						};
 					},
-				}),
-				bot: {} as Bot,
-				chatId: "123",
-				caller: {
-					id: "telegram:123",
-					entrypoint: "telegram",
-					externalId: "123",
-				},
-				store: {} as PermissionsStore,
-				webShare: undefined,
-				botToken: "telegram-token",
-				voice: { file_size: 42 },
-				getFile: async () => ({ file_path: "voice/file_1.ogg" }),
-			},
-			{
-				fetchVoice: async () => ({
-					data: Uint8Array.from([1, 2, 3]),
-					filePath: "voice/file_1.ogg",
-				}),
-				queueTurn: async () => undefined,
-				sendMessage: async (_bot, _chatId, text) => {
-					sentMessages.push(text);
-				},
-			},
-		);
-
-		expect(sentMessages).toEqual([
-			"Transcription failed: backend unavailable",
-		]);
-	});
-
-	test("handleTelegramVoiceMessage surfaces download errors", async () => {
-		const sentMessages: string[] = [];
-		let transcribed = false;
-
-		await handleTelegramVoiceMessage(
-			{
-				session: createTelegramSessionFixture({
-					transcribe: async () => {
-						transcribed = true;
-						return "ignored";
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
 					},
-				}),
-				bot: {} as Bot,
-				chatId: "123",
-				caller: {
-					id: "telegram:123",
-					entrypoint: "telegram",
-					externalId: "123",
 				},
-				store: {} as PermissionsStore,
-				webShare: undefined,
-				botToken: "telegram-token",
-				voice: { file_size: 42 },
-				getFile: async () => ({ file_path: "voice/file_1.ogg" }),
-			},
-			{
-				fetchVoice: async () => {
-					throw new Error("status 404");
-				},
-				queueTurn: async () => undefined,
-				sendMessage: async (_bot, _chatId, text) => {
-					sentMessages.push(text);
-				},
-			},
-		);
+			);
 
-		expect(sentMessages).toEqual([
-			"Failed to download voice message: status 404",
-		]);
-		expect(transcribed).toBe(false);
-	});
+			expect(sentMessages).toEqual(["Voice message is too large"]);
+			expect(fetched).toBe(false);
+			expect(transcribed).toBe(false);
+		});
 
-	test("handleTelegramVoiceMessage replies when no transcriber is configured", async () => {
-		const sentMessages: string[] = [];
-		let fetched = false;
+		test("surfaces transcription errors", async () => {
+			const sentMessages: string[] = [];
 
-		await handleTelegramVoiceMessage(
-			{
-				session: createTelegramSessionFixture(new NoOpTranscriber()),
-				bot: {} as Bot,
-				chatId: "123",
-				caller: {
-					id: "telegram:123",
-					entrypoint: "telegram",
-					externalId: "123",
+			await handleTelegramVoiceMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => {
+							throw new Error("backend unavailable");
+						},
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					voice: { file_size: 42 },
+					getFile: async () => ({ file_path: "voice/file_1.ogg" }),
 				},
-				store: {} as PermissionsStore,
-				webShare: undefined,
-				botToken: "telegram-token",
-				voice: { file_size: 42 },
-				getFile: async () => ({ file_path: "voice/file_1.ogg" }),
-			},
-			{
-				fetchVoice: async () => {
-					fetched = true;
-					return {
-						data: Uint8Array.from([1]),
+				{
+					fetchVoice: async () => ({
+						data: Uint8Array.from([1, 2, 3]),
 						filePath: "voice/file_1.ogg",
-					};
+					}),
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
 				},
-				queueTurn: async () => undefined,
-				sendMessage: async (_bot, _chatId, text) => {
-					sentMessages.push(text);
-				},
-			},
-		);
+			);
 
-		expect(sentMessages).toEqual([
-			"Voice messages are not supported on this server.",
-		]);
-		expect(fetched).toBe(false);
+			expect(sentMessages).toEqual([
+				"Transcription failed: backend unavailable",
+			]);
+		});
+
+		test("surfaces download errors", async () => {
+			const sentMessages: string[] = [];
+			let transcribed = false;
+
+			await handleTelegramVoiceMessage(
+				{
+					session: createTelegramSessionFixture({
+						transcribe: async () => {
+							transcribed = true;
+							return "ignored";
+						},
+					}),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					voice: { file_size: 42 },
+					getFile: async () => ({ file_path: "voice/file_1.ogg" }),
+				},
+				{
+					fetchVoice: async () => {
+						throw new Error("status 404");
+					},
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual([
+				"Failed to download voice message: status 404",
+			]);
+			expect(transcribed).toBe(false);
+		});
+
+		test("replies when no transcriber is configured", async () => {
+			const sentMessages: string[] = [];
+			let fetched = false;
+
+			await handleTelegramVoiceMessage(
+				{
+					session: createTelegramSessionFixture(new NoOpTranscriber()),
+					bot: {} as Bot,
+					chatId: "123",
+					caller: {
+						id: "telegram:123",
+						entrypoint: "telegram",
+						externalId: "123",
+					},
+					store: {} as PermissionsStore,
+					webShare: undefined,
+					botToken: "telegram-token",
+					voice: { file_size: 42 },
+					getFile: async () => ({ file_path: "voice/file_1.ogg" }),
+				},
+				{
+					fetchVoice: async () => {
+						fetched = true;
+						return {
+							data: Uint8Array.from([1]),
+							filePath: "voice/file_1.ogg",
+						};
+					},
+					queueTurn: async () => undefined,
+					sendMessage: async (_bot, _chatId, text) => {
+						sentMessages.push(text);
+					},
+				},
+			);
+
+			expect(sentMessages).toEqual([
+				"Voice messages are not supported on this server.",
+			]);
+			expect(fetched).toBe(false);
+		});
 	});
 
 	test("fetchTelegramFileBytes downloads Telegram-hosted image bytes", async () => {
