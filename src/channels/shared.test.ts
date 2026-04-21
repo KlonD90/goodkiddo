@@ -871,7 +871,7 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 			maybeAutoCompactAndSeed(session, makeMessages(["q1", "a1"]), "next", () =>
 				"rotated-thread",
 			),
-		).rejects.toThrow("persist failed");
+		).rejects.toThrow("Failed to persist thread ID change from test-thread to rotated-thread");
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 		await close();
@@ -982,7 +982,7 @@ describe("maybeResumeCompactAndSeed", () => {
 			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () =>
 				"rotated-thread",
 			),
-		).rejects.toThrow("persist failed");
+		).rejects.toThrow("Failed to persist thread ID change from test-thread to rotated-thread");
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 		expect(session.needsResumeCompaction).toBe(true);

@@ -12,3 +12,7 @@ export function buildPdfContent(pages: PdfPage[], filename: string): string {
 
 	return `${header}\n\n${pageTexts.join("\n\n")}`;
 }
+
+export function buildPdfText(pages: PdfPage[]): string {
+	return pages.map((page) => page.text).join("\n\n");
+}

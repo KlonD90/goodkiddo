@@ -191,7 +191,7 @@ describe("rotateThread", () => {
 				backend,
 				mintThreadId: () => "thread-after",
 			}),
-		).rejects.toThrow("persist failed");
+		).rejects.toThrow("Failed to persist thread ID change from thread-before to thread-after");
 		expect(session.threadId).toBe("thread-before");
 	});
 });

@@ -19,7 +19,7 @@ import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
 import {
 	PDF_MAX_BYTES,
 } from "../capabilities/pdf/constants";
-import { buildPdfContent } from "../capabilities/pdf/content";
+import { buildPdfContent, buildPdfText } from "../capabilities/pdf/content";
 import {
 	type PdfExtractor,
 	NoOpPdfExtractor,
@@ -2048,6 +2048,7 @@ export async function handleTelegramPdfMessage(
 		}
 
 		const content = buildPdfContent(result.pages, params.filename);
+		const currentUserText = buildPdfText(result.pages);
 		await queueTurn(
 			params.session,
 			params.bot,
@@ -2057,6 +2058,7 @@ export async function handleTelegramPdfMessage(
 			params.caller,
 			params.store,
 			params.webShare,
+			currentUserText,
 		);
 	} catch (error) {
 		const message =

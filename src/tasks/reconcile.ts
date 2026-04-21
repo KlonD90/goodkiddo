@@ -64,9 +64,26 @@ function hasMarker(text: string, markers: readonly string[]): boolean {
 
 function hasCompletionIntent(message: string): boolean {
 	if (
-		message.includes(" not done ") ||
-		message.includes(" isnt done ") ||
-		message.includes(" is not done ")
+		message.includes(" not done") ||
+		message.includes(" isnt done") ||
+		message.includes(" is not done") ||
+		message.includes(" didn't ") ||
+		message.includes(" dont ") ||
+		message.includes(" doesn't ") ||
+		message.includes(" isn't ") ||
+		message.includes(" aren't ") ||
+		message.includes(" wasn't ") ||
+		message.includes(" weren't ") ||
+		message.includes(" hasn't ") ||
+		message.includes(" haven't ") ||
+		message.includes(" hadn't ") ||
+		message.includes(" not completed") ||
+		message.includes(" not finished") ||
+		message.includes(" hasn't been done") ||
+		message.includes(" haven't been done") ||
+		message.includes(" hadn't been done") ||
+		message.includes(" not done yet") ||
+		message.includes(" not yet done")
 	) {
 		return false;
 	}

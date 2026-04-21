@@ -420,7 +420,8 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		expect(session.pendingCompactionSeed).toBeUndefined();
 	});
 
-	test("sets pendingTaskCheck for the next substantive turn after /new_thread", async () => {
+	test("sets pendingTaskCheck for the next substantive turn after /new_thread when compaction is configured", async () => {
+		const { store, close } = createTempStore();
 		const session = createStubSession("thread-task-check", [
 			{ role: "user", content: "hi" },
 		]);
@@ -433,10 +434,12 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 			model,
 			backend,
 			mintThreadId: () => "thread-task-check-next",
+			compaction: { caller: "alice", store },
 		};
 
 		await maybeHandleSessionCommand("/new_thread", ctx);
 		expect(session.pendingTaskCheck).toBe(true);
+		await close();
 	});
 
 	test("recentTurns in seed only includes last 2 turns from old thread", async () => {

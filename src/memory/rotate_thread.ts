@@ -130,7 +130,12 @@ export async function rotateThread(options: {
 	await appendLog(backend, "thread_closed", summary);
 
 	const newThreadId = mintThreadId();
-	await session.persistThreadId?.(newThreadId);
+	const priorThreadId = session.threadId;
+	try {
+		await session.persistThreadId?.(newThreadId);
+	} catch {
+		throw new Error(`Failed to persist thread ID change from ${priorThreadId} to ${newThreadId}`);
+	}
 	session.threadId = newThreadId;
 	session.needsResumeCompaction = false;
 
