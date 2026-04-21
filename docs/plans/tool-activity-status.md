@@ -13,10 +13,10 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - `bun test src/channels/shared.test.ts`
 
 ### Task 1: Define the status emitter contract
-- [ ] Add a `StatusEmitter` type describing a single method that accepts a caller/thread identifier and a short message string and returns a promise.
-- [ ] Add a no-op default emitter used when no channel supports status output, and make it easy to pass around in tests.
-- [ ] Document the contract in `src/tools/README.md` (or inline if no README) so it is clear status is ephemeral, non-replayed, and must never throw through to the tool caller.
-- [ ] Add unit tests for the default emitter and the wrap-vs-no-op fallback behavior.
+- [x] Add a `StatusEmitter` type describing a single method that accepts a caller/thread identifier and a short message string and returns a promise.
+- [x] Add a no-op default emitter used when no channel supports status output, and make it easy to pass around in tests.
+- [x] Document the contract in `src/tools/README.md` (or inline if no README) so it is clear status is ephemeral, non-replayed, and must never throw through to the tool caller.
+- [x] Add unit tests for the default emitter and the wrap-vs-no-op fallback behavior.
 
 ### Task 2: Build locale resolution utilities
 - [ ] Create a small `src/i18n/locale.ts` module that defines the set of supported locales (`en`, `ru`, `es`) and a `resolveLocale(hint)` function that normalizes inputs (strips region, lowercases), falls back to `defaultStatusLocale` from config, then to `en`.
