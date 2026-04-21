@@ -6,6 +6,7 @@ import {
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
+import { NoOpPdfExtractor } from "../capabilities/pdf/extractor";
 import type { AppConfig } from "../config";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -70,6 +71,7 @@ const createTelegramSessionFixture = (
 		model: {} as never,
 		refreshAgent: async () => {},
 		transcriber,
+		pdfExtractor: new NoOpPdfExtractor(),
 		pendingApprovals: new Map(),
 	}) as Awaited<ReturnType<typeof ensureTelegramSession>>;
 
@@ -184,6 +186,7 @@ describe("telegram channel", () => {
 				},
 				undefined,
 				transcriber,
+				new NoOpPdfExtractor(),
 			);
 
 			expect(session.transcriber).toBe(transcriber);
@@ -907,6 +910,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			model: {} as never,
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -949,6 +953,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			model: {} as never,
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
 			pendingApprovals: new Map(),
 		};
 
@@ -996,6 +1001,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			model: {} as never,
 			refreshAgent: async () => {},
 			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",

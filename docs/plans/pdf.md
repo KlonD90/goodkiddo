@@ -57,10 +57,10 @@ Handle Telegram `message:document` updates where the document is a PDF. Download
 - [x] Create `src/capabilities/pdf/fetch.ts` — reuse `fetchTelegramFileBytes` from the photo handler (same download URL pattern, documents use the same API)
 
 ### Task 4: Wire PDF extractor into telegram channel
-- [ ] Add `pdfExtractor?: PdfExtractor` field to `ChannelRunOptions` in `src/channels/types.ts`
-- [ ] In `telegramChannel.run()`, construct a `PdfExtractExtractor`, pass via `ChannelRunOptions`
-- [ ] In `ensureTelegramSession`, receive `pdfExtractor` from options and attach to the session
-- [ ] Add `pdfExtractor: PdfExtractor` field to `TelegramAgentSession`
+- [x] Add `pdfExtractor?: PdfExtractor` field to `ChannelRunOptions` in `src/channels/types.ts`
+- [x] In `telegramChannel.run()`, construct a `PdfExtractExtractor`, pass via `ChannelRunOptions`
+- [x] In `ensureTelegramSession`, receive `pdfExtractor` from options and attach to the session
+- [x] Add `pdfExtractor: PdfExtractor` field to `TelegramAgentSession`
 
 ### Task 5: Add PDF `message:document` handler in telegram.ts
 - [ ] Add `bot.on("message:document", ...)` handler that checks `ctx.message.document.mime_type === "application/pdf"`

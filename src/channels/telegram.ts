@@ -16,6 +16,11 @@ import {
 	type Transcriber,
 } from "../capabilities/voice/transcriber";
 import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
+import {
+	type PdfExtractor,
+	NoOpPdfExtractor,
+} from "../capabilities/pdf/extractor";
+import { PdfExtractExtractor } from "../capabilities/pdf/pdf_extract_extractor";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
 import { readThreadMessages } from "../memory/rotate_thread";
@@ -96,6 +101,7 @@ type TelegramAgentSession = ChannelAgentSession & {
 	queue: TelegramQueuedTurn[];
 	pendingApprovals: Map<string, PendingApproval>;
 	transcriber: Transcriber;
+	pdfExtractor: PdfExtractor;
 };
 
 type TelegramTextContentBlock = {
@@ -1519,6 +1525,7 @@ export async function ensureTelegramSession(
 	outbound: OutboundChannel,
 	webShare: ChannelRunOptions["webShare"],
 	transcriber: Transcriber,
+	pdfExtractor: PdfExtractor,
 ): Promise<TelegramAgentSession> {
 	const existing = sessions.get(chatId);
 	if (existing) return existing;
@@ -1542,6 +1549,7 @@ export async function ensureTelegramSession(
 		queue: [],
 		pendingApprovals: new Map(),
 		transcriber,
+		pdfExtractor,
 	};
 	sessions.set(chatId, telegramSession);
 	return telegramSession;
@@ -1977,6 +1985,8 @@ export const telegramChannel: AppChannel = {
 		const webShare = options?.webShare;
 		const transcriber =
 			options?.transcriber ?? createTelegramTranscriber(config);
+		const pdfExtractor =
+			options?.pdfExtractor ?? new PdfExtractExtractor();
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });
@@ -2050,6 +2060,7 @@ export const telegramChannel: AppChannel = {
 				outbound,
 				webShare,
 				transcriber,
+				pdfExtractor,
 			);
 
 			await handleTelegramQueuedTurn(
@@ -2084,6 +2095,7 @@ export const telegramChannel: AppChannel = {
 				outbound,
 				webShare,
 				transcriber,
+				pdfExtractor,
 			);
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 
@@ -2155,6 +2167,7 @@ export const telegramChannel: AppChannel = {
 				outbound,
 				webShare,
 				transcriber,
+				pdfExtractor,
 			);
 
 			await handleTelegramVoiceMessage({
