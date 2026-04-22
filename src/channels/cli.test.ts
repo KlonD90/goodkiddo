@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { buildSessionRuntimeMessages } from "./shared";
 import { CliOutboundChannel, seedCliUser } from "./cli";
 import { createStatusEmitter } from "../tools/status_emitter";
 import { resolveLocale, extractLocaleFromCli } from "../i18n/locale";
@@ -111,5 +112,36 @@ describe("cli status emitter", () => {
 			process.env.LANG = originalLang ?? "";
 			process.env.LC_ALL = originalLcAll ?? "";
 		}
+	});
+
+	test("buildSessionRuntimeMessages appends compacted runtime context for shared channel sessions", () => {
+		const messages = buildSessionRuntimeMessages(
+			{
+				pendingCompactionSeed: {
+					summary: {
+						current_goal: "Ship release",
+						decisions: ["Use draft PR"],
+						constraints: [],
+						unfinished_work: ["write tests"],
+						pending_approvals: [],
+						important_artifacts: ["docs/plan.md"],
+					},
+					recentTurns: [{ role: "user", content: "latest turn" }],
+				},
+				pendingTaskCheckContext: "Auto-completed task.",
+			},
+			[{ role: "assistant", content: "stored reply" }],
+		);
+
+		expect(messages).toHaveLength(2);
+		expect(messages[0]).toMatchObject({
+			role: "assistant",
+			content: "stored reply",
+		});
+		expect(messages[1]).toMatchObject({
+			role: "system",
+		});
+		expect(messages[1]?.content).toContain("Compacted Conversation Context");
+		expect(messages[1]?.content).toContain("Auto-completed task.");
 	});
 });

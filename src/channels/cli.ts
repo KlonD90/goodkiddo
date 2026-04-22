@@ -20,9 +20,8 @@ import {
 	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
-	maybeAutoCompactAndSeed,
 	maybeRunPendingTaskCheck,
-	maybeResumeCompactAndSeed,
+	prepareSessionForIncomingTurn,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 import { createStatusEmitter } from "../tools/status_emitter";
@@ -193,23 +192,12 @@ export const cliChannel: AppChannel = {
 					session.agent,
 					session.threadId,
 				);
-				let needsRefresh = false;
-				const resumed = await maybeResumeCompactAndSeed(
+				const preparedTurn = await prepareSessionForIncomingTurn(
 					session,
 					currentMessages,
+					userInput,
 					mintThreadId,
 				);
-				if (!resumed) {
-					const compacted = await maybeAutoCompactAndSeed(
-						session,
-						currentMessages,
-						userInput,
-						mintThreadId,
-					);
-					needsRefresh = compacted;
-				} else {
-					needsRefresh = true;
-				}
 				const taskCheck = await maybeRunPendingTaskCheck(session, userInput);
 				if (taskCheck.handled) {
 					clearInterval(spinner);
@@ -217,7 +205,7 @@ export const cliChannel: AppChannel = {
 					console.log(`${taskCheck.reply ?? ""}\n`);
 					continue;
 				}
-				if (needsRefresh || taskCheck.needsRefresh) {
+				if (preparedTurn.compacted || taskCheck.needsRefresh) {
 					await session.refreshAgent();
 				}
 				const invokeMessages = buildInvokeMessages(session, {

@@ -67,29 +67,7 @@ export class CapabilityRegistry {
 		}
 
 		const result = await this.processWith(capability, { bytes, metadata });
-		if (!result.ok || budget === undefined) {
-			return result;
-		}
-
-		const attachmentTokens = estimateAttachmentTokens(result.value);
-		const decision = decideAttachmentBudget({
-			attachmentTokens,
-			currentRuntimeTokens: budget.currentRuntimeTokens,
-			config: budget.config,
-		});
-
-		if (decision.kind === "reject") {
-			return {
-				ok: false,
-				userMessage: formatTooLargeMessage(capability.name, decision),
-			};
-		}
-
-		if (decision.kind === "compact_then_inject") {
-			await budget.compact();
-		}
-
-		return result;
+		return applyAttachmentBudgetToResult(capability.name, result, budget);
 	}
 
 	async processWith(
@@ -116,9 +94,42 @@ function formatUnsupportedMessage(metadata: FileMetadata): string {
 	return `Unsupported file type: ${descriptor}.`;
 }
 
-function formatTooLargeMessage(
+export async function applyAttachmentBudgetToResult(
 	capabilityName: string,
-	decision: Extract<AttachmentBudgetDecision, { kind: "reject" }>,
+	result: CapabilityResult,
+	budget?: CapabilityHandleBudget,
+): Promise<CapabilityResult> {
+	if (!result.ok || budget === undefined) {
+		return result;
+	}
+
+	const attachmentTokens = estimateAttachmentTokens(result.value);
+	const decision = decideAttachmentBudget({
+		attachmentTokens,
+		currentRuntimeTokens: budget.currentRuntimeTokens,
+		config: budget.config,
+	});
+
+	if (decision.kind === "reject") {
+		return {
+			ok: false,
+			userMessage: formatTooLargeMessage(capabilityName, decision),
+		};
+	}
+
+	if (decision.kind === "compact_then_inject") {
+		await budget.compact();
+	}
+
+	return result;
+}
+
+export function formatTooLargeMessage(
+	capabilityName: string,
+	decision: Pick<
+		Extract<AttachmentBudgetDecision, { kind: "reject" }>,
+		"attachmentTokens" | "maxTokens"
+	>,
 ): string {
 	const attachmentType = userFacingAttachmentType(capabilityName);
 	return `This ${attachmentType} is too large for a single turn (≈${decision.attachmentTokens} tokens, max ${decision.maxTokens}). Please send a smaller file or split it.`;

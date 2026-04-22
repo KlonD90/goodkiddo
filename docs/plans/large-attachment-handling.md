@@ -67,13 +67,13 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Add tests in `src/capabilities/registry.test.ts` covering: no-budget passthrough, reject path, compact-then-inject path (mock `compact`), fit path, and that `compact` is not called on reject.
 
 ### Task 5: Supply runtime-token and compaction plumbing from channels
-- [ ] Identify the channel/session code that currently calls `CapabilityRegistry.handle` for each entrypoint (Telegram: `src/channels/telegram.ts`; CLI: `src/channels/cli.ts`; any shared helper in `src/channels/shared.ts`).
-- [ ] At each call site, build the `budget` parameter:
+- [x] Identify the channel/session code that currently calls `CapabilityRegistry.handle` for each entrypoint (Telegram: `src/channels/telegram.ts`; CLI: `src/channels/cli.ts`; any shared helper in `src/channels/shared.ts`).
+- [x] At each call site, build the `budget` parameter:
   - `config` from `AppConfig` (map the four new fields).
   - `currentRuntimeTokens` by calling `estimateTokens` from `src/checkpoints/compaction_trigger.ts` against the current runtime-context messages. Reuse the same accessor used to assemble prompts in `src/memory/runtime_context.ts`.
   - `compact` closure that calls `triggerOnOversizedAttachment` with the already-available `CompactionContext` (caller, threadId, messages, model, store) and then refreshes the local messages/runtime view so the subsequent injection sees the compacted state.
-- [ ] Guard against double compaction: if a forced checkpoint was created earlier in the same turn (message_limit/token_limit path), skip the `oversized_attachment` trigger but re-run the budget decision against the fresh state; if it now fits, proceed; if it still does not, reject.
-- [ ] Update channel tests in `src/channels/telegram.test.ts` and `src/channels/cli.test.ts` to cover: oversized attachment rejection, mid-range attachment triggering compaction, small attachment unchanged.
+- [x] Guard against double compaction: if a forced checkpoint was created earlier in the same turn (message_limit/token_limit path), skip the `oversized_attachment` trigger but re-run the budget decision against the fresh state; if it now fits, proceed; if it still does not, reject.
+- [x] Update channel tests in `src/channels/telegram.test.ts` and `src/channels/cli.test.ts` to cover: oversized attachment rejection, mid-range attachment triggering compaction, small attachment unchanged.
 
 ### Task 6: Optional user notice when compaction fires for attachment
 - [ ] Add a short, non-blocking status reply (e.g. `"Summarizing older messages to make room for this document…"`) emitted before injection when `kind === "compact_then_inject"`. Route through the existing status/ephemerality path in `src/channels/` (see `src/channels/README.md` and `src/tools/status_ephemerality.test.ts` for conventions).

@@ -3,7 +3,9 @@ import type { BackendProtocol } from "deepagents";
 import { type AppAgentBundle, createAppAgent } from "../app";
 import {
   type CompactionThresholds,
+  estimateTokens,
   maybeCompactByThresholds,
+  triggerOnOversizedAttachment,
   triggerOnSessionResume,
 } from "../checkpoints/compaction_trigger";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
@@ -269,6 +271,35 @@ export async function maybeResumeCompactAndSeed(
   return true;
 }
 
+export async function compactSessionForOversizedAttachment(
+  session: ChannelAgentSession,
+  messages: ThreadMessage[],
+  mintThreadId: () => string,
+): Promise<ThreadMessage[]> {
+  if (!session.compactionConfig) {
+    throw new Error(
+      "Oversized attachment compaction requires session.compactionConfig.",
+    );
+  }
+
+  const { caller, store } = session.compactionConfig;
+  const checkpoint = await triggerOnOversizedAttachment({
+    caller,
+    threadId: session.threadId,
+    messages,
+    model: session.model,
+    store,
+  });
+
+  await rotateSessionThread(session, mintThreadId());
+  session.pendingCompactionSeed = {
+    summary: deserializeCheckpointSummary(checkpoint.summaryPayload),
+    recentTurns: extractRecentTurns(messages, 2),
+  };
+  await session.refreshAgent();
+  return readThreadMessages(session.agent, session.threadId);
+}
+
 export async function recoverPendingSeedForEmptyThread(
   session: ChannelAgentSession,
   caller: string,
@@ -337,6 +368,39 @@ export async function maybeAutoCompactAndSeed(
   return true;
 }
 
+export async function prepareSessionForIncomingTurn(
+  session: ChannelAgentSession,
+  messages: ThreadMessage[],
+  pendingUserContent: unknown,
+  mintThreadId: () => string,
+): Promise<{ currentMessages: ThreadMessage[]; compacted: boolean }> {
+  const resumed = await maybeResumeCompactAndSeed(
+    session,
+    messages,
+    mintThreadId,
+  );
+
+  let compacted = resumed;
+  if (!resumed) {
+    compacted = await maybeAutoCompactAndSeed(
+      session,
+      messages,
+      pendingUserContent,
+      mintThreadId,
+    );
+  }
+
+  if (!compacted) {
+    return { currentMessages: messages, compacted: false };
+  }
+
+  await session.refreshAgent();
+  return {
+    currentMessages: await readThreadMessages(session.agent, session.threadId),
+    compacted: true,
+  };
+}
+
 export async function maybeRunPendingTaskCheck(
   session: ChannelAgentSession,
   currentUserContent: unknown,
@@ -386,8 +450,42 @@ export const extractTextFromContent = (content: unknown): string => {
   return extractContentText(content);
 };
 
+export function buildSessionRuntimeMessages(
+  session: Pick<
+    ChannelAgentSession,
+    "pendingCompactionSeed" | "pendingTaskCheckContext"
+  >,
+  allMessages: ThreadMessage[],
+): ThreadMessage[] {
+  const runtimeContext = renderSessionRuntimeContext(session);
+  if (!runtimeContext) {
+    return allMessages;
+  }
+
+  return [
+    ...allMessages,
+    {
+      role: "system",
+      content: runtimeContext,
+      estimatedTokens: Math.ceil(runtimeContext.length / 4),
+    },
+  ];
+}
+
+export function estimateSessionRuntimeTokens(
+  session: Pick<
+    ChannelAgentSession,
+    "pendingCompactionSeed" | "pendingTaskCheckContext"
+  >,
+  allMessages: ThreadMessage[],
+): number {
+  return estimateTokens(buildSessionRuntimeMessages(session, allMessages));
+}
+
 function renderSessionRuntimeContext(
-  session: ChannelAgentSession | undefined,
+  session:
+    | Pick<ChannelAgentSession, "pendingCompactionSeed" | "pendingTaskCheckContext">
+    | undefined,
 ): string | undefined {
   if (!session) return undefined;
   const blocks: string[] = [];

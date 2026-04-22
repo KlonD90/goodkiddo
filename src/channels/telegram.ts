@@ -53,12 +53,13 @@ import {
   type ChannelAgentSession,
   clearPendingCompactionSeed,
   clearPendingTaskCheckContext,
+  compactSessionForOversizedAttachment,
   createChannelAgentSession,
+  estimateSessionRuntimeTokens,
   extractAgentReply,
   extractTextFromContent,
-  maybeAutoCompactAndSeed,
-  maybeResumeCompactAndSeed,
   maybeRunPendingTaskCheck,
+  prepareSessionForIncomingTurn,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 import { TimerStore, type TimerRecord } from "../capabilities/timers/store";
@@ -68,10 +69,18 @@ import { fileDataToString } from "../utils/filesystem";
 import { createStatusEmitter } from "../tools/status_emitter";
 import { resolveLocale } from "../i18n/locale";
 import {
+  applyAttachmentBudgetToResult,
   CapabilityRegistry,
   createCapabilityRegistry,
+  formatTooLargeMessage,
 } from "../capabilities/registry";
+import {
+  decideAttachmentBudget,
+  estimateAttachmentTokens,
+  type AttachmentBudgetConfig,
+} from "../capabilities/attachment_budget";
 import type { FileMetadata } from "../capabilities/types";
+import type { ThreadMessage } from "../memory/summarize";
 
 class CombinedSpreadsheetParser implements SpreadsheetParser {
   private readonly csvParser = new CsvParser();
@@ -156,6 +165,17 @@ type TelegramQueuedTurn = {
   content: TelegramUserInput;
   commandText: string;
   currentUserText?: string;
+};
+
+type ProcessTelegramFileHelpers = {
+  sendMessage?: typeof sendTelegramMessage;
+  queueTurn?: typeof handleTelegramQueuedTurn;
+  loadCurrentMessages?: (
+    session: TelegramAgentSession,
+  ) => Promise<ThreadMessage[]>;
+  prepareTurn?: typeof prepareSessionForIncomingTurn;
+  estimateRuntimeTokens?: typeof estimateSessionRuntimeTokens;
+  compactOversizedAttachment?: typeof compactSessionForOversizedAttachment;
 };
 
 type TelegramVoiceFile = {
@@ -1628,27 +1648,13 @@ async function runAgentTurn(
     session.currentUserText =
       queuedTurn.currentUserText ?? extractTextFromContent(queuedTurn.content);
     await session.refreshAgent();
-    const currentMessages = await readThreadMessages(
-      session.agent,
-      session.threadId,
-    );
-    let needsRefresh = false;
-    const resumed = await maybeResumeCompactAndSeed(
+    const currentMessages = await readThreadMessages(session.agent, session.threadId);
+    const preparedTurn = await prepareSessionForIncomingTurn(
       session,
       currentMessages,
+      queuedTurn.content,
       () => mintTelegramThreadId(chatId),
     );
-    if (!resumed) {
-      const compacted = await maybeAutoCompactAndSeed(
-        session,
-        currentMessages,
-        queuedTurn.content,
-        () => mintTelegramThreadId(chatId),
-      );
-      needsRefresh = compacted;
-    } else {
-      needsRefresh = true;
-    }
     const taskCheck = await maybeRunPendingTaskCheck(
       session,
       queuedTurn.currentUserText ?? queuedTurn.content,
@@ -1657,7 +1663,7 @@ async function runAgentTurn(
       await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
       return;
     }
-    if (needsRefresh || taskCheck.needsRefresh) {
+    if (preparedTurn.compacted || taskCheck.needsRefresh) {
       await session.refreshAgent();
     }
     const invokeMessages = buildInvokeMessages(session, {
@@ -1958,7 +1964,24 @@ async function handleTelegramQueuedTurn(
   void pumpQueue(session, bot, chatId);
 }
 
-async function processTelegramFile(
+function buildAttachmentBudgetConfig(config: AppConfig): AttachmentBudgetConfig {
+  return {
+    maxContextWindowTokens: config.maxContextWindowTokens,
+    reserveSummaryTokens: config.contextReserveSummaryTokens,
+    reserveRecentTurnTokens: config.contextReserveRecentTurnTokens,
+    reserveNextTurnTokens: config.contextReserveNextTurnTokens,
+  };
+}
+
+async function loadTelegramCurrentMessages(
+  session: TelegramAgentSession,
+): Promise<ThreadMessage[]> {
+  await session.refreshAgent();
+  return readThreadMessages(session.agent, session.threadId);
+}
+
+export async function processTelegramFile(
+  config: AppConfig,
   registry: CapabilityRegistry,
   session: TelegramAgentSession,
   bot: Bot,
@@ -1970,13 +1993,89 @@ async function processTelegramFile(
     metadata: FileMetadata;
     download: () => Promise<Uint8Array>;
   },
+  helpers: ProcessTelegramFileHelpers = {},
 ): Promise<void> {
+  const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
+  const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
+  const loadCurrentMessages =
+    helpers.loadCurrentMessages ?? loadTelegramCurrentMessages;
+  const prepareTurn = helpers.prepareTurn ?? prepareSessionForIncomingTurn;
+  const estimateRuntimeTokens =
+    helpers.estimateRuntimeTokens ?? estimateSessionRuntimeTokens;
+  const compactOversizedAttachment =
+    helpers.compactOversizedAttachment ?? compactSessionForOversizedAttachment;
+  const capability = registry.match(params.metadata);
   const result = await registry.handle(params.metadata, params.download);
   if (!result.ok) {
-    await sendTelegramMessage(bot, chatId, result.userMessage);
+    await sendMessage(bot, chatId, result.userMessage);
     return;
   }
-  await handleTelegramQueuedTurn(
+
+  if (capability !== null) {
+    const budgetConfig = buildAttachmentBudgetConfig(config);
+    const currentMessages = await loadCurrentMessages(session);
+    const preparedTurn = await prepareTurn(
+      session,
+      currentMessages,
+      result.value.content,
+      () => mintTelegramThreadId(chatId),
+    );
+    const attachmentTokens = estimateAttachmentTokens(result.value);
+    const currentRuntimeTokens = estimateRuntimeTokens(
+      session,
+      preparedTurn.currentMessages,
+    );
+
+    if (preparedTurn.compacted) {
+      const decision = decideAttachmentBudget({
+        attachmentTokens,
+        currentRuntimeTokens,
+        config: budgetConfig,
+      });
+      if (decision.kind !== "fit") {
+        const maxTokens =
+          decision.kind === "reject"
+            ? decision.maxTokens
+            : Math.max(
+                0,
+                budgetConfig.maxContextWindowTokens -
+                  budgetConfig.reserveNextTurnTokens -
+                  currentRuntimeTokens,
+              );
+        await sendMessage(
+          bot,
+          chatId,
+          formatTooLargeMessage(capability.name, {
+            attachmentTokens,
+            maxTokens,
+          }),
+        );
+        return;
+      }
+    } else {
+      const budgetedResult = await applyAttachmentBudgetToResult(
+        capability.name,
+        result,
+        {
+          config: budgetConfig,
+          currentRuntimeTokens,
+          compact: async () => {
+            await compactOversizedAttachment(
+              session,
+              preparedTurn.currentMessages,
+              () => mintTelegramThreadId(chatId),
+            );
+          },
+        },
+      );
+      if (!budgetedResult.ok) {
+        await sendMessage(bot, chatId, budgetedResult.userMessage);
+        return;
+      }
+    }
+  }
+
+  await queueTurn(
     session,
     bot,
     chatId,
@@ -2184,6 +2283,7 @@ export const telegramChannel: AppChannel = {
       const caption = normalizeTelegramCommandText(ctx.message.caption);
 
       await processTelegramFile(
+        config,
         capabilityRegistry,
         resolved.session,
         bot,
@@ -2209,6 +2309,7 @@ export const telegramChannel: AppChannel = {
 
       const document = ctx.message.document;
       await processTelegramFile(
+        config,
         capabilityRegistry,
         resolved.session,
         bot,
