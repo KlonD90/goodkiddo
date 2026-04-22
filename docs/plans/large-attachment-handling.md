@@ -43,12 +43,12 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Add tests in `src/config.test.ts` (or nearest existing config test) covering default, override via env, invalid values.
 
 ### Task 2: Define attachment budget primitives
-- [ ] Create `src/capabilities/attachment_budget.ts` exporting:
+- [x] Create `src/capabilities/attachment_budget.ts` exporting:
   - `estimateAttachmentTokens(output: CapabilityOutput): number` using the same `Math.ceil(length / 4)` heuristic used in `src/checkpoints/compaction_trigger.ts:49`. If `content` is an array, sum text parts only; ignore image bytes.
   - `AttachmentBudgetDecision = { kind: "fit" } | { kind: "compact_then_inject"; attachmentTokens: number } | { kind: "reject"; attachmentTokens: number; maxTokens: number }`.
   - `decideAttachmentBudget(params: { attachmentTokens: number; currentRuntimeTokens: number; config: AttachmentBudgetConfig }): AttachmentBudgetDecision` implementing the rules from the feature DoD.
   - `AttachmentBudgetConfig = { maxContextWindowTokens: number; reserveSummaryTokens: number; reserveRecentTurnTokens: number; reserveNextTurnTokens: number }`.
-- [ ] Create `src/capabilities/attachment_budget.test.ts` covering: comfortably-fits, fits-only-with-compaction, cannot-fit (just over reject threshold), exact boundary cases, zero runtime tokens.
+- [x] Create `src/capabilities/attachment_budget.test.ts` covering: comfortably-fits, fits-only-with-compaction, cannot-fit (just over reject threshold), exact boundary cases, zero runtime tokens.
 
 ### Task 3: Add `oversized_attachment` compaction boundary
 - [ ] Extend `SourceBoundary` in `src/checkpoints/forced_checkpoint_store.ts` to include `"oversized_attachment"`.
