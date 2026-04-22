@@ -5,6 +5,7 @@
 - `docs/plan/` holds high-level feature documents.
 - `docs/plans/` holds execution-ready RALPHEX plans with ordered task sections and runnable validation commands.
 - `src/capabilities/` holds reusable capability modules; voice transcription lives in `src/capabilities/voice/`, PDF document parsing lives in `src/capabilities/pdf/`, and CSV/Excel spreadsheet parsing lives in `src/capabilities/spreadsheet/`.
+- `src/capabilities/attachment_budget.ts` is the shared seam for deciding whether attachment output fits, requires compaction, or must be rejected before injection.
 - Telegram channel behavior, including voice-message, PDF-document, and spreadsheet handling and limits, is documented in `src/channels/README.md`.
 - Voice transcription capability structure and provider extension points are documented in `src/capabilities/voice/README.md`.
 - PDF parsing capability structure and extractor interface are documented in `src/capabilities/pdf/README.md`.

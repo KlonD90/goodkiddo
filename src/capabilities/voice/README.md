@@ -44,3 +44,7 @@ bun tsc --noEmit
 bun test src/channels/telegram.test.ts
 bun test src/capabilities/voice/*.test.ts
 ```
+
+## Runtime Budget
+
+Voice transcription helpers should only produce transcript text and capability output metadata. Attachment-size enforcement is shared in [`src/capabilities/registry.ts`](../registry.ts) via [`src/capabilities/attachment_budget.ts`](../attachment_budget.ts), so provider integrations should not add their own prompt-budget branching.

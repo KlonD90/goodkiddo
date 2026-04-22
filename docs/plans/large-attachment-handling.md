@@ -81,7 +81,7 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Add tests covering flag-on (notice sent) and flag-off (no notice) behavior.
 
 ### Task 7: Docs and discoverability
-- [ ] Add a "Large attachment handling" section to `src/channels/README.md` explaining the three outcomes, the four new config knobs, and the default values.
-- [ ] Add a note to `src/capabilities/pdf/README.md`, `src/capabilities/spreadsheet/README.md`, and `src/capabilities/voice/README.md` pointing to the shared budget enforcement in `src/capabilities/registry.ts` (so capability authors do not reimplement it).
-- [ ] Update `CLAUDE.md` Quick Context to mention `src/capabilities/attachment_budget.ts` as the shared budget seam.
-- [ ] Move the completed `feature-forced-checkpoints-and-conversation-compaction.md` row in `docs/plan/README.md` to show the new feature under "Active plans"; link this execution plan from the feature doc.
+- [x] Add a "Large attachment handling" section to `src/channels/README.md` explaining the three outcomes, the four new config knobs, and the default values.
+- [x] Add a note to `src/capabilities/pdf/README.md`, `src/capabilities/spreadsheet/README.md`, and `src/capabilities/voice/README.md` pointing to the shared budget enforcement in `src/capabilities/registry.ts` (so capability authors do not reimplement it).
+- [x] Update `CLAUDE.md` Quick Context to mention `src/capabilities/attachment_budget.ts` as the shared budget seam.
+- [x] Move the completed `feature-forced-checkpoints-and-conversation-compaction.md` row in `docs/plan/README.md` to show the new feature under "Active plans"; link this execution plan from the feature doc.

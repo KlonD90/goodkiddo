@@ -46,6 +46,25 @@ When an attachment only fits after compaction, Telegram can emit an ephemeral st
 
 When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
 
+## Large Attachment Handling
+
+All attachment capabilities share one runtime-context budget seam in [`src/capabilities/registry.ts`](../capabilities/registry.ts), backed by [`src/capabilities/attachment_budget.ts`](../capabilities/attachment_budget.ts). Channel code supplies the live runtime token count and the compaction callback; capability implementations should only return extracted content.
+
+Three outcomes are possible once a capability returns extracted text:
+
+- fits comfortably: inject the capability output unchanged
+- fits only after compaction: emit the optional status notice, create a forced checkpoint with `sourceBoundary = "oversized_attachment"`, rebuild runtime context, then inject
+- cannot fit at all: reject the attachment and reply with a single "too large for a single turn" message
+
+Configuration knobs:
+
+- `MAX_CONTEXT_WINDOW_TOKENS` — default `150000`
+- `CONTEXT_RESERVE_SUMMARY_TOKENS` — default `2000`
+- `CONTEXT_RESERVE_RECENT_TURN_TOKENS` — default `2000`
+- `CONTEXT_RESERVE_NEXT_TURN_TOKENS` — default `2000`
+
+These knobs reserve room for the forced-checkpoint summary, the recent-turn window, and the upcoming reply/next-turn exchange so attachment injection does not consume the entire model budget.
+
 ## Telegram Formatting
 
 Telegram replies are rendered from normal LLM Markdown, but they are sent to Telegram as `HTML`.

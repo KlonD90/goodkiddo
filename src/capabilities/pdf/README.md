@@ -64,3 +64,7 @@ When a Telegram user sends a PDF:
 ## Configuration
 
 - `ENABLE_PDF_DOCUMENTS=true|false` — defaults to `true`
+
+## Runtime Budget
+
+PDF parsing should only extract text and return a `CapabilityOutput`. Attachment-size enforcement is shared in [`src/capabilities/registry.ts`](../registry.ts) via [`src/capabilities/attachment_budget.ts`](../attachment_budget.ts), so PDF-specific code should not duplicate prompt-budget checks.

@@ -63,3 +63,7 @@ For multi-sheet Excel files, sheets are separated by name headers.
 
 - `ENABLE_SPREADSHEETS=false` disables spreadsheet processing
 - files exceeding `SPREADSHEET_MAX_BYTES` (10 MB) are rejected
+
+## Runtime Budget
+
+Spreadsheet parsers should only return extracted sheet content. Attachment-size enforcement is centralized in [`src/capabilities/registry.ts`](../registry.ts) via [`src/capabilities/attachment_budget.ts`](../attachment_budget.ts), so new spreadsheet formats should not reimplement runtime-context budget checks locally.
