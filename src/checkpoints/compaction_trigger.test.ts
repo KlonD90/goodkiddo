@@ -14,6 +14,7 @@ import {
 	runCompaction,
 	shouldCompactByMessageLimit,
 	shouldCompactByTokenBudget,
+	triggerOnOversizedAttachment,
 	triggerOnSessionResume,
 } from "./compaction_trigger";
 import { ForcedCheckpointStore } from "./forced_checkpoint_store";
@@ -344,6 +345,27 @@ describe("triggerOnSessionResume", () => {
 		expect(record.threadId).toBe("thread-i");
 
 		const latest = await store.readLatest("user-9", "thread-i");
+		expect(latest?.id).toBe(record.id);
+		await close();
+	});
+});
+
+describe("triggerOnOversizedAttachment", () => {
+	test("creates a checkpoint with oversized_attachment boundary", async () => {
+		const { store, close } = createTempStore();
+		const model = createStubModel({ current_goal: "make room for file" });
+		const ctx: CompactionContext = {
+			caller: "user-10",
+			threadId: "thread-j",
+			messages: makeMessages(2, "attachment context"),
+			model,
+			store,
+		};
+
+		const record = await triggerOnOversizedAttachment(ctx);
+		expect(record.sourceBoundary).toBe("oversized_attachment");
+
+		const latest = await store.readLatest("user-10", "thread-j");
 		expect(latest?.id).toBe(record.id);
 		await close();
 	});

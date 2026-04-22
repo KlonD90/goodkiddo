@@ -5,6 +5,7 @@
 //   new_thread     — fired by the /new_thread session command
 //   message_limit  — fired when stored message count reaches the threshold
 //   token_limit    — fired when estimated token count reaches the budget
+//   oversized_attachment — fired to make room before injecting a large attachment
 //   session_resume — reserved for first-message-after-resume (future use)
 //   explicit       — caller-initiated checkpoint, no automatic trigger
 //
@@ -130,4 +131,10 @@ export async function triggerOnSessionResume(
 	context: CompactionContext,
 ): Promise<ForcedCheckpoint> {
 	return runCompaction(context, "session_resume");
+}
+
+export async function triggerOnOversizedAttachment(
+	context: CompactionContext,
+): Promise<ForcedCheckpoint> {
+	return runCompaction(context, "oversized_attachment");
 }

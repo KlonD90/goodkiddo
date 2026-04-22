@@ -51,11 +51,11 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Create `src/capabilities/attachment_budget.test.ts` covering: comfortably-fits, fits-only-with-compaction, cannot-fit (just over reject threshold), exact boundary cases, zero runtime tokens.
 
 ### Task 3: Add `oversized_attachment` compaction boundary
-- [ ] Extend `SourceBoundary` in `src/checkpoints/forced_checkpoint_store.ts` to include `"oversized_attachment"`.
-- [ ] Add a helper in `src/checkpoints/compaction_trigger.ts`:
+- [x] Extend `SourceBoundary` in `src/checkpoints/forced_checkpoint_store.ts` to include `"oversized_attachment"`.
+- [x] Add a helper in `src/checkpoints/compaction_trigger.ts`:
   `triggerOnOversizedAttachment(context: CompactionContext): Promise<ForcedCheckpoint>` that calls `runCompaction(context, "oversized_attachment")`.
-- [ ] Extend `src/checkpoints/compaction_trigger.test.ts` with a test that the new helper fires `runCompaction` with the correct boundary.
-- [ ] Verify `src/memory/runtime_context.ts` treats the new boundary identically to existing boundaries (no special-casing needed); add a regression test in `src/memory/runtime_context.test.ts`.
+- [x] Extend `src/checkpoints/compaction_trigger.test.ts` with a test that the new helper fires `runCompaction` with the correct boundary.
+- [x] Verify `src/memory/runtime_context.ts` treats the new boundary identically to existing boundaries (no special-casing needed); add a regression test in `src/memory/runtime_context.test.ts`.
 
 ### Task 4: Wire budget check into the capability pipeline
 - [ ] Extend `CapabilityRegistry.handle` in `src/capabilities/registry.ts` to accept an optional `budget?: { config: AttachmentBudgetConfig; currentRuntimeTokens: number; compact: () => Promise<void> }` argument. When `budget` is undefined, behavior is unchanged.

@@ -13,6 +13,7 @@ export type SourceBoundary =
 	| "new_thread"
 	| "token_limit"
 	| "message_limit"
+	| "oversized_attachment"
 	| "session_resume"
 	| "explicit";
 

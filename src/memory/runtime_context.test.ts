@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { deserializeCheckpointSummary } from "./checkpoint_compaction";
 import type { CheckpointSummary } from "./checkpoint_compaction";
 import {
 	buildRuntimeContext,
@@ -371,6 +372,35 @@ describe("buildRuntimeContext — with checkpoint", () => {
 		});
 
 		expect(history).toHaveLength(lengthBefore);
+	});
+
+	test("treats oversized-attachment checkpoints the same as other compacted checkpoints", () => {
+		const checkpointRecord = {
+			sourceBoundary: "oversized_attachment" as const,
+			summaryPayload: JSON.stringify(FULL_SUMMARY),
+		};
+
+		const ctx = buildRuntimeContext({
+			checkpoint: deserializeCheckpointSummary(checkpointRecord.summaryPayload),
+			allMessages: makeMessages(
+				["older", "older-reply"],
+				["recent", "recent-reply"],
+			),
+			currentInput: "process the attachment",
+			recentTurnCount: 1,
+		});
+
+		expect(checkpointRecord.sourceBoundary).toBe("oversized_attachment");
+		expect(ctx.messages).toEqual([
+			{
+				role: "system",
+				content: renderCheckpointSummary(FULL_SUMMARY),
+			},
+			{ role: "user", content: "recent" },
+			{ role: "assistant", content: "recent-reply" },
+			{ role: "user", content: "process the attachment" },
+		]);
+		expect(ctx.hasCompaction).toBe(true);
 	});
 });
 
