@@ -1,4 +1,10 @@
 import type { AppConfig } from "../config";
+import {
+	decideAttachmentBudget,
+	estimateAttachmentTokens,
+	type AttachmentBudgetConfig,
+	type AttachmentBudgetDecision,
+} from "./attachment_budget";
 import { createPdfCapability, type PdfCapabilityOptions } from "./pdf/capability";
 import {
 	createSpreadsheetCapability,
@@ -21,6 +27,12 @@ export type CapabilityRegistryOptions = {
 
 export type FileDownloader = () => Promise<Uint8Array>;
 
+export type CapabilityHandleBudget = {
+	config: AttachmentBudgetConfig;
+	currentRuntimeTokens: number;
+	compact: () => Promise<void>;
+};
+
 export class CapabilityRegistry {
 	constructor(private readonly capabilities: readonly FileCapability[]) {}
 
@@ -31,6 +43,7 @@ export class CapabilityRegistry {
 	async handle(
 		metadata: FileMetadata,
 		download: FileDownloader,
+		budget?: CapabilityHandleBudget,
 	): Promise<CapabilityResult> {
 		const capability = this.match(metadata);
 		if (capability === null) {
@@ -53,7 +66,30 @@ export class CapabilityRegistry {
 			return { ok: false, userMessage: `Failed to download file: ${message}` };
 		}
 
-		return this.processWith(capability, { bytes, metadata });
+		const result = await this.processWith(capability, { bytes, metadata });
+		if (!result.ok || budget === undefined) {
+			return result;
+		}
+
+		const attachmentTokens = estimateAttachmentTokens(result.value);
+		const decision = decideAttachmentBudget({
+			attachmentTokens,
+			currentRuntimeTokens: budget.currentRuntimeTokens,
+			config: budget.config,
+		});
+
+		if (decision.kind === "reject") {
+			return {
+				ok: false,
+				userMessage: formatTooLargeMessage(capability.name, decision),
+			};
+		}
+
+		if (decision.kind === "compact_then_inject") {
+			await budget.compact();
+		}
+
+		return result;
 	}
 
 	async processWith(
@@ -78,6 +114,27 @@ function formatUnsupportedMessage(metadata: FileMetadata): string {
 			? metadata.mimeType
 			: (metadata.filename ?? "unknown");
 	return `Unsupported file type: ${descriptor}.`;
+}
+
+function formatTooLargeMessage(
+	capabilityName: string,
+	decision: Extract<AttachmentBudgetDecision, { kind: "reject" }>,
+): string {
+	const attachmentType = userFacingAttachmentType(capabilityName);
+	return `This ${attachmentType} is too large for a single turn (≈${decision.attachmentTokens} tokens, max ${decision.maxTokens}). Please send a smaller file or split it.`;
+}
+
+function userFacingAttachmentType(capabilityName: string): string {
+	switch (capabilityName.toLowerCase()) {
+		case "pdf":
+			return "PDF";
+		case "spreadsheet":
+			return "spreadsheet";
+		case "voice":
+			return "voice message";
+		default:
+			return capabilityName;
+	}
 }
 
 export function createCapabilityRegistry(

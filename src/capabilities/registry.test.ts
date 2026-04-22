@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { AttachmentBudgetConfig } from "./attachment_budget";
 import { CapabilityRegistry } from "./registry";
 import type {
 	CapabilityInput,
@@ -6,6 +7,13 @@ import type {
 	FileCapability,
 	FileMetadata,
 } from "./types";
+
+const DEFAULT_BUDGET_CONFIG: AttachmentBudgetConfig = {
+	maxContextWindowTokens: 20,
+	reserveSummaryTokens: 2,
+	reserveRecentTurnTokens: 2,
+	reserveNextTurnTokens: 2,
+};
 
 function makeCapability(
 	name: string,
@@ -115,6 +123,138 @@ describe("CapabilityRegistry", () => {
 		expect(captured).not.toBeNull();
 		expect(captured!.bytes).toBe(bytes);
 		expect(captured!.metadata).toBe(metadata);
+	});
+
+	test("handle leaves successful results unchanged when no budget is provided", async () => {
+		const expected: CapabilityResult = {
+			ok: true,
+			value: { content: "small", currentUserText: "user text" },
+		};
+		const cap = makeCapability("voice", {
+			matches: () => true,
+			result: expected,
+		});
+		const registry = new CapabilityRegistry([cap]);
+
+		const result = await registry.handle({ mimeType: "audio/ogg" }, async () => {
+			return new Uint8Array([1]);
+		});
+
+		expect(result).toEqual(expected);
+	});
+
+	test("handle rejects oversized attachments with a user-facing message", async () => {
+		let compactCalls = 0;
+		const cap = makeCapability("pdf", {
+			matches: () => true,
+			result: {
+				ok: true,
+				value: {
+					content: "x".repeat(33),
+					currentUserText: "user text",
+				},
+			},
+		});
+		const registry = new CapabilityRegistry([cap]);
+
+		const result = await registry.handle(
+			{ mimeType: "application/pdf" },
+			async () => new Uint8Array([1]),
+			{
+				config: {
+					maxContextWindowTokens: 10,
+					reserveSummaryTokens: 1,
+					reserveRecentTurnTokens: 1,
+					reserveNextTurnTokens: 2,
+				},
+				currentRuntimeTokens: 0,
+				compact: async () => {
+					compactCalls += 1;
+				},
+			},
+		);
+
+		expect(result.ok).toBe(false);
+		if (!result.ok) {
+			expect(result.userMessage).toBe(
+				"This PDF is too large for a single turn (≈9 tokens, max 8). Please send a smaller file or split it.",
+			);
+		}
+		expect(compactCalls).toBe(0);
+	});
+
+	test("handle compacts before returning a mid-range attachment", async () => {
+		let compactCalls = 0;
+		const expected: CapabilityResult = {
+			ok: true,
+			value: {
+				content: "x".repeat(29),
+				currentUserText: "user text",
+			},
+		};
+		const cap = makeCapability("spreadsheet", {
+			matches: () => true,
+			result: expected,
+		});
+		const registry = new CapabilityRegistry([cap]);
+
+		const result = await registry.handle(
+			{ mimeType: "text/csv" },
+			async () => new Uint8Array([1]),
+			{
+				config: {
+					maxContextWindowTokens: 12,
+					reserveSummaryTokens: 2,
+					reserveRecentTurnTokens: 2,
+					reserveNextTurnTokens: 2,
+				},
+				currentRuntimeTokens: 1,
+				compact: async () => {
+					compactCalls += 1;
+				},
+			},
+		);
+
+		expect(result).toEqual(expected);
+		expect(compactCalls).toBe(1);
+	});
+
+	test("handle returns successful attachments directly when they fit the budget", async () => {
+		let compactCalls = 0;
+		const expected: CapabilityResult = {
+			ok: true,
+			value: {
+				content: [
+					{ type: "text", text: "x".repeat(24) },
+					{
+						type: "image",
+						mimeType: "image/png",
+						data: new Uint8Array([1, 2, 3]),
+					},
+				],
+				currentUserText: "user text",
+			},
+		};
+		const cap = makeCapability("voice", {
+			matches: () => true,
+			result: expected,
+		});
+		const registry = new CapabilityRegistry([cap]);
+
+		const result = await registry.handle(
+			{ mimeType: "audio/ogg" },
+			async () => new Uint8Array([1]),
+			{
+				config: DEFAULT_BUDGET_CONFIG,
+				currentRuntimeTokens: 4,
+				compact: async () => {
+					compactCalls += 1;
+				},
+			},
+		);
+
+		expect(result).toEqual(expected);
+		expect(compactCalls).toBe(0);
 	});
 
 	test("processWith converts thrown errors into a user-facing result", async () => {

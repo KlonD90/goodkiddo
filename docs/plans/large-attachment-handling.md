@@ -58,13 +58,13 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Verify `src/memory/runtime_context.ts` treats the new boundary identically to existing boundaries (no special-casing needed); add a regression test in `src/memory/runtime_context.test.ts`.
 
 ### Task 4: Wire budget check into the capability pipeline
-- [ ] Extend `CapabilityRegistry.handle` in `src/capabilities/registry.ts` to accept an optional `budget?: { config: AttachmentBudgetConfig; currentRuntimeTokens: number; compact: () => Promise<void> }` argument. When `budget` is undefined, behavior is unchanged.
-- [ ] After `processWith` succeeds, call `estimateAttachmentTokens` on the `CapabilityOutput`, then `decideAttachmentBudget`.
+- [x] Extend `CapabilityRegistry.handle` in `src/capabilities/registry.ts` to accept an optional `budget?: { config: AttachmentBudgetConfig; currentRuntimeTokens: number; compact: () => Promise<void> }` argument. When `budget` is undefined, behavior is unchanged.
+- [x] After `processWith` succeeds, call `estimateAttachmentTokens` on the `CapabilityOutput`, then `decideAttachmentBudget`.
   - On `"reject"`: return `{ ok: false, userMessage: formatTooLargeMessage(capability.name, decision) }` without invoking the original result.
   - On `"compact_then_inject"`: `await budget.compact()`, then return the original success result.
   - On `"fit"`: return the original success result.
-- [ ] Add `formatTooLargeMessage(capabilityName, decision)` producing `"This <type> is too large for a single turn (≈<N> tokens, max <M>). Please send a smaller file or split it."`. Keep capability-name → user-facing-type mapping small and local (e.g. `pdf → "PDF"`, `spreadsheet → "spreadsheet"`, `voice → "voice message"`, fallback to capability name).
-- [ ] Add tests in `src/capabilities/registry.test.ts` covering: no-budget passthrough, reject path, compact-then-inject path (mock `compact`), fit path, and that `compact` is not called on reject.
+- [x] Add `formatTooLargeMessage(capabilityName, decision)` producing `"This <type> is too large for a single turn (≈<N> tokens, max <M>). Please send a smaller file or split it."`. Keep capability-name → user-facing-type mapping small and local (e.g. `pdf → "PDF"`, `spreadsheet → "spreadsheet"`, `voice → "voice message"`, fallback to capability name).
+- [x] Add tests in `src/capabilities/registry.test.ts` covering: no-budget passthrough, reject path, compact-then-inject path (mock `compact`), fit path, and that `compact` is not called on reject.
 
 ### Task 5: Supply runtime-token and compaction plumbing from channels
 - [ ] Identify the channel/session code that currently calls `CapabilityRegistry.handle` for each entrypoint (Telegram: `src/channels/telegram.ts`; CLI: `src/channels/cli.ts`; any shared helper in `src/channels/shared.ts`).
