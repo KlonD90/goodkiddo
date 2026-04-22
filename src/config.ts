@@ -22,6 +22,10 @@ export type AppConfig = {
 	telegramAllowedChatId: string;
 	usingMode: UsingMode;
 	blockedUserMessage: string;
+	maxContextWindowTokens: number;
+	contextReserveSummaryTokens: number;
+	contextReserveRecentTurnTokens: number;
+	contextReserveNextTurnTokens: number;
 	permissionsMode: "enforce" | "disabled";
 	databaseUrl: string;
 	enableExecute: boolean;
@@ -42,6 +46,10 @@ export type TranscriptionProvider = "openai" | "openrouter";
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
+const DEFAULT_MAX_CONTEXT_WINDOW_TOKENS = 150000;
+const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
+const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
+const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
 const DEFAULT_DATABASE_URL = "sqlite://./state.db";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
@@ -63,11 +71,15 @@ type ConfigIssueField =
 	| "AI_TYPE"
 	| "APP_ENTRYPOINT"
 	| "BLOCKED_USER_MESSAGE"
+	| "CONTEXT_RESERVE_NEXT_TURN_TOKENS"
+	| "CONTEXT_RESERVE_RECENT_TURN_TOKENS"
+	| "CONTEXT_RESERVE_SUMMARY_TOKENS"
 	| "ENABLE_EXECUTE"
 	| "ENABLE_PDF_DOCUMENTS"
 	| "ENABLE_SPREADSHEETS"
 	| "ENABLE_TOOL_STATUS"
 	| "ENABLE_VOICE_MESSAGES"
+	| "MAX_CONTEXT_WINDOW_TOKENS"
 	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
 	| "DEFAULT_STATUS_LOCALE"
@@ -115,11 +127,15 @@ const PERSISTED_ENV_KEYS = [
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
+	"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+	"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+	"CONTEXT_RESERVE_SUMMARY_TOKENS",
 	"ENABLE_EXECUTE",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
+	"MAX_CONTEXT_WINDOW_TOKENS",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"DEFAULT_STATUS_LOCALE",
@@ -133,6 +149,14 @@ const PERSISTED_ENV_KEYS = [
 	"WEB_PORT",
 	"WEB_PUBLIC_BASE_URL",
 ] as const;
+const PERSISTED_ENV_ASSIGNMENT_REGEX = new RegExp(
+	`^(${PERSISTED_ENV_KEYS.join("|")})=(.*)$`,
+	"u",
+);
+const PERSISTED_ENV_LINE_REGEX = new RegExp(
+	`^(${PERSISTED_ENV_KEYS.join("|")})=`,
+	"u",
+);
 
 const getEnv = (
 	name: ConfigIssueField,
@@ -147,6 +171,22 @@ const getEnv = (
 };
 const normalize = (value: string | null | undefined): string =>
 	(value ?? "").trim();
+const parsePositiveInteger = (rawValue: string): number => {
+	if (!/^\d+$/u.test(rawValue)) {
+		return Number.NaN;
+	}
+
+	const value = Number.parseInt(rawValue, 10);
+	return Number.isSafeInteger(value) && value > 0 ? value : Number.NaN;
+};
+const readPositiveIntegerEnv = (
+	name: ConfigIssueField,
+	persistedValues: PersistedEnvValues,
+	fallback: number,
+): number => {
+	const rawValue = getEnv(name, persistedValues);
+	return rawValue === "" ? fallback : parsePositiveInteger(rawValue);
+};
 
 const defaultPrompt: WizardPrompt = (message) => prompt(message);
 
@@ -263,6 +303,26 @@ export const readConfigFromEnv = (
 	const webPort =
 		webPortRaw === "" ? DEFAULT_WEB_PORT : Number.parseInt(webPortRaw, 10);
 	const webPublicBaseUrlRaw = getEnv("WEB_PUBLIC_BASE_URL", persistedValues);
+	const maxContextWindowTokens = readPositiveIntegerEnv(
+		"MAX_CONTEXT_WINDOW_TOKENS",
+		persistedValues,
+		DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+	);
+	const contextReserveSummaryTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_SUMMARY_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+	);
+	const contextReserveRecentTurnTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+	);
+	const contextReserveNextTurnTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
+	);
 
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
@@ -281,6 +341,10 @@ export const readConfigFromEnv = (
 		blockedUserMessage:
 			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
 			DEFAULT_BLOCKED_USER_MESSAGE,
+		maxContextWindowTokens,
+		contextReserveSummaryTokens,
+		contextReserveRecentTurnTokens,
+		contextReserveNextTurnTokens,
 		permissionsMode,
 		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
@@ -402,6 +466,25 @@ export const findConfigIssues = (
 			field: "WEB_PUBLIC_BASE_URL",
 			reason: "WEB_PUBLIC_BASE_URL must not be empty.",
 		});
+	}
+
+	for (const field of [
+		"MAX_CONTEXT_WINDOW_TOKENS",
+		"CONTEXT_RESERVE_SUMMARY_TOKENS",
+		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+		"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+	] as const) {
+		const rawValue = getEnv(field, persistedValues);
+		if (rawValue === "") {
+			continue;
+		}
+
+		if (Number.isNaN(parsePositiveInteger(rawValue))) {
+			issues.push({
+				field,
+				reason: `${field} must be a positive integer.`,
+			});
+		}
 	}
 
 	if (
@@ -729,6 +812,17 @@ Press enter to allow any chat the bot is added to.> `,
 		usingMode,
 		blockedUserMessage:
 			initialConfig.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+		maxContextWindowTokens:
+			initialConfig.maxContextWindowTokens ?? DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+		contextReserveSummaryTokens:
+			initialConfig.contextReserveSummaryTokens ??
+			DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+		contextReserveRecentTurnTokens:
+			initialConfig.contextReserveRecentTurnTokens ??
+			DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+		contextReserveNextTurnTokens:
+			initialConfig.contextReserveNextTurnTokens ??
+			DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		databaseUrl: initialConfig.databaseUrl ?? DEFAULT_DATABASE_URL,
 		enableExecute: initialConfig.enableExecute ?? true,
@@ -770,6 +864,18 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.appEntrypoint)}`;
 		case "BLOCKED_USER_MESSAGE":
 			return `${key}=${escapeEnvValue(config.blockedUserMessage)}`;
+		case "CONTEXT_RESERVE_NEXT_TURN_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveNextTurnTokens),
+			)}`;
+		case "CONTEXT_RESERVE_RECENT_TURN_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveRecentTurnTokens),
+			)}`;
+		case "CONTEXT_RESERVE_SUMMARY_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveSummaryTokens),
+			)}`;
 		case "ENABLE_EXECUTE":
 			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
 		case "ENABLE_PDF_DOCUMENTS":
@@ -790,6 +896,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(
 				config.enableVoiceMessages ? "true" : "false",
 			)}`;
+		case "MAX_CONTEXT_WINDOW_TOKENS":
+			return `${key}=${escapeEnvValue(String(config.maxContextWindowTokens))}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "DATABASE_URL":
@@ -845,9 +953,7 @@ const readPersistedEnvFile = (
 	const persistedValues: PersistedEnvValues = {};
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
-		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_TOOL_STATUS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|DEFAULT_STATUS_LOCALE|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TIMEZONE|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
-		);
+		const match = line.match(PERSISTED_ENV_ASSIGNMENT_REGEX);
 		if (!match) {
 			continue;
 		}
@@ -875,9 +981,7 @@ const persistConfigToEnvFile = (
 			: existingContent.replace(/\r\n/g, "\n").split("\n");
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
-		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|ENABLE_PDF_DOCUMENTS|ENABLE_SPREADSHEETS|ENABLE_TOOL_STATUS|ENABLE_VOICE_MESSAGES|PERMISSIONS_MODE|DATABASE_URL|DEFAULT_STATUS_LOCALE|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|TIMEZONE|TRANSCRIPTION_API_KEY|TRANSCRIPTION_BASE_URL|TRANSCRIPTION_PROVIDER|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
-		);
+		const match = line.match(PERSISTED_ENV_LINE_REGEX);
 		if (!match) {
 			return line;
 		}
@@ -931,6 +1035,17 @@ export const resolveConfig = async (
 			usingMode: config.usingMode ?? DEFAULT_USING_MODE,
 			blockedUserMessage:
 				config.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+			maxContextWindowTokens:
+				config.maxContextWindowTokens ?? DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+			contextReserveSummaryTokens:
+				config.contextReserveSummaryTokens ??
+				DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+			contextReserveRecentTurnTokens:
+				config.contextReserveRecentTurnTokens ??
+				DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+			contextReserveNextTurnTokens:
+				config.contextReserveNextTurnTokens ??
+				DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
 			permissionsMode: config.permissionsMode ?? "enforce",
 			databaseUrl: config.databaseUrl ?? DEFAULT_DATABASE_URL,
 			enableExecute: config.enableExecute ?? true,

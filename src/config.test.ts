@@ -17,10 +17,16 @@ const CONFIG_KEYS = [
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
+	"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+	"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+	"CONTEXT_RESERVE_SUMMARY_TOKENS",
+	"DEFAULT_STATUS_LOCALE",
 	"ENABLE_EXECUTE",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
+	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
+	"MAX_CONTEXT_WINDOW_TOKENS",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
@@ -108,6 +114,10 @@ describe("config", () => {
 					telegramBotToken: "telegram-token",
 					usingMode: "multi",
 					blockedUserMessage: "Access not configured. Contact the admin.",
+					maxContextWindowTokens: 150000,
+					contextReserveSummaryTokens: 2000,
+					contextReserveRecentTurnTokens: 2000,
+					contextReserveNextTurnTokens: 2000,
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
@@ -123,6 +133,42 @@ describe("config", () => {
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
 				});
+			},
+		);
+	});
+
+	test("defaults attachment context budget settings when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.maxContextWindowTokens).toBe(150000);
+				expect(config.contextReserveSummaryTokens).toBe(2000);
+				expect(config.contextReserveRecentTurnTokens).toBe(2000);
+				expect(config.contextReserveNextTurnTokens).toBe(2000);
+			},
+		);
+	});
+
+	test("reads attachment context budget settings from env", async () => {
+		await withEnv(
+			{
+				MAX_CONTEXT_WINDOW_TOKENS: "180000",
+				CONTEXT_RESERVE_SUMMARY_TOKENS: "3000",
+				CONTEXT_RESERVE_RECENT_TURN_TOKENS: "4000",
+				CONTEXT_RESERVE_NEXT_TURN_TOKENS: "5000",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.maxContextWindowTokens).toBe(180000);
+				expect(config.contextReserveSummaryTokens).toBe(3000);
+				expect(config.contextReserveRecentTurnTokens).toBe(4000);
+				expect(config.contextReserveNextTurnTokens).toBe(5000);
 			},
 		);
 	});
@@ -213,6 +259,42 @@ describe("config", () => {
 				const config = readConfigFromEnv();
 				expect(config.transcriptionProvider).toBe("openai");
 				expect(config.transcriptionApiKey).toBe("");
+			},
+		);
+	});
+
+	test("reports invalid attachment context budget settings", async () => {
+		await withEnv(
+			{
+				MAX_CONTEXT_WINDOW_TOKENS: "-1",
+				CONTEXT_RESERVE_SUMMARY_TOKENS: "NaN",
+				CONTEXT_RESERVE_RECENT_TURN_TOKENS: "0",
+				CONTEXT_RESERVE_NEXT_TURN_TOKENS: "12.5",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toEqual(
+					expect.arrayContaining([
+						{
+							field: "MAX_CONTEXT_WINDOW_TOKENS",
+							reason: "MAX_CONTEXT_WINDOW_TOKENS must be a positive integer.",
+						},
+						{
+							field: "CONTEXT_RESERVE_SUMMARY_TOKENS",
+							reason:
+								"CONTEXT_RESERVE_SUMMARY_TOKENS must be a positive integer.",
+						},
+						{
+							field: "CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+							reason:
+								"CONTEXT_RESERVE_RECENT_TURN_TOKENS must be a positive integer.",
+						},
+						{
+							field: "CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+							reason:
+								"CONTEXT_RESERVE_NEXT_TURN_TOKENS must be a positive integer.",
+						},
+					]),
+				);
 			},
 		);
 	});
@@ -327,6 +409,10 @@ describe("config", () => {
 					telegramBotToken: "",
 					usingMode: "single",
 					blockedUserMessage: "Access not configured. Contact the admin.",
+					maxContextWindowTokens: 150000,
+					contextReserveSummaryTokens: 2000,
+					contextReserveRecentTurnTokens: 2000,
+					contextReserveNextTurnTokens: 2000,
 					permissionsMode: "enforce",
 					databaseUrl: "sqlite://./state.db",
 					enableExecute: true,
@@ -385,6 +471,10 @@ describe("config", () => {
 				telegramBotToken: "telegram-token",
 				usingMode: "multi",
 				blockedUserMessage: "Access not configured. Contact the admin.",
+				maxContextWindowTokens: 150000,
+				contextReserveSummaryTokens: 2000,
+				contextReserveRecentTurnTokens: 2000,
+				contextReserveNextTurnTokens: 2000,
 				permissionsMode: "enforce",
 				databaseUrl: "sqlite://./state.db",
 				enableExecute: true,
@@ -433,6 +523,18 @@ describe("config", () => {
 				'APP_ENTRYPOINT="cli"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'MAX_CONTEXT_WINDOW_TOKENS="150000"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'CONTEXT_RESERVE_SUMMARY_TOKENS="2000"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'CONTEXT_RESERVE_RECENT_TURN_TOKENS="2000"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'CONTEXT_RESERVE_NEXT_TURN_TOKENS="2000"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'ENABLE_VOICE_MESSAGES="true"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
@@ -479,6 +581,10 @@ describe("config", () => {
 			expect(config.aiType).toBe("anthropic");
 			expect(config.appEntrypoint).toBe("cli");
 			expect(config.enableVoiceMessages).toBe(true);
+			expect(config.maxContextWindowTokens).toBe(150000);
+			expect(config.contextReserveSummaryTokens).toBe(2000);
+			expect(config.contextReserveRecentTurnTokens).toBe(2000);
+			expect(config.contextReserveNextTurnTokens).toBe(2000);
 			expect(config.transcriptionProvider).toBe("openai");
 			expect(config.transcriptionApiKey).toBe("");
 			expect(config.usingMode).toBe("single");
@@ -498,6 +604,10 @@ describe("config", () => {
 					'AI_MODEL_NAME="persisted-model"',
 					'AI_TYPE="openai"',
 					'APP_ENTRYPOINT="cli"',
+					'MAX_CONTEXT_WINDOW_TOKENS="170000"',
+					'CONTEXT_RESERVE_SUMMARY_TOKENS="2100"',
+					'CONTEXT_RESERVE_RECENT_TURN_TOKENS="2200"',
+					'CONTEXT_RESERVE_NEXT_TURN_TOKENS="2300"',
 					'ENABLE_VOICE_MESSAGES="false"',
 					'TRANSCRIPTION_API_KEY="persisted-voice-key"',
 					'TRANSCRIPTION_BASE_URL="https://voice.example/v1"',
@@ -511,6 +621,10 @@ describe("config", () => {
 
 			expect(config.aiApiKey).toBe("persisted-key");
 			expect(config.enableVoiceMessages).toBe(false);
+			expect(config.maxContextWindowTokens).toBe(170000);
+			expect(config.contextReserveSummaryTokens).toBe(2100);
+			expect(config.contextReserveRecentTurnTokens).toBe(2200);
+			expect(config.contextReserveNextTurnTokens).toBe(2300);
 			expect(config.transcriptionProvider).toBe("openrouter");
 			expect(config.transcriptionApiKey).toBe("persisted-voice-key");
 			expect(config.transcriptionBaseUrl).toBe("https://voice.example/v1");

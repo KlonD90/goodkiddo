@@ -25,6 +25,11 @@ documented chat-completions audio input flow with the default
 `openai/gpt-4o-mini-transcribe` model. PDF document handling is enabled by
 default. Use `ENABLE_PDF_DOCUMENTS=false` to disable it. Spreadsheet
 handling is enabled by default. Use `ENABLE_SPREADSHEETS=false` to disable it.
+Large attachment handling uses `MAX_CONTEXT_WINDOW_TOKENS=150000`,
+`CONTEXT_RESERVE_SUMMARY_TOKENS=2000`,
+`CONTEXT_RESERVE_RECENT_TURN_TOKENS=2000`, and
+`CONTEXT_RESERVE_NEXT_TURN_TOKENS=2000` by default; override them to tune how
+much context is reserved for summaries, recent turns, and the next turn.
 Set `TIMEZONE=America/New_York` to control the default timezone for
 scheduled timers (defaults to `UTC`).
 

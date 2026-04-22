@@ -166,7 +166,10 @@ describe("createSpreadsheetCapability", () => {
 			expect(result.value.content).toContain("_Spreadsheet: people.csv");
 			expect(result.value.content).toContain("| Name | Age |");
 			expect(result.value.content).toContain("| Alice | 30 |");
-			expect(result.value.currentUserText).toBe(result.value.content);
+			expect(typeof result.value.content).toBe("string");
+			if (typeof result.value.content === "string") {
+				expect(result.value.currentUserText).toBe(result.value.content);
+			}
 		}
+		});
 	});
-});
