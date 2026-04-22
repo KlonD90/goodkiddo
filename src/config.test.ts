@@ -22,6 +22,7 @@ const CONFIG_KEYS = [
 	"CONTEXT_RESERVE_SUMMARY_TOKENS",
 	"DEFAULT_STATUS_LOCALE",
 	"ENABLE_EXECUTE",
+	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_TOOL_STATUS",
@@ -124,6 +125,7 @@ describe("config", () => {
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
 					enableToolStatus: true,
+					enableAttachmentCompactionNotice: true,
 					defaultStatusLocale: "en",
 					enableVoiceMessages: false,
 					transcriptionProvider: "openrouter",
@@ -246,6 +248,40 @@ describe("config", () => {
 			() => {
 				const config = readConfigFromEnv();
 				expect(config.enableSpreadsheets).toBe(false);
+			},
+		);
+	});
+
+	test(
+		"defaults enableAttachmentCompactionNotice to true when not configured",
+		async () => {
+			await withEnv(
+				{
+					AI_API_KEY: "test-key",
+					AI_TYPE: "anthropic",
+					AI_MODEL_NAME: "claude-3-5-sonnet",
+					USING_MODE: "single",
+				},
+				() => {
+					const config = readConfigFromEnv();
+					expect(config.enableAttachmentCompactionNotice).toBe(true);
+				},
+			);
+		},
+	);
+
+	test("respects ENABLE_ATTACHMENT_COMPACTION_NOTICE=false env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_ATTACHMENT_COMPACTION_NOTICE: "false",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableAttachmentCompactionNotice).toBe(false);
 			},
 		);
 	});
@@ -419,6 +455,7 @@ describe("config", () => {
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
 					enableToolStatus: true,
+					enableAttachmentCompactionNotice: true,
 					defaultStatusLocale: "en",
 					enableVoiceMessages: true,
 					transcriptionProvider: "openai",
@@ -481,6 +518,7 @@ describe("config", () => {
 				enablePdfDocuments: true,
 				enableSpreadsheets: true,
 				enableToolStatus: true,
+				enableAttachmentCompactionNotice: true,
 				defaultStatusLocale: "en",
 				enableVoiceMessages: true,
 				transcriptionProvider: "openai",
@@ -536,6 +574,9 @@ describe("config", () => {
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'ENABLE_VOICE_MESSAGES="true"',
+			);
+			expect(readFileSync(envFilePath, "utf8")).toContain(
+				'ENABLE_ATTACHMENT_COMPACTION_NOTICE="true"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'TRANSCRIPTION_PROVIDER="openai"',
@@ -608,6 +649,7 @@ describe("config", () => {
 					'CONTEXT_RESERVE_SUMMARY_TOKENS="2100"',
 					'CONTEXT_RESERVE_RECENT_TURN_TOKENS="2200"',
 					'CONTEXT_RESERVE_NEXT_TURN_TOKENS="2300"',
+					'ENABLE_ATTACHMENT_COMPACTION_NOTICE="false"',
 					'ENABLE_VOICE_MESSAGES="false"',
 					'TRANSCRIPTION_API_KEY="persisted-voice-key"',
 					'TRANSCRIPTION_BASE_URL="https://voice.example/v1"',
@@ -621,6 +663,7 @@ describe("config", () => {
 
 			expect(config.aiApiKey).toBe("persisted-key");
 			expect(config.enableVoiceMessages).toBe(false);
+			expect(config.enableAttachmentCompactionNotice).toBe(false);
 			expect(config.maxContextWindowTokens).toBe(170000);
 			expect(config.contextReserveSummaryTokens).toBe(2100);
 			expect(config.contextReserveRecentTurnTokens).toBe(2200);

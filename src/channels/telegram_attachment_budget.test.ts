@@ -4,6 +4,7 @@ import { CapabilityRegistry } from "../capabilities/registry";
 import type { FileCapability } from "../capabilities/types";
 import type { AppConfig } from "../config";
 import { PermissionsStore } from "../permissions/store";
+import type { StatusEmitter } from "../tools/status_emitter";
 import { processTelegramFile } from "./telegram";
 
 const ATTACHMENT_TEST_CONFIG: AppConfig = {
@@ -27,6 +28,7 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
   enablePdfDocuments: true,
   enableSpreadsheets: true,
   enableToolStatus: true,
+  enableAttachmentCompactionNotice: true,
   defaultStatusLocale: "en",
   transcriptionProvider: "openai",
   transcriptionApiKey: "test-key",
@@ -37,6 +39,14 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 };
 
 type TelegramProcessSession = Parameters<typeof processTelegramFile>[2];
+
+class FakeStatusEmitter implements StatusEmitter {
+  calls: Array<{ callerId: string; message: string }> = [];
+
+  async emit(callerId: string, message: string): Promise<void> {
+    this.calls.push({ callerId, message });
+  }
+}
 
 function createAttachmentRegistry(
   name: string,
@@ -59,7 +69,7 @@ function createAttachmentRegistry(
   return new CapabilityRegistry([capability]);
 }
 
-function createProcessSession(): TelegramProcessSession {
+function createProcessSession(statusEmitter?: StatusEmitter): TelegramProcessSession {
   return {
     agent: {} as never,
     running: false,
@@ -69,6 +79,7 @@ function createProcessSession(): TelegramProcessSession {
     model: {} as never,
     refreshAgent: async () => {},
     pendingApprovals: new Map(),
+    statusEmitter,
     compactionConfig: {
       caller: "telegram:123",
       store: {} as never,
@@ -133,11 +144,12 @@ describe("telegram attachment budget handling", () => {
     const sent: string[] = [];
     const queued: unknown[][] = [];
     const compacted: string[] = [];
+    const emitter = new FakeStatusEmitter();
 
     await processTelegramFile(
       ATTACHMENT_TEST_CONFIG,
       createAttachmentRegistry("spreadsheet", "x".repeat(60)),
-      createProcessSession(),
+      createProcessSession(emitter),
       {} as Bot,
       "123",
       caller,
@@ -169,6 +181,59 @@ describe("telegram attachment budget handling", () => {
     );
 
     expect(sent).toEqual([]);
+    expect(emitter.calls).toEqual([
+      {
+        callerId: "telegram:123",
+        message:
+          "Summarizing older messages to make room for this attachment...",
+      },
+    ]);
+    expect(compacted).toEqual(["called"]);
+    expect(queued).toHaveLength(1);
+  });
+
+  test("does not emit compaction notice when flag is disabled", async () => {
+    const sent: string[] = [];
+    const queued: unknown[][] = [];
+    const compacted: string[] = [];
+    const emitter = new FakeStatusEmitter();
+
+    await processTelegramFile(
+      { ...ATTACHMENT_TEST_CONFIG, enableAttachmentCompactionNotice: false },
+      createAttachmentRegistry("spreadsheet", "x".repeat(60)),
+      createProcessSession(emitter),
+      {} as Bot,
+      "123",
+      caller,
+      {} as PermissionsStore,
+      undefined,
+      {
+        metadata: { mimeType: "text/csv", filename: "sheet.csv" },
+        download: async () => Uint8Array.from([1, 2, 3]),
+      },
+      {
+        sendMessage: async (_bot, _chatId, text) => {
+          sent.push(text);
+        },
+        queueTurn: async (...args) => {
+          queued.push(args);
+          return undefined;
+        },
+        loadCurrentMessages: async () => [],
+        prepareTurn: async (_session, messages) => ({
+          currentMessages: messages,
+          compacted: false,
+        }),
+        estimateRuntimeTokens: () => 0,
+        compactOversizedAttachment: async () => {
+          compacted.push("called");
+          return [];
+        },
+      },
+    );
+
+    expect(sent).toEqual([]);
+    expect(emitter.calls).toEqual([]);
     expect(compacted).toEqual(["called"]);
     expect(queued).toHaveLength(1);
   });

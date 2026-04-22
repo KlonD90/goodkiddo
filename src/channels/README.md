@@ -42,6 +42,8 @@ The same boundary flow also runs task reconciliation once per session boundary. 
 
 If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
 
+When an attachment only fits after compaction, Telegram can emit an ephemeral status line before the forced checkpoint runs so the user sees why older context is being summarized. That notice uses the same status-emitter path as tool activity, so it never enters stored history or runtime context.
+
 When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
 
 ## Telegram Formatting
@@ -228,6 +230,7 @@ The Telegram channel sends status messages as plain text via `bot.api.sendMessag
 ### Configuration
 
 - `enableToolStatus` (default `true`) — enables or disables status emission globally
+- `enableAttachmentCompactionNotice` (default `true`) — emits the ephemeral "making room for this attachment" notice before attachment-triggered compaction
 - `defaultStatusLocale` (default `"en"`) — fallback locale when user preference is unknown
 
 ### Relevant Files

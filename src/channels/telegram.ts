@@ -107,6 +107,8 @@ const TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS = 2_500;
 const TELEGRAM_STREAM_CHUNK_MIN_LENGTH = 240;
 const TELEGRAM_STREAM_CHUNK_TARGET_LENGTH = 900;
 const TELEGRAM_STREAM_CHUNK_HARD_LENGTH = 1_600;
+const ATTACHMENT_COMPACTION_NOTICE =
+  "Summarizing older messages to make room for this attachment...";
 const TELEGRAM_STREAM_DEFAULT_BOUNDARY_PATTERNS = [
   /\n\n/g,
   /\n/g,
@@ -1973,6 +1975,18 @@ function buildAttachmentBudgetConfig(config: AppConfig): AttachmentBudgetConfig 
   };
 }
 
+async function maybeSendAttachmentCompactionNotice(
+  config: AppConfig,
+  session: TelegramAgentSession,
+  caller: Caller,
+): Promise<void> {
+  if (!config.enableAttachmentCompactionNotice) {
+    return;
+  }
+
+  await session.statusEmitter?.emit(caller.id, ATTACHMENT_COMPACTION_NOTICE);
+}
+
 async function loadTelegramCurrentMessages(
   session: TelegramAgentSession,
 ): Promise<ThreadMessage[]> {
@@ -2060,6 +2074,7 @@ export async function processTelegramFile(
           config: budgetConfig,
           currentRuntimeTokens,
           compact: async () => {
+            await maybeSendAttachmentCompactionNotice(config, session, caller);
             await compactOversizedAttachment(
               session,
               preparedTurn.currentMessages,

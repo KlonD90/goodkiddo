@@ -33,6 +33,7 @@ export type AppConfig = {
 	enablePdfDocuments: boolean;
 	enableSpreadsheets: boolean;
 	enableToolStatus: boolean;
+	enableAttachmentCompactionNotice: boolean;
 	defaultStatusLocale: string;
 	transcriptionProvider: TranscriptionProvider;
 	transcriptionApiKey: string;
@@ -57,6 +58,7 @@ const DEFAULT_ENABLE_VOICE_MESSAGES = true;
 const DEFAULT_ENABLE_PDF_DOCUMENTS = true;
 const DEFAULT_ENABLE_SPREADSHEETS = true;
 const DEFAULT_ENABLE_TOOL_STATUS = true;
+const DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE = true;
 const DEFAULT_STATUS_LOCALE = "en";
 const DEFAULT_TIMEZONE = "UTC";
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
@@ -77,6 +79,7 @@ type ConfigIssueField =
 	| "ENABLE_EXECUTE"
 	| "ENABLE_PDF_DOCUMENTS"
 	| "ENABLE_SPREADSHEETS"
+	| "ENABLE_ATTACHMENT_COMPACTION_NOTICE"
 	| "ENABLE_TOOL_STATUS"
 	| "ENABLE_VOICE_MESSAGES"
 	| "MAX_CONTEXT_WINDOW_TOKENS"
@@ -133,6 +136,7 @@ const PERSISTED_ENV_KEYS = [
 	"ENABLE_EXECUTE",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
+	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
 	"MAX_CONTEXT_WINDOW_TOKENS",
@@ -266,6 +270,15 @@ export const readConfigFromEnv = (
 			? DEFAULT_ENABLE_TOOL_STATUS
 			: enableToolStatusRaw !== "false";
 
+	const enableAttachmentCompactionNoticeRaw = getEnv(
+		"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
+		persistedValues,
+	);
+	const enableAttachmentCompactionNotice =
+		enableAttachmentCompactionNoticeRaw === ""
+			? DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE
+			: enableAttachmentCompactionNoticeRaw !== "false";
+
 	const defaultStatusLocaleRaw = getEnv("DEFAULT_STATUS_LOCALE", persistedValues);
 	const defaultStatusLocale =
 		defaultStatusLocaleRaw !== "" ? defaultStatusLocaleRaw : DEFAULT_STATUS_LOCALE;
@@ -352,6 +365,7 @@ export const readConfigFromEnv = (
 		enablePdfDocuments,
 		enableSpreadsheets,
 		enableToolStatus,
+		enableAttachmentCompactionNotice,
 		defaultStatusLocale,
 		transcriptionProvider,
 		transcriptionApiKey,
@@ -833,6 +847,9 @@ Press enter to allow any chat the bot is added to.> `,
 		enableSpreadsheets:
 			initialConfig.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
 		enableToolStatus: initialConfig.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
+		enableAttachmentCompactionNotice:
+			initialConfig.enableAttachmentCompactionNotice ??
+			DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
 		defaultStatusLocale:
 			initialConfig.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 		transcriptionProvider,
@@ -885,6 +902,10 @@ const formatPersistedEnvLine = (
 		case "ENABLE_SPREADSHEETS":
 			return `${key}=${escapeEnvValue(
 				config.enableSpreadsheets ? "true" : "false",
+			)}`;
+		case "ENABLE_ATTACHMENT_COMPACTION_NOTICE":
+			return `${key}=${escapeEnvValue(
+				config.enableAttachmentCompactionNotice ? "true" : "false",
 			)}`;
 		case "ENABLE_TOOL_STATUS":
 			return `${key}=${escapeEnvValue(
@@ -1056,6 +1077,9 @@ export const resolveConfig = async (
 			enableSpreadsheets:
 				config.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
 			enableToolStatus: config.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
+			enableAttachmentCompactionNotice:
+				config.enableAttachmentCompactionNotice ??
+				DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
 			defaultStatusLocale: config.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 			transcriptionProvider:
 				config.transcriptionProvider ??

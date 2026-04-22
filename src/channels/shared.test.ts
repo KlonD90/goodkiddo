@@ -81,6 +81,7 @@ const TEST_CONFIG: AppConfig = {
 	enablePdfDocuments: true,
 	enableSpreadsheets: true,
 	enableToolStatus: true,
+	enableAttachmentCompactionNotice: true,
 	defaultStatusLocale: "en",
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",

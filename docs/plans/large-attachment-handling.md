@@ -76,9 +76,9 @@ Gate every attachment against a configurable max context window. Measure the ext
 - [x] Update channel tests in `src/channels/telegram.test.ts` and `src/channels/cli.test.ts` to cover: oversized attachment rejection, mid-range attachment triggering compaction, small attachment unchanged.
 
 ### Task 6: Optional user notice when compaction fires for attachment
-- [ ] Add a short, non-blocking status reply (e.g. `"Summarizing older messages to make room for this document…"`) emitted before injection when `kind === "compact_then_inject"`. Route through the existing status/ephemerality path in `src/channels/` (see `src/channels/README.md` and `src/tools/status_ephemerality.test.ts` for conventions).
-- [ ] Gate it behind a config flag `enableAttachmentCompactionNotice: boolean` (default `true`) in `AppConfig` with env var `ENABLE_ATTACHMENT_COMPACTION_NOTICE` following the same `.env` persistence pattern as other boolean flags.
-- [ ] Add tests covering flag-on (notice sent) and flag-off (no notice) behavior.
+- [x] Add a short, non-blocking status reply (e.g. `"Summarizing older messages to make room for this document…"`) emitted before injection when `kind === "compact_then_inject"`. Route through the existing status/ephemerality path in `src/channels/` (see `src/channels/README.md` and `src/tools/status_ephemerality.test.ts` for conventions).
+- [x] Gate it behind a config flag `enableAttachmentCompactionNotice: boolean` (default `true`) in `AppConfig` with env var `ENABLE_ATTACHMENT_COMPACTION_NOTICE` following the same `.env` persistence pattern as other boolean flags.
+- [x] Add tests covering flag-on (notice sent) and flag-off (no notice) behavior.
 
 ### Task 7: Docs and discoverability
 - [ ] Add a "Large attachment handling" section to `src/channels/README.md` explaining the three outcomes, the four new config knobs, and the default values.
