@@ -77,4 +77,21 @@ describe("ExcelParser", () => {
 		expect(result.sheets[0].headers).toEqual(["name", "age"]);
 		expect(result.sheets[0].rows[0]).toEqual(["Alice", "30"]);
 	});
+
+	test("prefers formulas over cached values", async () => {
+		const wb = XLSX.utils.book_new();
+		const ws = XLSX.utils.aoa_to_sheet([["left", "right", "sum"], [1, 2, null]]);
+		ws.C2 = { t: "n", f: "A2+B2", v: 3 };
+		XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+
+		const wbout = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+		const result = await parser.parse(
+			new Uint8Array(wbout),
+			"formula.xlsx",
+			"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+		);
+
+		expect(result.isCorrupt).toBe(false);
+		expect(result.sheets[0].rows).toEqual([["1", "2", "=A2+B2"]]);
+	});
 });

@@ -21,8 +21,9 @@ export class ExcelParser implements SpreadsheetParser {
 
 			const sheets = workbook.SheetNames.map((sheetName) => {
 				const worksheet = workbook.Sheets[sheetName];
-				const jsonData = XLSX.utils.sheet_to_json<string[]>(worksheet, { header: 1, defval: "" });
-				const nonEmptyRows = this.filterEmptyRows(jsonData);
+				const jsonData = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: "" });
+				const preferredData = this.preferFormulaCells(worksheet, jsonData);
+				const nonEmptyRows = this.filterEmptyRows(preferredData);
 
 				if (nonEmptyRows.length === 0) {
 					return {
@@ -90,6 +91,25 @@ export class ExcelParser implements SpreadsheetParser {
 				if (cell === null || cell === undefined) return false;
 				if (typeof cell === "object" && "v" in cell) return (cell as { v: unknown }).v !== "";
 				return String(cell).trim() !== "";
+			});
+		});
+	}
+
+	private preferFormulaCells(worksheet: XLSX.WorkSheet, rows: unknown[][]): unknown[][] {
+		const ref = worksheet["!ref"];
+		if (!ref) return rows;
+
+		const range = XLSX.utils.decode_range(ref);
+		const width = range.e.c - range.s.c + 1;
+
+		return rows.map((row, rowIndex) => {
+			const actualRow = range.s.r + rowIndex;
+			return Array.from({ length: width }, (_unused, colIndex) => {
+				const actualCol = range.s.c + colIndex;
+				const address = XLSX.utils.encode_cell({ r: actualRow, c: actualCol });
+				const worksheetCell = worksheet[address] as XLSX.CellObject | undefined;
+				if (worksheetCell?.f) return `=${worksheetCell.f}`;
+				return row[colIndex] ?? "";
 			});
 		});
 	}

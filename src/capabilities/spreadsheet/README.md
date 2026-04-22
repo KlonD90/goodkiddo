@@ -7,6 +7,8 @@ Parses CSV and Excel files for agent consumption. Files are parsed in memory and
 - CSV (`.csv`) — comma/semicolon/tab delimited with quoted fields
 - Excel (`.xlsx`, `.xls`) — all sheets are parsed
 
+For Excel sheets, cells with formulas are surfaced as formula strings like `=A2+B2` ahead of cached computed values.
+
 ## Files
 
 - `parser.ts` — `SpreadsheetParser` interface and `NoOpSpreadsheetParser`
