@@ -28,10 +28,11 @@ Gate every attachment against a configurable max context window. Measure the ext
 
 ## Validation Commands
 - `bun tsc --noEmit`
+- `bun test src/config.test.ts`
 - `bun test src/capabilities/registry.test.ts`
 - `bun test src/capabilities/attachment_budget.test.ts`
 - `bun test src/checkpoints/compaction_trigger.test.ts`
-- `bun test src/channels/telegram.test.ts src/channels/cli.test.ts`
+- `bun test src/channels/telegram_attachment_budget.test.ts src/channels/cli.test.ts`
 
 ---
 
@@ -73,7 +74,7 @@ Gate every attachment against a configurable max context window. Measure the ext
   - `currentRuntimeTokens` by calling `estimateTokens` from `src/checkpoints/compaction_trigger.ts` against the current runtime-context messages. Reuse the same accessor used to assemble prompts in `src/memory/runtime_context.ts`.
   - `compact` closure that calls `triggerOnOversizedAttachment` with the already-available `CompactionContext` (caller, threadId, messages, model, store) and then refreshes the local messages/runtime view so the subsequent injection sees the compacted state.
 - [x] Guard against double compaction: if a forced checkpoint was created earlier in the same turn (message_limit/token_limit path), skip the `oversized_attachment` trigger but re-run the budget decision against the fresh state; if it now fits, proceed; if it still does not, reject.
-- [x] Update channel tests in `src/channels/telegram.test.ts` and `src/channels/cli.test.ts` to cover: oversized attachment rejection, mid-range attachment triggering compaction, small attachment unchanged.
+- [x] Update channel tests in `src/channels/telegram_attachment_budget.test.ts` and `src/channels/cli.test.ts` to cover: oversized attachment rejection, mid-range attachment triggering compaction, small attachment unchanged.
 
 ### Task 6: Optional user notice when compaction fires for attachment
 - [x] Add a short, non-blocking status reply (e.g. `"Summarizing older messages to make room for this document…"`) emitted before injection when `kind === "compact_then_inject"`. Route through the existing status/ephemerality path in `src/channels/` (see `src/channels/README.md` and `src/tools/status_ephemerality.test.ts` for conventions).

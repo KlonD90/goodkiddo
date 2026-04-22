@@ -252,23 +252,20 @@ describe("config", () => {
 		);
 	});
 
-	test(
-		"defaults enableAttachmentCompactionNotice to true when not configured",
-		async () => {
-			await withEnv(
-				{
-					AI_API_KEY: "test-key",
-					AI_TYPE: "anthropic",
-					AI_MODEL_NAME: "claude-3-5-sonnet",
-					USING_MODE: "single",
-				},
-				() => {
-					const config = readConfigFromEnv();
-					expect(config.enableAttachmentCompactionNotice).toBe(true);
-				},
-			);
-		},
-	);
+	test("defaults enableAttachmentCompactionNotice to true when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableAttachmentCompactionNotice).toBe(true);
+			},
+		);
+	});
 
 	test("respects ENABLE_ATTACHMENT_COMPACTION_NOTICE=false env var", async () => {
 		await withEnv(
@@ -331,6 +328,42 @@ describe("config", () => {
 						},
 					]),
 				);
+			},
+		);
+	});
+
+	test("reports attachment budgets whose next-turn reserve consumes the full window", async () => {
+		await withEnv(
+			{
+				MAX_CONTEXT_WINDOW_TOKENS: "2000",
+				CONTEXT_RESERVE_SUMMARY_TOKENS: "500",
+				CONTEXT_RESERVE_RECENT_TURN_TOKENS: "500",
+				CONTEXT_RESERVE_NEXT_TURN_TOKENS: "2000",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "MAX_CONTEXT_WINDOW_TOKENS",
+					reason:
+						"MAX_CONTEXT_WINDOW_TOKENS must be greater than CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
+				});
+			},
+		);
+	});
+
+	test("reports attachment budgets whose reserves exceed the full window", async () => {
+		await withEnv(
+			{
+				MAX_CONTEXT_WINDOW_TOKENS: "3000",
+				CONTEXT_RESERVE_SUMMARY_TOKENS: "1000",
+				CONTEXT_RESERVE_RECENT_TURN_TOKENS: "1000",
+				CONTEXT_RESERVE_NEXT_TURN_TOKENS: "1500",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "MAX_CONTEXT_WINDOW_TOKENS",
+					reason:
+						"MAX_CONTEXT_WINDOW_TOKENS must be greater than the sum of CONTEXT_RESERVE_SUMMARY_TOKENS, CONTEXT_RESERVE_RECENT_TURN_TOKENS, and CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
+				});
 			},
 		);
 	});

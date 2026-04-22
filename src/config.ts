@@ -246,7 +246,10 @@ export const readConfigFromEnv = (
 	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
 	const enableExecute = enableExecuteRaw !== "false";
 
-	const enableVoiceMessagesRaw = getEnv("ENABLE_VOICE_MESSAGES", persistedValues);
+	const enableVoiceMessagesRaw = getEnv(
+		"ENABLE_VOICE_MESSAGES",
+		persistedValues,
+	);
 	const enableVoiceMessages =
 		enableVoiceMessagesRaw === ""
 			? DEFAULT_ENABLE_VOICE_MESSAGES
@@ -279,9 +282,14 @@ export const readConfigFromEnv = (
 			? DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE
 			: enableAttachmentCompactionNoticeRaw !== "false";
 
-	const defaultStatusLocaleRaw = getEnv("DEFAULT_STATUS_LOCALE", persistedValues);
+	const defaultStatusLocaleRaw = getEnv(
+		"DEFAULT_STATUS_LOCALE",
+		persistedValues,
+	);
 	const defaultStatusLocale =
-		defaultStatusLocaleRaw !== "" ? defaultStatusLocaleRaw : DEFAULT_STATUS_LOCALE;
+		defaultStatusLocaleRaw !== ""
+			? defaultStatusLocaleRaw
+			: DEFAULT_STATUS_LOCALE;
 
 	const aiType = checkAiType(aiTypeValue) ? aiTypeValue : undefined;
 	const transcriptionProviderRaw = getEnv(
@@ -302,9 +310,9 @@ export const readConfigFromEnv = (
 		transcriptionApiKeyRaw !== ""
 			? transcriptionApiKeyRaw
 			: canReusePrimaryAiCredentialsForTranscription(
-					aiType,
-					transcriptionProvider,
-				)
+						aiType,
+						transcriptionProvider,
+					)
 				? getEnv("AI_API_KEY", persistedValues)
 				: "";
 	const transcriptionBaseUrl = getEnv(
@@ -359,7 +367,8 @@ export const readConfigFromEnv = (
 		contextReserveRecentTurnTokens,
 		contextReserveNextTurnTokens,
 		permissionsMode,
-		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
+		databaseUrl:
+			getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
 		enableVoiceMessages,
 		enablePdfDocuments,
@@ -497,6 +506,32 @@ export const findConfigIssues = (
 			issues.push({
 				field,
 				reason: `${field} must be a positive integer.`,
+			});
+		}
+	}
+
+	if (
+		config.maxContextWindowTokens !== undefined &&
+		config.contextReserveSummaryTokens !== undefined &&
+		config.contextReserveRecentTurnTokens !== undefined &&
+		config.contextReserveNextTurnTokens !== undefined
+	) {
+		const totalContextReserves =
+			config.contextReserveSummaryTokens +
+			config.contextReserveRecentTurnTokens +
+			config.contextReserveNextTurnTokens;
+		if (config.maxContextWindowTokens <= config.contextReserveNextTurnTokens) {
+			issues.push({
+				field: "MAX_CONTEXT_WINDOW_TOKENS",
+				reason:
+					"MAX_CONTEXT_WINDOW_TOKENS must be greater than CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
+			});
+		}
+		if (config.maxContextWindowTokens <= totalContextReserves) {
+			issues.push({
+				field: "MAX_CONTEXT_WINDOW_TOKENS",
+				reason:
+					"MAX_CONTEXT_WINDOW_TOKENS must be greater than the sum of CONTEXT_RESERVE_SUMMARY_TOKENS, CONTEXT_RESERVE_RECENT_TURN_TOKENS, and CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
 			});
 		}
 	}
@@ -749,15 +784,16 @@ Press enter to use the provider default.> `,
 		initialConfig.transcriptionProvider ??
 		defaultTranscriptionProviderForAiType(aiType);
 	const transcriptionApiKey =
-		initialConfig.transcriptionApiKey && initialConfig.transcriptionApiKey !== ""
+		initialConfig.transcriptionApiKey &&
+		initialConfig.transcriptionApiKey !== ""
 			? initialConfig.transcriptionApiKey
 			: canReusePrimaryAiCredentialsForTranscription(
-					aiType,
-					transcriptionProvider,
-				)
+						aiType,
+						transcriptionProvider,
+					)
 				? aiApiKey
 				: appEntrypoint === "telegram" &&
-					  (initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES)
+						(initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES)
 					? promptOptionalValue(
 							promptUser,
 							`Voice step. Enter TRANSCRIPTION_API_KEY for ${transcriptionProvider}.
@@ -846,7 +882,8 @@ Press enter to allow any chat the bot is added to.> `,
 			initialConfig.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
 		enableSpreadsheets:
 			initialConfig.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
-		enableToolStatus: initialConfig.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
+		enableToolStatus:
+			initialConfig.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
 		enableAttachmentCompactionNotice:
 			initialConfig.enableAttachmentCompactionNotice ??
 			DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,

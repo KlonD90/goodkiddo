@@ -15,9 +15,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 
 ## Active plans
 
-| Feature | Execution |
-|---------|-----------|
-| [Large Attachment Handling](feature-large-attachment-handling.md) | [RALPHEX plan](../plans/large-attachment-handling.md) |
+None currently.
 
 ## Completed
 
@@ -26,6 +24,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/plan/` |
 | [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
 | [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |
+| [Large Attachment Handling](feature-large-attachment-handling.md) | [RALPHEX plan](../plans/large-attachment-handling.md) |
 | [Voice Messages](feature-voice-messages.md) | [RALPHEX plan](../plans/telegram-voice-messages.md) |
 | [PDF Documents](feature-pdf.md) | [RALPHEX plan](../plans/pdf.md) |
 | [CSV and Excel Spreadsheets](feature-csv-excel.md) | [RALPHEX plan](../plans/csv-excel.md) |

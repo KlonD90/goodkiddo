@@ -101,16 +101,18 @@ describe("CapabilityRegistry", () => {
 		});
 		expect(result.ok).toBe(false);
 		if (!result.ok) {
-			expect(result.userMessage).toBe("Failed to download file: network blew up");
+			expect(result.userMessage).toBe(
+				"Failed to download file: network blew up",
+			);
 		}
 	});
 
 	test("handle forwards bytes and metadata to the matched capability", async () => {
-		let captured: CapabilityInput | null = null;
+		const captured: CapabilityInput[] = [];
 		const cap = makeCapability("a", {
 			matches: (m) => m.mimeType === "x/y",
 			onProcess: (input) => {
-				captured = input;
+				captured.push(input);
 			},
 		});
 		const registry = new CapabilityRegistry([cap]);
@@ -120,9 +122,12 @@ describe("CapabilityRegistry", () => {
 		const result = await registry.handle(metadata, async () => bytes);
 
 		expect(result.ok).toBe(true);
-		expect(captured).not.toBeNull();
-		expect(captured!.bytes).toBe(bytes);
-		expect(captured!.metadata).toBe(metadata);
+		const capturedInput = captured[0];
+		if (capturedInput === undefined) {
+			throw new Error("expected capability input to be captured");
+		}
+		expect(capturedInput.bytes).toBe(bytes);
+		expect(capturedInput.metadata).toBe(metadata);
 	});
 
 	test("handle leaves successful results unchanged when no budget is provided", async () => {
@@ -136,9 +141,12 @@ describe("CapabilityRegistry", () => {
 		});
 		const registry = new CapabilityRegistry([cap]);
 
-		const result = await registry.handle({ mimeType: "audio/ogg" }, async () => {
-			return new Uint8Array([1]);
-		});
+		const result = await registry.handle(
+			{ mimeType: "audio/ogg" },
+			async () => {
+				return new Uint8Array([1]);
+			},
+		);
 
 		expect(result).toEqual(expected);
 	});

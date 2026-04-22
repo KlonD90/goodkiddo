@@ -1,37 +1,26 @@
 import { extname } from "node:path";
+import { CronExpressionParser } from "cron-parser";
 import { Bot, InlineKeyboard, InputFile } from "grammy";
 import MarkdownIt from "markdown-it";
 import {
-  VOICE_MAX_BYTES,
-  VOICE_MIME_TYPE,
-} from "../capabilities/voice/constants";
+  type AttachmentBudgetConfig,
+  decideAttachmentBudget,
+  estimateAttachmentTokens,
+} from "../capabilities/attachment_budget";
 import {
-  buildVoiceContent,
-  buildVoiceTurnText,
-} from "../capabilities/voice/content";
-import { fetchVoiceBytes } from "../capabilities/voice/fetch";
-import { OpenRouterTranscriber } from "../capabilities/voice/openrouter_transcriber";
-import {
-  NoOpTranscriber,
-  type Transcriber,
-} from "../capabilities/voice/transcriber";
-import { WhisperTranscriber } from "../capabilities/voice/whisper_transcriber";
-import { PDF_MAX_BYTES } from "../capabilities/pdf/constants";
-import { buildPdfContent, buildPdfText } from "../capabilities/pdf/content";
-import {
-  type PdfExtractor,
-  NoOpPdfExtractor,
-} from "../capabilities/pdf/extractor";
-import { PdfExtractExtractor } from "../capabilities/pdf/pdf_extract_extractor";
-import type { SpreadsheetParser } from "../capabilities/spreadsheet/parser";
-import { CsvParser } from "../capabilities/spreadsheet/csv_parser";
-import { ExcelParser } from "../capabilities/spreadsheet/excel_parser";
-import { renderSpreadsheet } from "../capabilities/spreadsheet/renderer";
-import { SPREADSHEET_MAX_BYTES } from "../capabilities/spreadsheet/constants";
+  type CapabilityRegistry,
+  createCapabilityRegistry,
+  formatTooLargeMessage,
+} from "../capabilities/registry";
+import { type TimerRecord, TimerStore } from "../capabilities/timers/store";
+import { createTimerTools } from "../capabilities/timers/tools";
+import type { FileMetadata } from "../capabilities/types";
+import { VOICE_MIME_TYPE } from "../capabilities/voice/constants";
 import type { AppConfig } from "../config";
-import { canReusePrimaryAiCredentialsForTranscription } from "../config";
 import { createDb, detectDialect } from "../db/index";
+import { resolveLocale } from "../i18n/locale";
 import { readThreadMessages } from "../memory/rotate_thread";
+import type { ThreadMessage } from "../memory/summarize";
 import {
   type ApprovalBroker,
   type ApprovalOutcome,
@@ -41,7 +30,8 @@ import {
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import { basenameFromPath } from "../utils/filesystem";
+import { createStatusEmitter } from "../tools/status_emitter";
+import { basenameFromPath, fileDataToString } from "../utils/filesystem";
 import type {
   OutboundChannel,
   OutboundSendFileArgs,
@@ -62,41 +52,6 @@ import {
   prepareSessionForIncomingTurn,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
-import { TimerStore, type TimerRecord } from "../capabilities/timers/store";
-import { createTimerTools } from "../capabilities/timers/tools";
-import { CronExpressionParser } from "cron-parser";
-import { fileDataToString } from "../utils/filesystem";
-import { createStatusEmitter } from "../tools/status_emitter";
-import { resolveLocale } from "../i18n/locale";
-import {
-  applyAttachmentBudgetToResult,
-  CapabilityRegistry,
-  createCapabilityRegistry,
-  formatTooLargeMessage,
-} from "../capabilities/registry";
-import {
-  decideAttachmentBudget,
-  estimateAttachmentTokens,
-  type AttachmentBudgetConfig,
-} from "../capabilities/attachment_budget";
-import type { FileMetadata } from "../capabilities/types";
-import type { ThreadMessage } from "../memory/summarize";
-
-class CombinedSpreadsheetParser implements SpreadsheetParser {
-  private readonly csvParser = new CsvParser();
-  private readonly excelParser = new ExcelParser();
-
-  async parse(data: Uint8Array, filename: string, mimeType: string) {
-    if (mimeType === "text/csv" || filename.endsWith(".csv")) {
-      return this.csvParser.parse(data, filename, mimeType);
-    }
-    return this.excelParser.parse(data, filename, mimeType);
-  }
-}
-
-function createSpreadsheetParser(_config: AppConfig): SpreadsheetParser {
-  return new CombinedSpreadsheetParser();
-}
 
 const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
@@ -167,25 +122,19 @@ type TelegramQueuedTurn = {
   content: TelegramUserInput;
   commandText: string;
   currentUserText?: string;
+  attachmentBudget?: TelegramAttachmentBudget;
+};
+
+type TelegramAttachmentBudget = {
+  capabilityName: string;
+  config: AttachmentBudgetConfig;
+  enableCompactionNotice: boolean;
+  callerId: string;
 };
 
 type ProcessTelegramFileHelpers = {
   sendMessage?: typeof sendTelegramMessage;
   queueTurn?: typeof handleTelegramQueuedTurn;
-  loadCurrentMessages?: (
-    session: TelegramAgentSession,
-  ) => Promise<ThreadMessage[]>;
-  prepareTurn?: typeof prepareSessionForIncomingTurn;
-  estimateRuntimeTokens?: typeof estimateSessionRuntimeTokens;
-  compactOversizedAttachment?: typeof compactSessionForOversizedAttachment;
-};
-
-type TelegramVoiceFile = {
-  file_size?: number;
-};
-
-type TelegramDocumentFile = {
-  file_size?: number;
 };
 
 type TelegramListState = { type: "bullet" } | { type: "ordered"; next: number };
@@ -1650,7 +1599,10 @@ async function runAgentTurn(
     session.currentUserText =
       queuedTurn.currentUserText ?? extractTextFromContent(queuedTurn.content);
     await session.refreshAgent();
-    const currentMessages = await readThreadMessages(session.agent, session.threadId);
+    const currentMessages = await readThreadMessages(
+      session.agent,
+      session.threadId,
+    );
     const preparedTurn = await prepareSessionForIncomingTurn(
       session,
       currentMessages,
@@ -1667,6 +1619,21 @@ async function runAgentTurn(
     }
     if (preparedTurn.compacted || taskCheck.needsRefresh) {
       await session.refreshAgent();
+    }
+    if (queuedTurn.attachmentBudget) {
+      const budgetResult = await applyTelegramAttachmentBudget({
+        session,
+        budget: queuedTurn.attachmentBudget,
+        content: queuedTurn.content,
+        currentUserText: queuedTurn.currentUserText,
+        currentMessages: preparedTurn.currentMessages,
+        alreadyCompacted: preparedTurn.compacted,
+        mintThreadId: () => mintTelegramThreadId(chatId),
+      });
+      if (!budgetResult.ok) {
+        await sendTelegramMessage(bot, chatId, budgetResult.userMessage);
+        return;
+      }
     }
     const invokeMessages = buildInvokeMessages(session, {
       role: "user",
@@ -1947,6 +1914,7 @@ async function handleTelegramQueuedTurn(
   store: PermissionsStore,
   webShare: ChannelRunOptions["webShare"],
   currentUserText?: string,
+  attachmentBudget?: TelegramAttachmentBudget,
 ): Promise<void> {
   if (
     await handleTelegramControlInput(
@@ -1962,11 +1930,18 @@ async function handleTelegramQueuedTurn(
     return;
   }
 
-  session.queue.push({ content, commandText, currentUserText });
+  session.queue.push({
+    content,
+    commandText,
+    currentUserText,
+    attachmentBudget,
+  });
   void pumpQueue(session, bot, chatId);
 }
 
-function buildAttachmentBudgetConfig(config: AppConfig): AttachmentBudgetConfig {
+function buildAttachmentBudgetConfig(
+  config: AppConfig,
+): AttachmentBudgetConfig {
   return {
     maxContextWindowTokens: config.maxContextWindowTokens,
     reserveSummaryTokens: config.contextReserveSummaryTokens,
@@ -1976,22 +1951,109 @@ function buildAttachmentBudgetConfig(config: AppConfig): AttachmentBudgetConfig 
 }
 
 async function maybeSendAttachmentCompactionNotice(
-  config: AppConfig,
+  enabled: boolean,
   session: TelegramAgentSession,
-  caller: Caller,
+  callerId: string,
 ): Promise<void> {
-  if (!config.enableAttachmentCompactionNotice) {
+  if (!enabled) {
     return;
   }
 
-  await session.statusEmitter?.emit(caller.id, ATTACHMENT_COMPACTION_NOTICE);
+  await session.statusEmitter?.emit(callerId, ATTACHMENT_COMPACTION_NOTICE);
 }
 
-async function loadTelegramCurrentMessages(
-  session: TelegramAgentSession,
-): Promise<ThreadMessage[]> {
-  await session.refreshAgent();
-  return readThreadMessages(session.agent, session.threadId);
+export async function applyTelegramAttachmentBudget(params: {
+  session: TelegramAgentSession;
+  budget: TelegramAttachmentBudget;
+  content: TelegramUserInput;
+  currentUserText?: string;
+  currentMessages: ThreadMessage[];
+  alreadyCompacted: boolean;
+  mintThreadId: () => string;
+  compactOversizedAttachment?: typeof compactSessionForOversizedAttachment;
+}): Promise<
+  | { ok: true }
+  | {
+      ok: false;
+      userMessage: string;
+    }
+> {
+  const {
+    session,
+    budget,
+    content,
+    currentUserText,
+    currentMessages,
+    alreadyCompacted,
+    mintThreadId,
+  } = params;
+  const compactOversizedAttachment =
+    params.compactOversizedAttachment ?? compactSessionForOversizedAttachment;
+  const attachmentTokens = estimateAttachmentTokens({
+    content,
+    currentUserText: currentUserText ?? extractTextFromContent(content),
+  });
+  const maxTokens =
+    budget.config.maxContextWindowTokens - budget.config.reserveNextTurnTokens;
+  let decision = decideAttachmentBudget({
+    attachmentTokens,
+    currentRuntimeTokens: estimateSessionRuntimeTokens(
+      session,
+      currentMessages,
+    ),
+    config: budget.config,
+  });
+  if (decision.kind === "fit") {
+    return { ok: true };
+  }
+  if (decision.kind === "reject") {
+    return {
+      ok: false,
+      userMessage: formatTooLargeMessage(budget.capabilityName, {
+        attachmentTokens,
+        maxTokens,
+      }),
+    };
+  }
+  if (alreadyCompacted) {
+    return {
+      ok: false,
+      userMessage: formatTooLargeMessage(budget.capabilityName, {
+        attachmentTokens,
+        maxTokens,
+      }),
+    };
+  }
+
+  await maybeSendAttachmentCompactionNotice(
+    budget.enableCompactionNotice,
+    session,
+    budget.callerId,
+  );
+  const refreshedMessages = await compactOversizedAttachment(
+    session,
+    currentMessages,
+    mintThreadId,
+  );
+  decision = decideAttachmentBudget({
+    attachmentTokens,
+    currentRuntimeTokens: estimateSessionRuntimeTokens(
+      session,
+      refreshedMessages,
+    ),
+    config: budget.config,
+  });
+  if (decision.kind !== "fit") {
+    return {
+      ok: false,
+      userMessage: formatTooLargeMessage(budget.capabilityName, {
+        attachmentTokens,
+        maxTokens,
+      }),
+    };
+  }
+
+  return { ok: true };
 }
 
 export async function processTelegramFile(
@@ -2011,83 +2073,11 @@ export async function processTelegramFile(
 ): Promise<void> {
   const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
   const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
-  const loadCurrentMessages =
-    helpers.loadCurrentMessages ?? loadTelegramCurrentMessages;
-  const prepareTurn = helpers.prepareTurn ?? prepareSessionForIncomingTurn;
-  const estimateRuntimeTokens =
-    helpers.estimateRuntimeTokens ?? estimateSessionRuntimeTokens;
-  const compactOversizedAttachment =
-    helpers.compactOversizedAttachment ?? compactSessionForOversizedAttachment;
   const capability = registry.match(params.metadata);
   const result = await registry.handle(params.metadata, params.download);
   if (!result.ok) {
     await sendMessage(bot, chatId, result.userMessage);
     return;
-  }
-
-  if (capability !== null) {
-    const budgetConfig = buildAttachmentBudgetConfig(config);
-    const currentMessages = await loadCurrentMessages(session);
-    const preparedTurn = await prepareTurn(
-      session,
-      currentMessages,
-      result.value.content,
-      () => mintTelegramThreadId(chatId),
-    );
-    const attachmentTokens = estimateAttachmentTokens(result.value);
-    const currentRuntimeTokens = estimateRuntimeTokens(
-      session,
-      preparedTurn.currentMessages,
-    );
-
-    if (preparedTurn.compacted) {
-      const decision = decideAttachmentBudget({
-        attachmentTokens,
-        currentRuntimeTokens,
-        config: budgetConfig,
-      });
-      if (decision.kind !== "fit") {
-        const maxTokens =
-          decision.kind === "reject"
-            ? decision.maxTokens
-            : Math.max(
-                0,
-                budgetConfig.maxContextWindowTokens -
-                  budgetConfig.reserveNextTurnTokens -
-                  currentRuntimeTokens,
-              );
-        await sendMessage(
-          bot,
-          chatId,
-          formatTooLargeMessage(capability.name, {
-            attachmentTokens,
-            maxTokens,
-          }),
-        );
-        return;
-      }
-    } else {
-      const budgetedResult = await applyAttachmentBudgetToResult(
-        capability.name,
-        result,
-        {
-          config: budgetConfig,
-          currentRuntimeTokens,
-          compact: async () => {
-            await maybeSendAttachmentCompactionNotice(config, session, caller);
-            await compactOversizedAttachment(
-              session,
-              preparedTurn.currentMessages,
-              () => mintTelegramThreadId(chatId),
-            );
-          },
-        },
-      );
-      if (!budgetedResult.ok) {
-        await sendMessage(bot, chatId, budgetedResult.userMessage);
-        return;
-      }
-    }
   }
 
   await queueTurn(
@@ -2100,6 +2090,14 @@ export async function processTelegramFile(
     store,
     webShare,
     result.value.currentUserText,
+    capability === null
+      ? undefined
+      : {
+          capabilityName: capability.name,
+          config: buildAttachmentBudgetConfig(config),
+          enableCompactionNotice: config.enableAttachmentCompactionNotice,
+          callerId: caller.id,
+        },
   );
 }
 

@@ -30,6 +30,9 @@ Large attachment handling uses `MAX_CONTEXT_WINDOW_TOKENS=150000`,
 `CONTEXT_RESERVE_RECENT_TURN_TOKENS=2000`, and
 `CONTEXT_RESERVE_NEXT_TURN_TOKENS=2000` by default; override them to tune how
 much context is reserved for summaries, recent turns, and the next turn.
+Telegram also emits an ephemeral attachment-compaction notice by default;
+set `ENABLE_ATTACHMENT_COMPACTION_NOTICE=false` to disable only that notice,
+not the underlying compaction behavior.
 Set `TIMEZONE=America/New_York` to control the default timezone for
 scheduled timers (defaults to `UTC`).
 
