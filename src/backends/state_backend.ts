@@ -5,12 +5,10 @@ import type {
 	FileData,
 	FileDownloadResponse,
 	FileInfo,
-	FilesystemMiddlewareOptions,
 	FileUploadResponse,
 	GrepMatch,
 	WriteResult,
 } from "deepagents";
-import { createFilesystemMiddleware } from "deepagents";
 import { fileDataToString, formatReadResponse } from "../utils/filesystem";
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -30,10 +28,6 @@ export interface SqliteStateBackendOptions {
 	dialect: "sqlite" | "postgres";
 	namespace?: string;
 }
-
-export interface SqliteFilesystemMiddlewareOptions
-	extends Omit<FilesystemMiddlewareOptions, "backend">,
-		SqliteStateBackendOptions {}
 
 export function normalizePath(input: string, kind: "file" | "dir"): string {
 	const raw = (input || "/").trim().replaceAll("\\", "/");
@@ -445,15 +439,4 @@ export class SqliteStateBackend implements BackendProtocol {
 			}),
 		);
 	}
-}
-
-export function createSqliteFilesystemMiddleware(
-	options: SqliteFilesystemMiddlewareOptions,
-) {
-	const { db, dialect, namespace, ...middlewareOptions } = options;
-
-	return createFilesystemMiddleware({
-		...middlewareOptions,
-		backend: new SqliteStateBackend({ db, dialect, namespace }),
-	});
 }

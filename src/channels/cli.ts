@@ -189,6 +189,10 @@ export const cliChannel: AppChannel = {
 
 			try {
 				session.currentUserText = userInput;
+				session.currentTurnContext = {
+					now: new Date(),
+					source: "cli",
+				};
 				await session.refreshAgent();
 				const currentMessages = await readThreadMessages(
 					session.agent,
@@ -233,6 +237,7 @@ export const cliChannel: AppChannel = {
 				clearPendingCompactionSeed(session);
 				clearPendingTaskCheckContext(session);
 				session.currentUserText = undefined;
+				session.currentTurnContext = undefined;
 			}
 		}
 

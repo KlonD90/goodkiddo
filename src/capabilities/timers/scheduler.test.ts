@@ -51,6 +51,8 @@ function createTimer(overrides: Partial<Parameters<SchedulerOptions["onTick"]>[0
 		chatId: "telegram:1",
 		mdFilePath: "test.md",
 		cronExpression: "0 10 * * *",
+		kind: "always" as const,
+		message: null,
 		timezone: "UTC",
 		enabled: true,
 		lastRunAt: null,
@@ -112,6 +114,70 @@ describe("startScheduler", () => {
 		expect(mockStore.findDue._calls.length).toBeGreaterThan(0);
 		expect(mockReadMdFile._calls.length).toBe(0);
 		expect(mockOnTick._calls.length).toBe(0);
+	});
+
+	test("sends one-time reminders directly and marks them completed", async () => {
+		const timer = createTimer({
+			chatId: "123",
+			kind: "once",
+			message: "Check the deploy",
+			mdFilePath: "",
+			cronExpression: "",
+		});
+		mockStore.findDue._mockValue = Promise.resolve([timer]);
+		mockNotifyUser._mockValue = Promise.resolve(undefined);
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+		mockStore.update._mockValue = Promise.resolve({
+			...timer,
+			enabled: false,
+			lastRunAt: 1000,
+		});
+
+		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
+			intervalMs: 10_000_000,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
+			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
+			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls).toEqual([
+			["123", "Reminder: Check the deploy"],
+		]);
+		expect(mockStore.touchRun._calls).toEqual([["timer-1", 1000]]);
+		expect(mockStore.update._calls).toEqual([
+			["timer-1", "telegram:1", { enabled: false }],
+		]);
+		expect(mockStore.delete._calls.length).toBe(0);
+		expect(mockReadMdFile._calls.length).toBe(0);
+		expect(mockOnTick._calls.length).toBe(0);
+	});
+
+	test("keeps failed one-time reminders due for retry", async () => {
+		const timer = createTimer({
+			kind: "once",
+			message: "Check the deploy",
+			mdFilePath: "",
+			cronExpression: "",
+		});
+		mockStore.findDue._mockValue = Promise.resolve([timer]);
+		mockNotifyUser._mockValue = Promise.reject(new Error("Telegram failed"));
+		mockStore.touchError._mockValue = Promise.resolve(1);
+
+		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
+			intervalMs: 10_000_000,
+			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
+			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
+			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
+		});
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockStore.touchError._calls).toEqual([
+			["timer-1", "telegram:1", "Telegram failed"],
+		]);
+		expect(mockStore.delete._calls.length).toBe(0);
 	});
 
 	test("handles onTick errors and calls touchError", async () => {

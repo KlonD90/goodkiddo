@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { createLogger } from "../logger";
+
+const log = createLogger("frontend.build");
 
 export interface FrontendBundle {
 	js: string;
@@ -76,7 +79,10 @@ function readVendorCss(relativePath: string): string {
 		const fullPath = resolve(process.cwd(), "node_modules", relativePath);
 		return readFileSync(fullPath, "utf8");
 	} catch (error) {
-		console.warn(`Could not load ${relativePath}:`, error);
+		log.warn("could not load vendor css", {
+			path: relativePath,
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return "";
 	}
 }
@@ -90,10 +96,10 @@ async function tryBuild(entry: string): Promise<string | null> {
 			format: "iife",
 		});
 		if (!result.success || result.outputs.length === 0) {
-			console.warn(
-				`Frontend build failed for ${entry}:`,
-				result.logs.map((log) => log.message ?? String(log)).join("\n"),
-			);
+			log.warn("frontend build failed", {
+				entry,
+				logs: result.logs.map((l) => l.message ?? String(l)).join("\n"),
+			});
 			return null;
 		}
 		const chunks = await Promise.all(
@@ -101,7 +107,10 @@ async function tryBuild(entry: string): Promise<string | null> {
 		);
 		return chunks.join("\n");
 	} catch (error) {
-		console.warn(`Frontend build threw for ${entry}:`, error);
+		log.warn("frontend build threw", {
+			entry,
+			error: error instanceof Error ? error.message : String(error),
+		});
 		return null;
 	}
 }

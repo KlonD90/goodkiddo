@@ -1,4 +1,7 @@
+import { createLogger } from "../logger";
 import { compactInline } from "../utils/text";
+
+const log = createLogger("tasks.store");
 
 type SQL = InstanceType<typeof Bun.SQL>;
 
@@ -135,7 +138,9 @@ export class TaskStore {
 		this.now = options.now ?? (() => Date.now());
 		this._ready = this.init();
 		this._ready.catch((err) => {
-			console.error("TaskStore initialization failed:", err);
+			log.error("initialization failed", {
+				error: err instanceof Error ? err.message : String(err),
+			});
 		});
 	}
 

@@ -14,10 +14,13 @@ import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createPersistentCheckpointer } from "../checkpoints/sql_saver";
 import type { AppConfig } from "../config";
 import { compactionStatusMessage, type SupportedLocale } from "../i18n/locale";
+import { createLogger } from "../logger";
 import {
 	type CheckpointSummary,
 	deserializeCheckpointSummary,
 } from "../memory/checkpoint_compaction";
+
+const log = createLogger("compaction.seed");
 import {
 	estimateContentTokens,
 	extractContentText,
@@ -58,12 +61,19 @@ export type TaskCheckSessionConfig = {
 	store: TaskStore;
 };
 
+export type ChannelCurrentTurnContext = {
+	now: Date;
+	source: "cli" | "telegram_message" | "scheduler" | "system_clock";
+	requiresExplicitTimerTimezone?: boolean;
+};
+
 export type ChannelAgentSession = {
 	agent: AgentInstance;
 	threadId: string;
 	workspace: BackendProtocol;
 	model: BaseChatModel;
 	currentUserText?: string;
+	currentTurnContext?: ChannelCurrentTurnContext;
 	refreshAgent: () => Promise<void>;
 	persistThreadId?: (threadId: string) => Promise<void>;
 	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
@@ -201,24 +211,42 @@ export function seedFromCheckpoint(
 	const summary = deserializeCheckpointSummary(checkpointPayload);
 	const recentTurns = extractRecentTurns(allMessages, 2);
 	session.pendingCompactionSeed = { summary, recentTurns };
+	log.info("seed set (seedFromCheckpoint)", {
+		threadId: session.threadId,
+		goal: summary.current_goal,
+		decisions: summary.decisions.length,
+		constraints: summary.constraints.length,
+		unfinished: summary.unfinished_work.length,
+		recentTurns: recentTurns.length,
+		degraded: summary.degraded === true,
+	});
 }
 
 /**
  * Build the messages array to pass to agent.invoke() / agent.stream().
  *
- * Pending compaction context is injected through the rebuilt system prompt so
- * it does not become persisted thread history. The message payload therefore
- * always contains just the actual user turn.
+ * Pending compaction context is injected through the rebuilt system prompt.
+ * Current-turn time is added as user-turn metadata so the system prompt stays
+ * stable for provider-side prompt caching.
  */
 export function buildInvokeMessages(
 	session: ChannelAgentSession,
 	currentUserMessage: { role: "user"; content: unknown },
 ): Array<{ role: string; content: unknown }> {
-	void session;
+	const currentTurnMetadata = renderCurrentTurnMessageMetadata(
+		session.currentTurnContext,
+	);
+	if (currentTurnMetadata) {
+		return [{ role: "user", content: currentTurnMetadata }, currentUserMessage];
+	}
+
 	return [currentUserMessage];
 }
 
 export function clearPendingCompactionSeed(session: ChannelAgentSession): void {
+	if (session.pendingCompactionSeed) {
+		log.debug("seed cleared", { threadId: session.threadId });
+	}
 	session.pendingCompactionSeed = undefined;
 }
 
@@ -281,10 +309,18 @@ export async function maybeResumeCompactAndSeed(
 	});
 
 	await rotateSessionThread(session, mintThreadId());
+	const resumeSummary = deserializeCheckpointSummary(checkpoint.summaryPayload);
+	const resumeRecent = extractRecentTurns(messages, 2);
 	session.pendingCompactionSeed = {
-		summary: deserializeCheckpointSummary(checkpoint.summaryPayload),
-		recentTurns: extractRecentTurns(messages, 2),
+		summary: resumeSummary,
+		recentTurns: resumeRecent,
 	};
+	log.info("seed set (session resume)", {
+		newThreadId: session.threadId,
+		goal: resumeSummary.current_goal,
+		decisions: resumeSummary.decisions.length,
+		recentTurns: resumeRecent.length,
+	});
 	return true;
 }
 
@@ -310,10 +346,18 @@ export async function compactSessionForOversizedAttachment(
 	});
 
 	await rotateSessionThread(session, mintThreadId());
+	const attachSummary = deserializeCheckpointSummary(checkpoint.summaryPayload);
+	const attachRecent = extractRecentTurns(messages, 2);
 	session.pendingCompactionSeed = {
-		summary: deserializeCheckpointSummary(checkpoint.summaryPayload),
-		recentTurns: extractRecentTurns(messages, 2),
+		summary: attachSummary,
+		recentTurns: attachRecent,
 	};
+	log.info("seed set (oversized attachment)", {
+		newThreadId: session.threadId,
+		goal: attachSummary.current_goal,
+		decisions: attachSummary.decisions.length,
+		recentTurns: attachRecent.length,
+	});
 	await session.refreshAgent();
 	return readThreadMessages(session.agent, session.threadId);
 }
@@ -324,10 +368,28 @@ export async function recoverPendingSeedForEmptyThread(
 	store: ForcedCheckpointStore,
 ): Promise<boolean> {
 	const checkpoint = await store.readLatestForCaller(caller);
-	if (!checkpoint || checkpoint.threadId === session.threadId) {
+	if (!checkpoint) {
+		log.debug("no stored checkpoint to recover", {
+			caller,
+			threadId: session.threadId,
+		});
+		return false;
+	}
+	if (checkpoint.threadId === session.threadId) {
+		log.debug("stored checkpoint belongs to current thread, skipping recovery", {
+			caller,
+			threadId: session.threadId,
+		});
 		return false;
 	}
 
+	log.info("recovering seed from stored checkpoint", {
+		caller,
+		threadId: session.threadId,
+		checkpointId: checkpoint.id,
+		priorThreadId: checkpoint.threadId,
+		reason: checkpoint.sourceBoundary,
+	});
 	const priorMessages = await readThreadMessages(
 		session.agent,
 		checkpoint.threadId,
@@ -390,6 +452,13 @@ export async function maybeAutoCompactAndSeed(
 
 	await rotateSessionThread(session, mintThreadId());
 	session.pendingCompactionSeed = { summary, recentTurns };
+	log.info("seed set (auto compact)", {
+		newThreadId: session.threadId,
+		reason: checkpoint.sourceBoundary,
+		goal: summary.current_goal,
+		decisions: summary.decisions.length,
+		recentTurns: recentTurns.length,
+	});
 	return true;
 }
 
@@ -518,17 +587,61 @@ function renderSessionRuntimeContext(
 	if (!session) return undefined;
 	const blocks: string[] = [];
 	if (session.pendingCompactionSeed) {
-		blocks.push(
-			renderCompactionPromptContext({
-				checkpoint: session.pendingCompactionSeed.summary,
-				recentTurns: session.pendingCompactionSeed.recentTurns,
-			}),
-		);
+		const rendered = renderCompactionPromptContext({
+			checkpoint: session.pendingCompactionSeed.summary,
+			recentTurns: session.pendingCompactionSeed.recentTurns,
+		});
+		log.info("seed rendered into system prompt", {
+			goal: session.pendingCompactionSeed.summary.current_goal,
+			recentTurns: session.pendingCompactionSeed.recentTurns.length,
+			renderedLength: rendered.length,
+		});
+		log.debug("seed rendered body", { body: rendered });
+		blocks.push(rendered);
 	}
 	if (session.pendingTaskCheckContext) {
 		blocks.push(session.pendingTaskCheckContext.trim());
 	}
 	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
+}
+
+function renderCurrentTurnMessageMetadata(
+	context: ChannelCurrentTurnContext | undefined,
+): string | undefined {
+	if (!context) return undefined;
+	const lines = [
+		"[Current message metadata]",
+		`- Current message time in UTC: ${context.now.toISOString()}`,
+		`- Time source: ${formatCurrentTurnTimeSource(context.source)}`,
+		"- Do not infer the user's timezone from app configuration.",
+	];
+
+	if (context.requiresExplicitTimerTimezone) {
+		lines.push(
+			'- For duration-only one-time reminders like "in 5 minutes" or "in 30 minutes", do not ask for timezone; compute the UTC target instant from the current message time and call `create_timer` with `type: "once"` and `runAtUtc`.',
+			"- For wall-clock one-time reminders or recurring timers, use an explicit IANA timezone from the user request or from `/memory/USER.md` to interpret the requested local time.",
+			"- If a wall-clock one-time reminder or recurring timer needs a timezone and none is explicit or stored in `/memory/USER.md`, ask the user for their IANA timezone before calling timer tools.",
+			'- After the user provides a timezone, save it to `/memory/USER.md` with `memory_write` using `target: "user"`.',
+		);
+	}
+
+	lines.push("[/Current message metadata]");
+	return lines.join("\n");
+}
+
+function formatCurrentTurnTimeSource(
+	source: ChannelCurrentTurnContext["source"],
+): string {
+	switch (source) {
+		case "telegram_message":
+			return "Telegram message timestamp";
+		case "scheduler":
+			return "scheduler clock";
+		case "cli":
+			return "CLI process clock";
+		case "system_clock":
+			return "system clock";
+	}
 }
 
 function isAssistantMessage(message: unknown): boolean {

@@ -1,4 +1,7 @@
 import type { OutboundChannel } from "../channels/outbound";
+import { createLogger } from "../logger";
+
+const log = createLogger("tools.status");
 
 export type StatusEmitter = {
 	emit(callerId: string, message: string): Promise<void>;
@@ -24,7 +27,10 @@ export function createStatusEmitter(
 			try {
 				await channelWithStatus.sendStatus(callerId, message);
 			} catch (err) {
-				console.error("[StatusEmitter] sendStatus failed:", err);
+				log.error("sendStatus failed", {
+					callerId,
+					error: err instanceof Error ? err.message : String(err),
+				});
 			}
 		},
 	};

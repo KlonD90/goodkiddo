@@ -6,7 +6,7 @@ Security-aware AI agent harness built with TypeScript and Bun.
 - Per-caller memory wiki (notes, skills, log) plus SQL-backed active tasks, with `/new_thread` rotation and boundary-based task reconciliation
 - Persistent conversation state in `DATABASE_URL`: full LangGraph history for audit/recovery, plus forced checkpoints that compact runtime context at `/new_thread`, session-resume, and prompt-budget boundaries
 - Docker sandbox today, Firecracker path where supported
-- CLI and Telegram entrypoints, including Telegram photo, voice, PDF document handling, spreadsheets, and scheduled timers for multimodal models
+- CLI and Telegram entrypoints, including Telegram photo, voice, PDF document handling, spreadsheets, scheduled timers, and one-time reminders
 
 ## Run
 
@@ -33,8 +33,12 @@ much context is reserved for summaries, recent turns, and the next turn.
 Telegram also emits an ephemeral attachment-compaction notice by default;
 set `ENABLE_ATTACHMENT_COMPACTION_NOTICE=false` to disable only that notice,
 not the underlying compaction behavior.
-Set `TIMEZONE=America/New_York` to control the default IANA timezone used to
-evaluate and display scheduled timers (defaults to `UTC`).
+Telegram wall-clock and recurring timer requests require an explicit IANA
+timezone from the request or from `/memory/USER.md`. Duration-only one-time
+reminders like "in 30 minutes" use the Telegram message timestamp to compute a
+UTC `runAtUtc` without asking for timezone. If a wall-clock or recurring timer
+needs a timezone and it is not known, the agent asks for it and saves it to
+`USER.md`.
 
 ```bash
 ./dev.sh

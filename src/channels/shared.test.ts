@@ -461,6 +461,39 @@ describe("buildInvokeMessages — no pending seed", () => {
 	});
 });
 
+describe("buildInvokeMessages — current turn time", () => {
+	test("prepends current Telegram message time as user metadata", () => {
+		const session = stubSession({
+			currentTurnContext: {
+				now: new Date("2026-04-24T12:30:00.000Z"),
+				source: "telegram_message",
+				requiresExplicitTimerTimezone: true,
+			},
+		});
+		const messages = buildInvokeMessages(session, {
+			role: "user",
+			content: "remind me in 30 minutes",
+		});
+
+		expect(messages).toHaveLength(2);
+		expect(messages[0]?.role).toBe("user");
+		expect(messages[0]?.content).toContain(
+			"Current message time in UTC: 2026-04-24T12:30:00.000Z",
+		);
+		expect(messages[0]?.content).toContain("Telegram message timestamp");
+		expect(messages[0]?.content).toContain(
+			'duration-only one-time reminders like "in 5 minutes"',
+		);
+		expect(messages[0]?.content).toContain("runAtUtc");
+		expect(messages[0]?.content).toContain("recurring timer needs a timezone");
+		expect(messages[0]?.content).toContain("memory_write");
+		expect(messages[1]).toMatchObject({
+			role: "user",
+			content: "remind me in 30 minutes",
+		});
+	});
+});
+
 describe("buildInvokeMessages — with pending seed", () => {
 	test("does not inject checkpoint context into persisted turn messages", () => {
 		const recentTurns = makeMessages(["prev-q", "prev-a"]);

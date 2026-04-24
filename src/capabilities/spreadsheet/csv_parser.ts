@@ -1,5 +1,8 @@
 import { parse } from "csv-parse";
+import { createLogger } from "../../logger";
 import type { SpreadsheetParser, SpreadsheetParseResult } from "./parser";
+
+const log = createLogger("capability.spreadsheet");
 
 export class CsvParser implements SpreadsheetParser {
 	async parse(data: Uint8Array, _filename: string, _mimeType: string): Promise<SpreadsheetParseResult> {
@@ -51,8 +54,8 @@ export class CsvParser implements SpreadsheetParser {
 				isCorrupt: false
 			};
 		} catch (err) {
-			console.error("CSV parse error:", err);
 			const message = err instanceof Error ? err.message : "Unknown parse error";
+			log.error("csv parse failed", { error: message });
 			return {
 				sheets: [{
 					name: "Sheet1",

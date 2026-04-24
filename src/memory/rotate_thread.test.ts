@@ -75,11 +75,15 @@ describe("rotateThread", () => {
 		expect(result.previousThreadId).toBe("telegram-123");
 		expect(result.newThreadId).toBe("telegram-123-next");
 		expect(session.threadId).toBe("telegram-123-next");
-		expect(seen[1]?.content).toContain("USER: Kenshiro has black hair.");
 		expect(seen[1]?.content).toContain(
-			"ASSISTANT: Understood, I mixed them up.",
+			'<turn role="user">Kenshiro has black hair.</turn>',
 		);
-		expect(seen[1]?.content).toContain("TOOL: Search result text");
+		expect(seen[1]?.content).toContain(
+			'<turn role="assistant">Understood, I mixed them up.</turn>',
+		);
+		expect(seen[1]?.content).toContain(
+			'<turn role="tool">Search result text</turn>',
+		);
 
 		const log = await readOrEmpty(backend, MEMORY_LOG_PATH);
 		expect(log).toContain("thread_closed");

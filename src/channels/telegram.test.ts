@@ -727,6 +727,8 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 				chatId: "telegram:123",
 				mdFilePath: "test.md",
 				cronExpression: "0 10 * * *",
+				kind: "always",
+				message: null,
 				timezone: "UTC",
 				enabled: true,
 				lastRunAt: null,

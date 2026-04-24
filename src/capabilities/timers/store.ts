@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
+import { createLogger } from "../../logger";
+
+const log = createLogger("timers.store");
 
 type SQL = InstanceType<typeof Bun.SQL>;
+
+export type TimerKind = "always" | "once";
 
 export interface TimerRecord {
 	id: string;
@@ -8,6 +13,8 @@ export interface TimerRecord {
 	chatId: string;
 	mdFilePath: string;
 	cronExpression: string;
+	kind: TimerKind;
+	message: string | null;
 	timezone: string;
 	enabled: boolean;
 	lastRunAt: number | null;
@@ -23,6 +30,8 @@ type TimerRow = {
 	chat_id: string;
 	md_file_path: string;
 	cron_expression: string;
+	kind: string;
+	message: string | null;
 	timezone: string;
 	enabled: number;
 	last_run_at: number | null;
@@ -41,8 +50,10 @@ export interface TimerStoreOptions {
 export interface CreateTimerParams {
 	userId: string;
 	chatId: string;
-	mdFilePath: string;
-	cronExpression: string;
+	mdFilePath?: string;
+	cronExpression?: string;
+	kind?: TimerKind;
+	message?: string | null;
 	timezone: string;
 	nextRunAt: number;
 }
@@ -61,6 +72,8 @@ function rowToTimer(row: TimerRow): TimerRecord {
 		chatId: row.chat_id,
 		mdFilePath: row.md_file_path,
 		cronExpression: row.cron_expression,
+		kind: row.kind === "once" ? "once" : "always",
+		message: row.message,
 		timezone: row.timezone,
 		enabled: row.enabled === 1,
 		lastRunAt: row.last_run_at,
@@ -83,7 +96,9 @@ export class TimerStore {
 		this.now = options.now ?? (() => Date.now());
 		this._ready = this.init();
 		this._ready.catch((err) => {
-			console.error("TimerStore initialization failed:", err);
+			log.error("initialization failed", {
+				error: err instanceof Error ? err.message : String(err),
+			});
 		});
 	}
 
@@ -96,6 +111,8 @@ export class TimerStore {
 					chat_id TEXT NOT NULL,
 					md_file_path TEXT NOT NULL,
 					cron_expression TEXT NOT NULL,
+					kind TEXT NOT NULL DEFAULT 'always',
+					message TEXT,
 					timezone TEXT NOT NULL DEFAULT 'UTC',
 					enabled INTEGER NOT NULL DEFAULT 1,
 					last_run_at BIGINT,
@@ -113,6 +130,8 @@ export class TimerStore {
 					chat_id TEXT NOT NULL,
 					md_file_path TEXT NOT NULL,
 					cron_expression TEXT NOT NULL,
+					kind TEXT NOT NULL DEFAULT 'always',
+					message TEXT,
 					timezone TEXT NOT NULL DEFAULT 'UTC',
 					enabled INTEGER NOT NULL DEFAULT 1,
 					last_run_at INTEGER,
@@ -124,6 +143,8 @@ export class TimerStore {
 			`;
 		}
 
+		await this.migrateTimerColumns();
+
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_timers_enabled_next_run_at
 			ON timers(enabled, next_run_at)
@@ -131,6 +152,35 @@ export class TimerStore {
 
 		if (this.dialect === "sqlite") {
 			await this.db`PRAGMA journal_mode = WAL`;
+		}
+	}
+
+	private async migrateTimerColumns(): Promise<void> {
+		if (this.dialect === "postgres") {
+			await this.db`
+				ALTER TABLE timers
+				ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'always'
+			`;
+			await this.db`
+				ALTER TABLE timers
+				ADD COLUMN IF NOT EXISTS message TEXT
+			`;
+			return;
+		}
+
+		const columns = await this.db<Array<{ name: string }>>`PRAGMA table_info(timers)`;
+		const columnNames = new Set(columns.map((column) => column.name));
+		if (!columnNames.has("kind")) {
+			await this.db`
+				ALTER TABLE timers
+				ADD COLUMN kind TEXT NOT NULL DEFAULT 'always'
+			`;
+		}
+		if (!columnNames.has("message")) {
+			await this.db`
+				ALTER TABLE timers
+				ADD COLUMN message TEXT
+			`;
 		}
 	}
 
@@ -149,6 +199,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,
@@ -160,8 +212,10 @@ export class TimerStore {
 				${id},
 				${params.userId},
 				${params.chatId},
-				${params.mdFilePath},
-				${params.cronExpression},
+				${params.mdFilePath ?? ""},
+				${params.cronExpression ?? ""},
+				${params.kind ?? "always"},
+				${params.message ?? null},
 				${params.timezone},
 				1,
 				NULL,
@@ -176,6 +230,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,
@@ -199,6 +255,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,
@@ -222,6 +280,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,
@@ -245,6 +305,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,
@@ -289,6 +351,8 @@ export class TimerStore {
 				chat_id,
 				md_file_path,
 				cron_expression,
+				kind,
+				message,
 				timezone,
 				enabled,
 				last_run_at,

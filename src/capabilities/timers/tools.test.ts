@@ -43,7 +43,6 @@ describe("TimerTools", () => {
 	describe("create_timer", () => {
 		test("creates a valid timer", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -51,8 +50,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/daily-news.md",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(result).toContain("Timer set");
@@ -63,7 +64,6 @@ describe("TimerTools", () => {
 
 		test("creates timer with relative memory path", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -71,8 +71,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "daily-news.md",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(result).toContain("Timer set");
@@ -80,7 +82,6 @@ describe("TimerTools", () => {
 
 		test("returns error for invalid cron expression", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -88,8 +89,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/daily-news.md",
 				cronExpression: "not-a-cron",
+				timezone: "UTC",
 			});
 
 			expect(result).toBe(
@@ -99,7 +102,6 @@ describe("TimerTools", () => {
 
 		test("returns error for md file path outside /memory/", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -107,8 +109,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/etc/passwd",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(result).toBe("Error: Memory file path must be inside /memory/");
@@ -116,7 +120,6 @@ describe("TimerTools", () => {
 
 		test("returns error for path with traversal attempt", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -124,8 +127,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/../etc/passwd",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(result).toBe("Error: Memory file path must be inside /memory/");
@@ -134,7 +139,6 @@ describe("TimerTools", () => {
 		test("returns error when md file not found", async () => {
 			readMdFileMock = vi.fn().mockRejectedValue(new Error("File not found"));
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -142,8 +146,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/nonexistent.md",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(result).toBe("Error: Memory file not found: /memory/nonexistent.md");
@@ -152,7 +158,6 @@ describe("TimerTools", () => {
 		test("uses provided timezone when specified", async () => {
 			const createSpy = vi.spyOn(store, "create");
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -160,6 +165,7 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/daily-news.md",
 				cronExpression: "0 10 * * 1-5",
 				timezone: "America/New_York",
@@ -176,10 +182,34 @@ describe("TimerTools", () => {
 			);
 		});
 
+		test("requires timezone for recurring timers", async () => {
+			const createSpy = vi.spyOn(store, "create");
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			let error: unknown;
+			try {
+				await createTool.invoke({
+					type: "always",
+					mdFilePath: "/memory/daily-news.md",
+					cronExpression: "0 10 * * 1-5",
+				} as never);
+			} catch (err) {
+				error = err;
+			}
+
+			expect(error).toBeDefined();
+			expect(createSpy).not.toHaveBeenCalled();
+			expect(computeNextRunMock).not.toHaveBeenCalled();
+		});
+
 		test("stores provided chat id separately from user id", async () => {
 			const createSpy = vi.spyOn(store, "create");
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -188,8 +218,10 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/daily-news.md",
 				cronExpression: "0 10 * * 1-5",
+				timezone: "UTC",
 			});
 
 			expect(createSpy).toHaveBeenCalledWith(
@@ -202,7 +234,6 @@ describe("TimerTools", () => {
 
 		test("returns error for invalid timezone", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -210,6 +241,7 @@ describe("TimerTools", () => {
 			const createTool = tools.find((t) => t.name === "create_timer")!;
 
 			const result = await createTool.invoke({
+				type: "always",
 				mdFilePath: "/memory/daily-news.md",
 				cronExpression: "0 10 * * 1-5",
 				timezone: "Mars/Base",
@@ -218,12 +250,113 @@ describe("TimerTools", () => {
 			expect(result).toBe("Error: Invalid timezone: Mars/Base");
 			expect(computeNextRunMock).not.toHaveBeenCalled();
 		});
+
+		test("does not expose a separate one-time create tool", () => {
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+
+			const toolNames: string[] = tools.map((t) => t.name);
+			expect(toolNames).not.toContain("create_one_time_timer");
+		});
+	});
+
+	describe("create_timer once", () => {
+		test("creates a reminder from a UTC timestamp", async () => {
+			const createSpy = vi.spyOn(store, "create");
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			const result = await createTool.invoke({
+				type: "once",
+				message: "Check the deploy",
+				runAtUtc: "2030-04-24T09:30:00.000Z",
+			});
+
+			expect(result).toContain("One-time reminder set");
+			expect(result).toContain("Timer ID:");
+			expect(createSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					userId: callerId,
+					chatId: callerId,
+					kind: "once",
+					message: "Check the deploy",
+					cronExpression: "30 9 24 4 *",
+					timezone: "UTC",
+					nextRunAt: Date.parse("2030-04-24T09:30:00.000Z"),
+				}),
+			);
+			expect(readMdFileMock).not.toHaveBeenCalled();
+			expect(computeNextRunMock).not.toHaveBeenCalled();
+		});
+
+		test("rejects empty reminder messages", async () => {
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			const result = await createTool.invoke({
+				type: "once",
+				message: "   ",
+				runAtUtc: "2030-04-24T09:30:00.000Z",
+			});
+
+			expect(result).toBe("Error: Reminder message cannot be empty.");
+		});
+
+		test("requires runAtUtc for one-time reminders", async () => {
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			let error: unknown;
+			try {
+				await createTool.invoke({
+					type: "once",
+					message: "Check the deploy",
+				} as never);
+			} catch (err) {
+				error = err;
+			}
+
+			expect(error).toBeDefined();
+			expect(computeNextRunMock).not.toHaveBeenCalled();
+		});
+
+		test("rejects invalid runAtUtc for one-time reminders", async () => {
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			const result = await createTool.invoke({
+				type: "once",
+				message: "Check the deploy",
+				runAtUtc: "not-a-date",
+			});
+
+			expect(result).toBe("Error: runAtUtc must be a valid ISO timestamp.");
+			expect(computeNextRunMock).not.toHaveBeenCalled();
+		});
 	});
 
 	describe("list_timers", () => {
 		test("returns no timers when list is empty", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -254,7 +387,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -267,6 +399,31 @@ describe("TimerTools", () => {
 			expect(result).toContain("timer-b.md");
 			expect(result).toContain("0 10 * * *");
 			expect(result).toContain("0 12 * * *");
+		});
+
+		test("returns formatted one-time reminders", async () => {
+			await store.create({
+				userId: callerId,
+				chatId: callerId,
+				kind: "once",
+				cronExpression: "30 9 24 4 *",
+				message: "Check the deploy",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const listTool = tools.find((t) => t.name === "list_timers")!;
+
+			const result = await listTool.invoke({});
+
+			expect(result).toContain("one-time reminder");
+			expect(result).toContain("Check the deploy");
+			expect(result).toContain("30 9 24 4 *");
 		});
 	});
 
@@ -282,7 +439,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -309,7 +465,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -344,7 +499,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -373,7 +527,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -400,7 +553,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId: "telegram:999",
@@ -426,7 +578,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -441,6 +592,37 @@ describe("TimerTools", () => {
 			expect(result).toContain("Invalid schedule");
 		});
 
+		test("updates cron expression for one-time reminders", async () => {
+			const timer = await store.create({
+				userId: callerId,
+				chatId: callerId,
+				kind: "once",
+				cronExpression: "0 10 * * *",
+				message: "Check the deploy",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const tools = createTimerTools(store, {
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const updateTool = tools.find((t) => t.name === "update_timer")!;
+
+			const result = await updateTool.invoke({
+				timerId: timer.id,
+				cronExpression: "0 14 * * *",
+			});
+
+			expect(result).toContain("updated");
+			expect(result).toContain("0 14 * * *");
+			expect(computeNextRunMock).toHaveBeenCalledWith(
+				"0 14 * * *",
+				"UTC",
+			);
+		});
+
 		test("returns 'No changes provided' for empty update", async () => {
 			const timer = await store.create({
 				userId: callerId,
@@ -452,7 +634,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -479,7 +660,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,
@@ -505,7 +685,6 @@ describe("TimerTools", () => {
 			});
 
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId: "telegram:999",
@@ -522,7 +701,6 @@ describe("TimerTools", () => {
 
 		test("returns error when deleting non-existent timer", async () => {
 			const tools = createTimerTools(store, {
-				timezone: "UTC",
 				computeNextRun: computeNextRunMock,
 				readMdFile: readMdFileMock,
 				callerId,

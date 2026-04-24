@@ -3,7 +3,6 @@ export {
 	createBrowserSnapshotTool,
 	createSessionRegistry,
 } from "./browser_tools";
-export { EchoTool } from "./echo_tool";
 export {
 	createExecuteScriptTool,
 	createExecuteWorkspaceTool,

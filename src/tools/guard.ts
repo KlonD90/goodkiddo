@@ -1,11 +1,14 @@
 import { tool } from "langchain";
 import type { SupportedLocale } from "../i18n/locale.js";
+import { createLogger } from "../logger";
 import { type ApprovalBroker, outcomeApproves } from "../permissions/approval";
 import { resolveDecision } from "../permissions/engine";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import type { StatusEmitter } from "./status_emitter";
 import { renderStatus } from "./status_templates";
+
+const log = createLogger("tools.guard");
 
 export type GuardContext = {
 	caller: Caller;
@@ -36,7 +39,10 @@ async function emitStatus(
 			await emitter.emit(callerId, result.message);
 		}
 	} catch (err) {
-		console.error("[StatusEmitter] renderStatus failed:", err);
+		log.error("renderStatus failed", {
+			toolName,
+			error: err instanceof Error ? err.message : String(err),
+		});
 	}
 }
 

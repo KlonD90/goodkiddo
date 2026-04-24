@@ -13,34 +13,37 @@
 // runCompaction is the effectful path: it calls the model and persists to SQL.
 
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
+import { createLogger } from "../logger";
 import {
-	generateCheckpointSummary,
-	serializeCheckpointSummary,
+  generateCheckpointSummary,
+  serializeCheckpointSummary,
 } from "../memory/checkpoint_compaction";
 import type { ThreadMessage } from "../memory/summarize";
 import type {
-	ForcedCheckpoint,
-	ForcedCheckpointStore,
-	SourceBoundary,
+  ForcedCheckpoint,
+  ForcedCheckpointStore,
+  SourceBoundary,
 } from "./forced_checkpoint_store";
 
+const log = createLogger("compaction");
+
 export const DEFAULT_MESSAGE_LIMIT = 50;
-export const DEFAULT_TOKEN_BUDGET = 40_000;
+export const DEFAULT_TOKEN_BUDGET = 150_000;
 
 export type CompactionThresholds = {
-	/** Fire message_limit compaction when stored message count reaches this value. */
-	messageLimit?: number;
-	/** Fire token_limit compaction when estimated token count reaches this value. */
-	tokenBudget?: number;
+  /** Fire message_limit compaction when stored message count reaches this value. */
+  messageLimit?: number;
+  /** Fire token_limit compaction when estimated token count reaches this value. */
+  tokenBudget?: number;
 };
 
 export type CompactionContext = {
-	caller: string;
-	threadId: string;
-	messages: ThreadMessage[];
-	pendingMessage?: ThreadMessage;
-	model: BaseChatModel;
-	store: ForcedCheckpointStore;
+  caller: string;
+  threadId: string;
+  messages: ThreadMessage[];
+  pendingMessage?: ThreadMessage;
+  model: BaseChatModel;
+  store: ForcedCheckpointStore;
 };
 
 /**
@@ -48,27 +51,27 @@ export type CompactionContext = {
  * Intentionally conservative — real tokenizers vary; this is a safe budget guard.
  */
 export function estimateTokens(messages: ThreadMessage[]): number {
-	return messages.reduce(
-		(sum, msg) =>
-			sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
-		0,
-	);
+  return messages.reduce(
+    (sum, msg) =>
+      sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
+    0,
+  );
 }
 
 /** Returns true when the message count has reached or exceeded the limit. */
 export function shouldCompactByMessageLimit(
-	messages: ThreadMessage[],
-	limit: number,
+  messages: ThreadMessage[],
+  limit: number,
 ): boolean {
-	return messages.length >= limit;
+  return messages.length >= limit;
 }
 
 /** Returns true when the estimated token count has reached or exceeded the budget. */
 export function shouldCompactByTokenBudget(
-	messages: ThreadMessage[],
-	budget: number,
+  messages: ThreadMessage[],
+  budget: number,
 ): boolean {
-	return estimateTokens(messages) >= budget;
+  return estimateTokens(messages) >= budget;
 }
 
 /**
@@ -78,14 +81,14 @@ export function shouldCompactByTokenBudget(
  * Mirrors the precedence inside `maybeCompactByThresholds`.
  */
 export function previewThresholdBoundary(
-	messages: ThreadMessage[],
-	thresholds: CompactionThresholds = {},
+  messages: ThreadMessage[],
+  thresholds: CompactionThresholds = {},
 ): "message_limit" | "token_limit" | null {
-	const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
-	const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-	if (shouldCompactByMessageLimit(messages, msgLimit)) return "message_limit";
-	if (shouldCompactByTokenBudget(messages, tokenBudget)) return "token_limit";
-	return null;
+  const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
+  const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+  if (shouldCompactByMessageLimit(messages, msgLimit)) return "message_limit";
+  if (shouldCompactByTokenBudget(messages, tokenBudget)) return "token_limit";
+  return null;
 }
 
 /**
@@ -93,20 +96,54 @@ export function previewThresholdBoundary(
  * Returns the saved ForcedCheckpoint record.
  */
 export async function runCompaction(
-	context: CompactionContext,
-	sourceBoundary: SourceBoundary,
+  context: CompactionContext,
+  sourceBoundary: SourceBoundary,
 ): Promise<ForcedCheckpoint> {
-	const summary = await generateCheckpointSummary(
-		context.model,
-		context.messages,
-	);
-	const summaryPayload = serializeCheckpointSummary(summary);
-	return context.store.create({
-		caller: context.caller,
-		threadId: context.threadId,
-		sourceBoundary,
-		summaryPayload,
-	});
+  const messageCount = context.messages.length;
+  const estimatedTokens = estimateTokens(context.messages);
+  log.info("compaction starting", {
+    reason: sourceBoundary,
+    caller: context.caller,
+    threadId: context.threadId,
+    messageCount,
+    estimatedTokens,
+  });
+  const startedAt = Date.now();
+  try {
+    const summary = await generateCheckpointSummary(
+      context.model,
+      context.messages,
+    );
+    const summaryPayload = serializeCheckpointSummary(summary);
+    const record = await context.store.create({
+      caller: context.caller,
+      threadId: context.threadId,
+      sourceBoundary,
+      summaryPayload,
+    });
+    log.info("compaction completed", {
+      reason: sourceBoundary,
+      caller: context.caller,
+      threadId: context.threadId,
+      checkpointId: record.id,
+      messageCount,
+      estimatedTokens,
+      degraded: summary.degraded === true,
+      durationMs: Date.now() - startedAt,
+    });
+    return record;
+  } catch (err) {
+    log.error("compaction failed", {
+      reason: sourceBoundary,
+      caller: context.caller,
+      threadId: context.threadId,
+      messageCount,
+      estimatedTokens,
+      durationMs: Date.now() - startedAt,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    throw err;
+  }
 }
 
 /**
@@ -116,24 +153,24 @@ export async function runCompaction(
  * Returns the created ForcedCheckpoint if compaction fired, null otherwise.
  */
 export async function maybeCompactByThresholds(
-	context: CompactionContext,
-	thresholds: CompactionThresholds = {},
+  context: CompactionContext,
+  thresholds: CompactionThresholds = {},
 ): Promise<ForcedCheckpoint | null> {
-	const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
-	const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
-	const thresholdMessages = context.pendingMessage
-		? [...context.messages, context.pendingMessage]
-		: context.messages;
+  const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
+  const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+  const thresholdMessages = context.pendingMessage
+    ? [...context.messages, context.pendingMessage]
+    : context.messages;
 
-	if (shouldCompactByMessageLimit(thresholdMessages, msgLimit)) {
-		return runCompaction(context, "message_limit");
-	}
+  if (shouldCompactByMessageLimit(thresholdMessages, msgLimit)) {
+    return runCompaction(context, "message_limit");
+  }
 
-	if (shouldCompactByTokenBudget(thresholdMessages, tokenBudget)) {
-		return runCompaction(context, "token_limit");
-	}
+  if (shouldCompactByTokenBudget(thresholdMessages, tokenBudget)) {
+    return runCompaction(context, "token_limit");
+  }
 
-	return null;
+  return null;
 }
 
 /**
@@ -146,13 +183,13 @@ export async function maybeCompactByThresholds(
  * entry point for that trigger path.
  */
 export async function triggerOnSessionResume(
-	context: CompactionContext,
+  context: CompactionContext,
 ): Promise<ForcedCheckpoint> {
-	return runCompaction(context, "session_resume");
+  return runCompaction(context, "session_resume");
 }
 
 export async function triggerOnOversizedAttachment(
-	context: CompactionContext,
+  context: CompactionContext,
 ): Promise<ForcedCheckpoint> {
-	return runCompaction(context, "oversized_attachment");
+  return runCompaction(context, "oversized_attachment");
 }

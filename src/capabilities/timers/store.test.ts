@@ -47,6 +47,8 @@ describe("TimerStore", () => {
 			"chat_id",
 			"md_file_path",
 			"cron_expression",
+			"kind",
+			"message",
 			"timezone",
 			"enabled",
 			"last_run_at",
@@ -76,6 +78,8 @@ describe("TimerStore", () => {
 		expect(timer.chatId).toBe("telegram:1");
 		expect(timer.mdFilePath).toBe("daily-news.md");
 		expect(timer.cronExpression).toBe("0 10 * * 1-5");
+		expect(timer.kind).toBe("always");
+		expect(timer.message).toBeNull();
 		expect(timer.timezone).toBe("UTC");
 		expect(timer.enabled).toBe(true);
 		expect(timer.lastRunAt).toBeNull();
@@ -83,6 +87,24 @@ describe("TimerStore", () => {
 		expect(timer.consecutiveFailures).toBe(0);
 		expect(timer.nextRunAt).toBe(2000);
 		expect(timer.createdAt).toBeGreaterThan(0);
+	});
+
+	test("creates a one-time reminder record", async () => {
+		const timer = await store.create({
+			userId: "telegram:1",
+			chatId: "telegram:1",
+			kind: "once",
+			cronExpression: "30 9 24 4 *",
+			message: "Check the deploy",
+			timezone: "UTC",
+			nextRunAt: 2000,
+		});
+
+		expect(timer.kind).toBe("once");
+		expect(timer.message).toBe("Check the deploy");
+		expect(timer.mdFilePath).toBe("");
+		expect(timer.cronExpression).toBe("30 9 24 4 *");
+		expect(timer.nextRunAt).toBe(2000);
 	});
 
 	test("finds due timers ordered by next_run_at", async () => {

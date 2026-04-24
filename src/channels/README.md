@@ -263,23 +263,35 @@ The Telegram channel sends status messages as plain text via `bot.api.sendMessag
 
 ## Scheduled Timers
 
-Timers let the agent run memory file prompts on cron schedules and deliver results to the user's Telegram chat.
+Timers let the agent run memory file prompts on cron schedules or send one-time
+reminder notifications to the user's Telegram chat.
 
 User-facing timer operations are available via agent tools:
 
-- `create_timer(mdFilePath, cronExpression, timezone?)` — set a recurring timer
+- `create_timer(type, ...)` — set a recurring timer with `type: "always"` or a one-time reminder with `type: "once"`
 - `list_timers()` — show all active timers
 - `update_timer(timerId, updates)` — change cron, timezone, or enabled state
 - `delete_timer(timerId)` — remove a timer
 
 The Telegram channel starts the scheduler in-process during normal bot startup,
-polling every 60 seconds for due timers. When a timer fires, the scheduler
-reads the referenced memory file, executes it via the LLM, and streams the
-result to the user's Telegram chat.
+polling every 60 seconds for due timers. When a recurring timer fires, the
+scheduler reads the referenced memory file, executes it via the LLM, and
+streams the result to the user's Telegram chat. When a one-time reminder fires,
+the scheduler sends the reminder text directly and marks the timer completed.
 
-Cron expressions are evaluated in each timer's configured IANA timezone. If a
-timer does not specify one, it uses the `TIMEZONE` config value, defaulting to
-`UTC`.
+Cron expressions are evaluated in each timer's configured IANA timezone.
+Telegram does not provide a user's timezone in normal bot messages, so
+Telegram timer creation requires an explicit IANA timezone from the current
+request or from `/memory/USER.md` for wall-clock and recurring schedules. For
+duration-only one-time reminders like "in 5 minutes" or "in 30 minutes", the
+agent uses the current Telegram message timestamp to compute `runAtUtc` instead
+of asking for the user's timezone. If a wall-clock or recurring timer is
+missing a timezone, the agent asks for it and saves it to `USER.md` before
+creating the timer. The current Telegram message timestamp is prepended to the
+user turn as message metadata so relative requests can be converted without
+changing the cacheable system prompt. Recurring timers use `cronExpression`;
+one-time reminders use `runAtUtc` and are disabled after the first successful
+send.
 
 Failure handling:
 

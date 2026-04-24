@@ -1,12 +1,10 @@
 import { tool } from "langchain";
 import { z } from "zod";
 import { CronExpressionParser } from "cron-parser";
-import { resolve } from "node:path";
 import { isValidTimezone } from "../../utils/timezone.js";
 import type { TimerStore, TimerRecord } from "./store.js";
 
 export interface TimerToolsOptions {
-	timezone: string;
 	computeNextRun: (
 		cronExpression: string,
 		timezone: string,
@@ -16,6 +14,38 @@ export interface TimerToolsOptions {
 	callerId: string;
 	chatId?: string;
 }
+
+const createOnceTimerSchema = z.object({
+	type: z.literal("once"),
+	message: z.string().min(1).describe("Reminder text to send once."),
+	runAtUtc: z
+		.string()
+		.min(1)
+		.describe("UTC ISO timestamp for the reminder, e.g. '2026-04-24T12:30:00.000Z'."),
+});
+
+const createAlwaysTimerSchema = z.object({
+	type: z.literal("always"),
+	mdFilePath: z
+		.string()
+		.min(1)
+		.describe("Path to the memory file inside /memory/ (e.g., 'daily-news.md' or '/memory/daily-news.md')"),
+	cronExpression: z
+		.string()
+		.min(1)
+		.describe("Cron expression: minute hour day-of-month month day-of-week (e.g., '0 10 * * 1-5' for weekdays at 10 AM)"),
+	timezone: z
+		.string()
+		.min(1)
+		.describe("IANA timezone for the recurring schedule, e.g. 'America/New_York'."),
+});
+
+const createTimerSchema = z.discriminatedUnion("type", [
+	createOnceTimerSchema,
+	createAlwaysTimerSchema,
+]);
+
+type CreateTimerInput = z.infer<typeof createTimerSchema>;
 
 function isValidMemoryPath(path: string): boolean {
 	if (!path) return false;
@@ -36,16 +66,38 @@ function formatInTimezone(timestamp: number, timezone: string): string {
 	}).format(new Date(timestamp));
 }
 
+function parseRunAtUtc(runAtUtc: string): number | null {
+	const parsed = new Date(runAtUtc);
+	const timestamp = parsed.getTime();
+	return Number.isNaN(timestamp) ? null : timestamp;
+}
+
+function cronExpressionFromUtcTimestamp(timestamp: number): string {
+	const date = new Date(timestamp);
+	return [
+		date.getUTCMinutes(),
+		date.getUTCHours(),
+		date.getUTCDate(),
+		date.getUTCMonth() + 1,
+		"*",
+	].join(" ");
+}
+
 function formatTimerList(timers: TimerRecord[]): string {
-	if (timers.length === 0) {
+	const activeTimers = timers.filter((timer) => timer.enabled);
+	if (activeTimers.length === 0) {
 		return "No active timers.";
 	}
-	return timers
+	return activeTimers
 		.map((t) => {
 			const nextRun = formatInTimezone(t.nextRunAt, t.timezone);
 			const lastRun = t.lastRunAt
 				? formatInTimezone(t.lastRunAt, t.timezone)
 				: "never";
+			if (t.kind === "once") {
+				const message = t.message ?? "(no message)";
+				return `- ${t.id}: one-time reminder "${message}" (${t.cronExpression}) next=${nextRun} (${t.timezone}) last=${lastRun} failures=${t.consecutiveFailures}`;
+			}
 			return `- ${t.id}: ${t.mdFilePath} (${t.cronExpression}) next=${nextRun} (${t.timezone}) last=${lastRun} failures=${t.consecutiveFailures}`;
 		})
 		.join("\n");
@@ -56,32 +108,55 @@ export function createTimerTools(
 	options: TimerToolsOptions,
 ) {
 	const createTimerTool = tool(
-		async ({
-			mdFilePath,
-			cronExpression,
-			timezone,
-		}: {
-			mdFilePath: string;
-			cronExpression: string;
-			timezone?: string;
-		}) => {
-			if (!isValidMemoryPath(mdFilePath)) {
-				return "Error: Memory file path must be inside /memory/";
+		async (input: CreateTimerInput) => {
+			if (input.type === "once") {
+				const trimmedMessage = input.message.trim();
+				if (trimmedMessage === "") {
+					return "Error: Reminder message cannot be empty.";
+				}
+
+				const runAtTimestamp = parseRunAtUtc(input.runAtUtc);
+				if (runAtTimestamp === null) {
+					return "Error: runAtUtc must be a valid ISO timestamp.";
+				}
+
+				const cronExpression = cronExpressionFromUtcTimestamp(runAtTimestamp);
+				const timer = await store.create({
+					userId: options.callerId,
+					chatId: options.chatId ?? options.callerId,
+					kind: "once",
+					cronExpression,
+					message: trimmedMessage,
+					timezone: "UTC",
+					nextRunAt: runAtTimestamp,
+				});
+
+				const nextRunDate = formatInTimezone(runAtTimestamp, "UTC");
+				return `One-time reminder set for ${nextRunDate} (UTC). Timer ID: ${timer.id}`;
 			}
 
-			const effectiveTimezone = timezone ?? options.timezone;
-			if (!isValidTimezone(effectiveTimezone)) {
-				return `Error: Invalid timezone: ${effectiveTimezone}`;
+			const { mdFilePath, cronExpression, timezone } = input;
+			if (!isValidTimezone(timezone)) {
+				return `Error: Invalid timezone: ${timezone}`;
 			}
 
 			try {
 				const parsedExpr = CronExpressionParser.parse(cronExpression, {
 					currentDate: new Date(),
-					tz: effectiveTimezone,
+					tz: timezone,
 				});
 				parsedExpr.next();
 			} catch {
 				return "Error: Invalid schedule. Try '0 10 * * 1-5' for every workday at 10 AM.";
+			}
+
+			const nextRunAt = options.computeNextRun(
+				cronExpression,
+				timezone,
+			);
+
+			if (!isValidMemoryPath(mdFilePath)) {
+				return "Error: Memory file path must be inside /memory/";
 			}
 
 			try {
@@ -90,52 +165,39 @@ export function createTimerTools(
 				return `Error: Memory file not found: ${mdFilePath}`;
 			}
 
-			const nextRunAt = options.computeNextRun(
-				cronExpression,
-				effectiveTimezone,
-			);
-
 			const timer = await store.create({
 				userId: options.callerId,
 				chatId: options.chatId ?? options.callerId,
 				mdFilePath,
 				cronExpression,
-				timezone: effectiveTimezone,
+				kind: "always",
+				timezone,
 				nextRunAt,
 			});
 
-			const nextRunDate = formatInTimezone(nextRunAt, effectiveTimezone);
-			return `Timer set. I'll run \`${mdFilePath}\` with cron \`${cronExpression}\` (${effectiveTimezone}) next at ${nextRunDate}. Timer ID: ${timer.id}`;
+			const nextRunDate = formatInTimezone(nextRunAt, timezone);
+			return `Timer set. I'll run \`${mdFilePath}\` with cron \`${cronExpression}\` (${timezone}) next at ${nextRunDate}. Timer ID: ${timer.id}`;
 		},
 		{
 			name: "create_timer",
-			description: `Create a scheduled timer that runs a memory file on a cron schedule.
+			description: `Create a scheduled timer.
 
-The timer executes the content of the specified memory file as a prompt and sends
-the result to the user's chat. Timers persist across restarts.
+For type "always", the timer executes a memory file on a cron schedule and sends
+the LLM result to the user's chat. For type "once", the timer sends a direct
+reminder notification once and then marks itself completed. Timers persist across
+restarts.
 
 Args:
-- mdFilePath: path to the memory file inside /memory/ directory
-- cronExpression: cron schedule (e.g., "0 10 * * 1-5" for weekdays at 10 AM)
-- timezone: optional timezone override (defaults to the user's configured timezone)
+- type: required discriminator, either "always" or "once"
+- For type "once": provide message and runAtUtc. Use the current message timestamp to resolve duration-only requests like "in 30 minutes" into runAtUtc. For wall-clock requests like "tomorrow at 9", use an explicit or stored IANA timezone to compute runAtUtc first. Do not pass timezone to this tool shape.
+- For type "always": provide mdFilePath, cronExpression, and timezone. If the user did not provide a timezone and none is stored in /memory/USER.md, ask for it and save it to USER.md before creating the timer.
 
 Cron format: minute hour day-of-month month day-of-week
 Examples:
   "0 10 * * 1-5" = every weekday at 10 AM
   "*/15 * * * *" = every 15 minutes
   "0 9 * * *" = every day at 9 AM`,
-			schema: z.object({
-				mdFilePath: z
-					.string()
-					.describe("Path to the memory file inside /memory/ (e.g., 'daily-news.md' or '/memory/daily-news.md')"),
-				cronExpression: z
-					.string()
-					.describe("Cron expression: minute hour day-of-month month day-of-week (e.g., '0 10 * * 1-5' for weekdays at 10 AM)"),
-				timezone: z
-					.string()
-					.optional()
-					.describe("Timezone for the schedule (e.g., 'America/New_York'). Defaults to the user's configured timezone."),
-			}),
+			schema: createTimerSchema,
 		},
 	);
 
@@ -173,7 +235,6 @@ last run time, and consecutive failure count for each timer.`,
 			if (!existing || existing.userId !== options.callerId) {
 				return `Error: Timer ${timerId} not found or access denied.`;
 			}
-
 			const effectiveTimezone = timezone ?? existing.timezone;
 			if (!isValidTimezone(effectiveTimezone)) {
 				return `Error: Invalid timezone: ${effectiveTimezone}`;
@@ -260,5 +321,10 @@ The timer is hard-deleted from the database. This action cannot be undone.`,
 		},
 	);
 
-	return [createTimerTool, listTimersTool, updateTimerTool, deleteTimerTool];
+	return [
+		createTimerTool,
+		listTimersTool,
+		updateTimerTool,
+		deleteTimerTool,
+	];
 }

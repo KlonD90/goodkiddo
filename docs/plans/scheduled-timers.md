@@ -1,14 +1,14 @@
 # Plan: Scheduled Timers
 
 ## Overview
-LLM tools that let the agent set, list, update, and delete cron-like scheduled jobs on behalf of the user. Each timer references a `*.md` memory file that contains the prompt to execute. A background scheduler runs inside the same process (in-process loop) checking for due timers, reads the prompt from the referenced md file, executes it via the LLM, and delivers results to the user's Telegram chat. Timers persist in the database so they survive restarts.
+LLM tools that let the agent set, list, update, and delete cron-like scheduled jobs and one-time reminders on behalf of the user. Recurring timers reference a `*.md` memory file that contains the prompt to execute. One-time reminders store inline notification text and a direct `runAtUtc` timestamp, then disable themselves after the first successful send. A background scheduler runs inside the same process (in-process loop) checking for due timers, reads recurring prompts from the referenced md file, executes them via the LLM, and delivers results or reminders to the user's Telegram chat. Timers persist in the database so they survive restarts.
 
 ## DoD
 
 **When** a user tells the agent to set a timer ("every workday at 10 AM give me latest news..."):
 
 1. **Timer created** — valid cron expression, md file exists:
-   - Agent calls `create_timer(mdFilePath, cronExpression, timezone?)`
+   - Agent calls `create_timer({ type: "always", mdFilePath, cronExpression, timezone })`
    - Bot first verifies the md file exists via `readMdFile(path)` — if not found, returns error: "Memory file not found: <path>"
    - Bot confirms: "Timer set. I'll run `/memory/<mdFilePath>.md` every workday at 10 AM."
    - Timer stored in DB with `id`, `user_id`, `chat_id`, `md_file_path`, `cron_expression`, `timezone`, `next_run_at`
@@ -25,31 +25,37 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
    - Each runs independently
    - Each sends its own result to the same chat
 
-4. **Timer execution fails** (LLM error):
+4. **One-time reminder fires**:
+   - Agent created it with `create_timer({ type: "once", message, runAtUtc })`
+   - Scheduler sends `Reminder: <message>` directly to the user's Telegram chat
+   - Timer is marked completed by setting `last_run_at` and `enabled = false`
+   - Send failures are stored on the timer and retried on the next scheduler poll
+
+5. **Timer execution fails** (LLM error):
    - Error logged
    - `last_error` stored on the timer record
    - `next_run_at` still updated for next occurrence
    - No user-facing error unless same timer fails 3x in a row (then notify user)
 
-5. **User lists timers**:
+6. **User lists timers**:
    - Agent calls `list_timers()`
    - Bot replies with a list of active timers: `{ timerId, mdFilePath, cronExpression, nextRunAt, lastRunAt }`
 
-6. **User updates a timer**:
+7. **User updates a timer**:
    - Agent calls `update_timer(timerId, { cronExpression?, timezone?, enabled? })`
    - Bot confirms what changed
    - `next_run_at` recomputed if cron changed
 
-7. **User deletes a timer**:
+8. **User deletes a timer**:
    - Agent calls `delete_timer(timerId)`
    - Timer hard-deleted from DB
    - Bot confirms: "Timer deleted."
 
-8. **Invalid cron expression**:
+9. **Invalid cron expression**:
    - `create_timer` returns error: "Invalid schedule. Try '0 10 * * 1-5' for every workday at 10 AM."
    - No timer created
 
-9. **Referenced md file deleted** — file gone when timer fires:
+10. **Referenced md file deleted** — file gone when timer fires:
    - Timer fires but `/memory/<path>.md` doesn't exist
    - Timer hard-deleted from DB
    - User notified in Telegram: "Timer for '/memory/<path>.md' was deleted because the memory file no longer exists."
@@ -71,33 +77,33 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 ### Task 1: Define timer store interface
 - [x] Create `src/capabilities/timers/store.ts` — `TimerStore` class
 - [x] `TimerStore` constructor: `constructor({ db: SQL, dialect: 'sqlite' | 'postgres' })`
-- [x] DDL: `CREATE TABLE timers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, chat_id TEXT NOT NULL, md_file_path TEXT NOT NULL, cron_expression TEXT NOT NULL, timezone TEXT NOT NULL DEFAULT 'UTC', enabled INTEGER NOT NULL DEFAULT 1, last_run_at INTEGER, last_error TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_run_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`
+- [x] DDL: `CREATE TABLE timers (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, chat_id TEXT NOT NULL, md_file_path TEXT NOT NULL, cron_expression TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'always', message TEXT, timezone TEXT NOT NULL DEFAULT 'UTC', enabled INTEGER NOT NULL DEFAULT 1, last_run_at INTEGER, last_error TEXT, consecutive_failures INTEGER NOT NULL DEFAULT 0, next_run_at INTEGER NOT NULL, created_at INTEGER NOT NULL)`
 - [x] Index on `(enabled, next_run_at)` for efficient due-timer queries
-- [x] Methods: `create(params)`, `findDue()`, `findByUser(userId)`, `getById(id)`, `update(id, userId, updates)`, `delete(id, userId)`, `touchRun(id, nextRunAt)`, `touchError(id, error, resetFailures?)`
-- [x] `create(params)`: `{ userId, chatId, mdFilePath, cronExpression, timezone, nextRunAt }` → returns full timer record including `id`
+- [x] Methods: `create(params)`, `findDue()`, `findByUser(userId)`, `getById(id)`, `update(id, userId, updates)`, `delete(id, userId)`, `touchRun(id, nextRunAt)`, `touchError(id, userId, error, nextRunAt?)`
+- [x] `create(params)`: recurring timers store `{ userId, chatId, kind: "always", mdFilePath, cronExpression, timezone, nextRunAt }`; one-time reminders store `{ userId, chatId, kind: "once", message, runAtUtc-derived nextRunAt }`; returns full timer record including `id`
 - [x] `update(id, userId, updates)`: `{ cronExpression?, timezone?, enabled? }` → validates user ownership, updates only provided fields, recomputes `next_run_at` if cron changed
 - [x] `delete(id, userId)`: hard deletes, validates ownership
 - [x] `findDue()`: returns timers where `enabled = 1 AND next_run_at <= now`
 - [x] `touchRun`: sets `last_run_at = now`, `last_error = null`, `consecutive_failures = 0`, updates `next_run_at`
-- [x] `touchError`: increments `consecutive_failures`, sets `last_error`, does NOT update `next_run_at` (fires again next cycle)
+- [x] `touchError`: increments `consecutive_failures`, sets `last_error`, and optionally updates `next_run_at`; one-time reminders omit `nextRunAt` so failed sends stay due for retry
 - [x] All methods async, use Bun.sql tagged templates
 - [x] Add `store.test.ts` with in-memory DB: create, find due, update cron, delete by owner, delete by non-owner rejected, touchRun resets failures, touchError increments counter
 
 ### Task 2: Implement background scheduler loop
 - [x] Create `src/capabilities/timers/scheduler.ts` — `startScheduler(store, options)` function
-- [x] Options: `{ intervalMs: 60_000, readMdFile(path): Promise<string>, onTick(timer, promptText): Promise<void> }`
+- [x] Options: `{ intervalMs: 60_000, readMdFile(timer, path): Promise<string>, onTick(timer, promptText): Promise<void>, notifyUser(recipient, message): Promise<void> }`
 - [x] Returns `{ stop(): void }` — clears interval
-- [x] Loop: poll `store.findDue()`, for each timer call `readMdFile(timer.mdFilePath)`, then `onTick(timer, promptText)`
+- [x] Loop: poll `store.findDue()`, for each recurring timer call `readMdFile(timer, timer.mdFilePath)`, then `onTick(timer, promptText)`; for one-time reminders send the stored message directly and disable the timer after success
 - [x] If `readMdFile` throws (file not found): call `store.delete(timer.id, timer.userId)` and `notifyUser(timer.userId, "Timer for '/memory/<path>.md' was deleted because the memory file no longer exists.")`, then move to next timer (no retry)
 - [x] After `onTick` success: call `store.touchRun(id, nextRunAt)` where `nextRunAt` is computed from cron expression
-- [x] After `onTick` failure: `store.touchError(id, message)`; if `consecutive_failures >= 3` after increment: call `notifyUser(userId, warningMessage)` then reset counter
+- [x] After `onTick` failure: `store.touchError(id, userId, message, nextRunAt)`; if `consecutive_failures >= 3` after increment: call `notifyUser(userId, warningMessage)`
 - [x] Add `scheduler.test.ts` with mocked store and readMdFile: fires due timers, skips non-due, handles onTick errors, md file not found causes timer deletion and user notification (not retry)
 
 ### Task 3: Define LLM timer tools interface
 - [x] Create `src/capabilities/timers/tools.ts` — `createTimerTools(store, options)` function
-- [x] Options: `{ timezone: string, computeNextRun(cronExpression, fromDate?): number }` (pure function for computing next run timestamp)
+- [x] Options: `{ computeNextRun(cronExpression, fromDate?): number }` (pure function for computing next recurring run timestamp)
 - [x] Returns an array of tool definitions compatible with the agent tool system
-- [x] `create_timer(mdFilePath, cronExpression, timezone?)` — validates cron and mdFilePath format, verifies file exists via `readMdFile`, creates timer, returns `{ timerId, nextRunAt, message }`; if file not found: returns error "Memory file not found: <path>"
+- [x] `create_timer(...)` — discriminated union keyed by `type`: `type: "always"` validates cron, timezone, and mdFilePath then verifies file exists via `readMdFile`; `type: "once"` accepts `message` and `runAtUtc`, stores `nextRunAt` directly from `runAtUtc`, and derives a UTC cron expression only for legacy storage/display
 - [x] `list_timers()` — returns `{ timers: Array<{ timerId, mdFilePath, cronExpression, timezone, nextRunAt, lastRunAt, consecutiveFailures }> }`
 - [x] `update_timer(timerId, updates)` — `updates: { cronExpression?, timezone?, enabled? }`, returns confirmation of what changed
 - [x] `delete_timer(timerId)` — hard deletes, returns confirmation
@@ -109,7 +115,7 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `timerTools?: ReturnType<typeof createTimerTools>` to `CreateAppAgentOptions` in `src/app.ts`
 - [x] In `createAppAgent`, merge `timerTools` into the tools array
 - [x] Add `timerScheduler?: { start(store): { stop() } }` to `ChannelRunOptions` in `src/channels/types.ts`
-- [x] In `telegramChannel.run()`, call `createTimerTools(store, { timezone })` and pass the resulting tools to `createAppAgent` (deferred: createTimerTools call in Task 5 when TimerStore is created)
+- [x] In `telegramChannel.run()`, call `createTimerTools(store, options)` and pass the resulting tools to `createAppAgent` (deferred: createTimerTools call in Task 5 when TimerStore is created)
 
 ### Task 5: Wire scheduler into telegram channel and handle timer execution
 - [x] In `telegramChannel.run()`, after session setup, call `scheduler.start(store, { readMdFile, onTick })`
@@ -125,7 +131,7 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add to `.env` persistence pattern
 - [x] When displaying next run time to user, convert from UTC to user's timezone
 - [x] Cron expressions are evaluated in the timer's configured IANA timezone
-- [x] For the timer tools, `create_timer` accepts an optional `timezone` override; defaults to `config.timezone`
+- [x] For Telegram timer tools, `type: "once"` uses `runAtUtc` without timezone; `type: "always"` requires an explicit timezone, and recurring timers ask for timezone and save it to `/memory/USER.md` when it is not already known
 
 ### Task 7: Add telegram channel integration tests
 - [x] Add test: timer fires → reads md file → LLM executes → result sent to correct chat
