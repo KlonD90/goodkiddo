@@ -44,20 +44,23 @@ describe("OutboundChannel sendStatus", () => {
 			const sentMessages: Array<{ chatId: string; text: string }> = [];
 			const mockBot = {
 				api: {
-					sendMessage: vi.fn().mockImplementation(async (chatId: string, text: string) => {
-						sentMessages.push({ chatId, text });
-					}),
+					sendMessage: vi
+						.fn()
+						.mockImplementation(async (chatId: string, text: string) => {
+							sentMessages.push({ chatId, text });
+						}),
 				},
 			} as unknown as Bot;
 
-			const channel = new TelegramOutboundChannel(
-				mockBot,
-				(callerId) => (callerId === "telegram:123" ? "123" : null),
+			const channel = new TelegramOutboundChannel(mockBot, (callerId) =>
+				callerId === "telegram:123" ? "123" : null,
 			);
 
 			await channel.sendStatus("telegram:123", "Running workspace script");
 
-			expect(sentMessages).toEqual([{ chatId: "123", text: "Running workspace script" }]);
+			expect(sentMessages).toEqual([
+				{ chatId: "123", text: "Running workspace script" },
+			]);
 		});
 
 		test("does nothing when callerId cannot be resolved", async () => {
@@ -67,10 +70,7 @@ describe("OutboundChannel sendStatus", () => {
 				},
 			} as unknown as Bot;
 
-			const channel = new TelegramOutboundChannel(
-				mockBot,
-				() => null,
-			);
+			const channel = new TelegramOutboundChannel(mockBot, () => null);
 
 			await channel.sendStatus("telegram:unknown", "Reading a.md");
 
@@ -84,9 +84,8 @@ describe("OutboundChannel sendStatus", () => {
 				},
 			} as unknown as Bot;
 
-			const channel = new TelegramOutboundChannel(
-				mockBot,
-				(callerId) => (callerId === "telegram:123" ? "123" : null),
+			const channel = new TelegramOutboundChannel(mockBot, (callerId) =>
+				callerId === "telegram:123" ? "123" : null,
 			);
 
 			await expect(

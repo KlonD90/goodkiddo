@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import {
+	type AttachmentBudgetConfig,
 	decideAttachmentBudget,
 	estimateAttachmentTokens,
-	type AttachmentBudgetConfig,
 } from "./attachment_budget";
 import type { CapabilityOutput } from "./types";
 
@@ -30,7 +30,11 @@ describe("estimateAttachmentTokens", () => {
 			estimateAttachmentTokens(
 				makeOutput([
 					{ type: "text", text: "abcd" },
-					{ type: "image", mimeType: "image/png", data: new Uint8Array([1, 2]) },
+					{
+						type: "image",
+						mimeType: "image/png",
+						data: new Uint8Array([1, 2]),
+					},
 					{ type: "text", text: "abcdef" },
 				]),
 			),

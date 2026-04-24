@@ -86,6 +86,12 @@ describe("buildSystemPrompt", () => {
 			"/memory/notes/alpha.md",
 			"# Alpha\n\n## Actuel\nOK\n",
 		);
+		// USER.md must be populated or lint will flag the onboarding nudge.
+		await overwrite(
+			backend,
+			"/memory/USER.md",
+			"# USER.md\n\n## Actuel\nRole: staff eng. Prefers terse replies.\n",
+		);
 		const prompt = await buildSystemPrompt({
 			identityPrompt: "# Identity",
 			backend,

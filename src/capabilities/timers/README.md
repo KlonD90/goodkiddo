@@ -31,12 +31,13 @@ Index on `(enabled, next_run_at)` for efficient due-timer queries.
 
 ## Scheduler
 
-The scheduler runs as an in-process background loop (see `scheduler.ts`):
+The scheduler runs as an in-process background loop started by the Telegram
+channel during normal bot startup (see `scheduler.ts`):
 
 - Polls every 60 seconds for timers where `enabled = 1 AND next_run_at <= now`
 - For each due timer: reads the memory file, executes the prompt via LLM, sends result to Telegram
-- On success: updates `last_run_at`, resets failure count, recomputes `next_run_at`
-- On failure: increments `consecutive_failures`, stores error message
+- On success: updates `last_run_at`, resets failure count, recomputes `next_run_at` in the timer's timezone
+- On failure: increments `consecutive_failures`, stores error message, recomputes `next_run_at` in the timer's timezone
 - After 3 consecutive failures: notifies user via Telegram
 - If memory file not found when timer fires: deletes timer and notifies user
 
@@ -52,6 +53,9 @@ The timer tools are defined in `tools.ts` and provide:
 ## Cron Format
 
 Cron expressions use the format: `minute hour day-of-month month day-of-week`
+and are evaluated in each timer's configured IANA timezone. If no per-timer
+timezone is provided, the timer uses the app-level `TIMEZONE` config value,
+defaulting to `UTC`.
 
 ### Cheat Sheet
 
@@ -72,7 +76,7 @@ The scheduler accepts a `notifyUser` callback in its options:
 ```typescript
 interface SchedulerOptions {
     intervalMs: number;
-    readMdFile: (path: string) => Promise<string>;
+    readMdFile: (timer: TimerRecord, path: string) => Promise<string>;
     onTick: (timer: TimerRecord, promptText: string) => Promise<void>;
     notifyUser: (userId: string, message: string) => Promise<void>;
 }
@@ -90,6 +94,7 @@ The Telegram channel implementation uses `sendTelegramMessage` to notify users. 
 - Memory file path must be inside `/memory/` directory
 - Paths with `..` are rejected for security
 - Cron expressions are validated via `cron-parser`
+- Timezones must be valid IANA timezone names such as `UTC` or `America/New_York`
 - Timers are user-scoped: users can only see/modify their own timers
 - After 3 consecutive failures, a warning is sent to the user
 - If the referenced memory file is deleted, the timer is automatically removed

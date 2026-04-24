@@ -2,13 +2,19 @@ import { tool } from "langchain";
 import { z } from "zod";
 import { CronExpressionParser } from "cron-parser";
 import { resolve } from "node:path";
+import { isValidTimezone } from "../../utils/timezone.js";
 import type { TimerStore, TimerRecord } from "./store.js";
 
 export interface TimerToolsOptions {
 	timezone: string;
-	computeNextRun: (cronExpression: string, fromDate?: Date) => number;
+	computeNextRun: (
+		cronExpression: string,
+		timezone: string,
+		fromDate?: Date,
+	) => number;
 	readMdFile: (path: string) => Promise<string>;
 	callerId: string;
+	chatId?: string;
 }
 
 function isValidMemoryPath(path: string): boolean {
@@ -63,10 +69,15 @@ export function createTimerTools(
 				return "Error: Memory file path must be inside /memory/";
 			}
 
-			let parsedExpr: ReturnType<typeof CronExpressionParser.parse>;
+			const effectiveTimezone = timezone ?? options.timezone;
+			if (!isValidTimezone(effectiveTimezone)) {
+				return `Error: Invalid timezone: ${effectiveTimezone}`;
+			}
+
 			try {
-				parsedExpr = CronExpressionParser.parse(cronExpression, {
+				const parsedExpr = CronExpressionParser.parse(cronExpression, {
 					currentDate: new Date(),
+					tz: effectiveTimezone,
 				});
 				parsedExpr.next();
 			} catch {
@@ -79,12 +90,14 @@ export function createTimerTools(
 				return `Error: Memory file not found: ${mdFilePath}`;
 			}
 
-			const effectiveTimezone = timezone ?? options.timezone;
-			const nextRunAt = options.computeNextRun(cronExpression);
+			const nextRunAt = options.computeNextRun(
+				cronExpression,
+				effectiveTimezone,
+			);
 
 			const timer = await store.create({
 				userId: options.callerId,
-				chatId: options.callerId,
+				chatId: options.chatId ?? options.callerId,
 				mdFilePath,
 				cronExpression,
 				timezone: effectiveTimezone,
@@ -161,27 +174,40 @@ last run time, and consecutive failure count for each timer.`,
 				return `Error: Timer ${timerId} not found or access denied.`;
 			}
 
+			const effectiveTimezone = timezone ?? existing.timezone;
+			if (!isValidTimezone(effectiveTimezone)) {
+				return `Error: Invalid timezone: ${effectiveTimezone}`;
+			}
+
 			if (cronExpression) {
 				try {
-					CronExpressionParser.parse(cronExpression, { currentDate: new Date() }).next();
+					CronExpressionParser.parse(cronExpression, {
+						currentDate: new Date(),
+						tz: effectiveTimezone,
+					}).next();
 				} catch {
 					return "Error: Invalid schedule. Try '0 10 * * 1-5' for every workday at 10 AM.";
 				}
 			}
 
+			const effectiveCronExpression = cronExpression ?? existing.cronExpression;
+			const nextRunAt =
+				cronExpression || timezone
+					? options.computeNextRun(
+							effectiveCronExpression,
+							effectiveTimezone,
+						)
+					: undefined;
+
 			const updated = await store.update(timerId, options.callerId, {
 				cronExpression,
 				timezone,
 				enabled,
+				nextRunAt,
 			});
 
 			if (!updated) {
 				return `Error: Timer ${timerId} not found or access denied.`;
-			}
-
-			if (cronExpression) {
-				const nextRunAt = options.computeNextRun(cronExpression);
-				await store.touchRun(timerId, nextRunAt);
 			}
 
 			const changes: string[] = [];

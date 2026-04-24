@@ -3,11 +3,13 @@ import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
+import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
 import { readThreadMessages } from "../memory/rotate_thread";
 import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { createStatusEmitter } from "../tools/status_emitter";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
@@ -24,8 +26,6 @@ import {
 	prepareSessionForIncomingTurn,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
-import { createStatusEmitter } from "../tools/status_emitter";
-import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
 
@@ -54,8 +54,7 @@ export class CliOutboundChannel implements OutboundChannel {
 	async sendStatus(_callerId: string, message: string): Promise<void> {
 		try {
 			this.stream.write(`[status] ${message}\n`);
-		} catch {
-		}
+		} catch {}
 	}
 }
 
@@ -104,7 +103,10 @@ export const cliChannel: AppChannel = {
 		const outbound = new CliOutboundChannel();
 		const statusEmitter = createStatusEmitter(outbound);
 		const localeHint = extractLocaleFromCli();
-		const locale = resolveLocale(localeHint, config.defaultStatusLocale as "en" | "ru" | "es");
+		const locale = resolveLocale(
+			localeHint,
+			config.defaultStatusLocale as "en" | "ru" | "es",
+		);
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			db,

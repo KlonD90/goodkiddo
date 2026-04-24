@@ -3,10 +3,11 @@ import type { WorkspaceBackend } from "../backends/types";
 import type { OutboundChannel } from "../channels/outbound";
 import type { ExecutionPolicy } from "../execution/manifest";
 import { ExecutionOrchestrator } from "../execution/orchestrator";
+import type { SupportedLocale } from "../i18n/locale.js";
 import type { CreateSandboxBackendOptions } from "../sandbox/factory";
 import { createSandboxBackend } from "../sandbox/factory";
 import type { AccessStore } from "../server/access_store";
-import type { SupportedLocale } from "../i18n/locale.js";
+import type { TaskStore } from "../tasks/store";
 import {
 	createBrowserActionTool,
 	createBrowserSnapshotTool,
@@ -36,7 +37,6 @@ import {
 	createTaskDismissTool,
 	createTaskListActiveTool,
 } from "./task_tools";
-import type { TaskStore } from "../tasks/store";
 
 export interface WebShareOptions {
 	access: AccessStore;
@@ -157,7 +157,10 @@ export async function createExecutionToolset(
 	if (!options.guard) return tools;
 	const enableToolStatus = options.enableToolStatus ?? true;
 	const statusEmitter = enableToolStatus
-		? (options.statusEmitter ?? (options.outbound ? createStatusEmitter(options.outbound) : noopStatusEmitter))
+		? (options.statusEmitter ??
+			(options.outbound
+				? createStatusEmitter(options.outbound)
+				: noopStatusEmitter))
 		: noopStatusEmitter;
 	const effectiveLocale = options.locale ?? "en";
 	const guard: GuardContext = {

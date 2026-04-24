@@ -7,6 +7,7 @@ import {
 	MEMORY_INDEX_PATH,
 	MEMORY_LOG_PATH,
 	SKILLS_INDEX_PATH,
+	USER_PROFILE_PATH,
 } from "../memory/layout";
 import {
 	createMemoryAppendLogTool,
@@ -82,6 +83,74 @@ describe("memory_write", () => {
 		expect(note).toContain("v2 body");
 		expect(note).toContain("## Archive");
 		expect(note).toContain("v1 body");
+	});
+
+	test("concurrent writes to distinct topics all land in the index", async () => {
+		const backend = createBackend("mw-concurrent");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		const topics = Array.from({ length: 10 }, (_, i) => `topic-${i}`);
+		await Promise.all(
+			topics.map((topic) =>
+				callTool(tool, { topic, content: `body for ${topic}` }),
+			),
+		);
+
+		const index = await readOrEmpty(backend, MEMORY_INDEX_PATH);
+		for (const topic of topics) {
+			expect(index).toContain(`- [${topic}](/memory/notes/${topic}.md)`);
+		}
+	});
+
+	test("target: 'user' writes USER.md without touching MEMORY.md index", async () => {
+		const backend = createBackend("mw-user-target");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		const indexBefore = await readOrEmpty(backend, MEMORY_INDEX_PATH);
+		const result = await callTool(tool, {
+			target: "user",
+			content: "Role: staff eng. Goal: ship top-fedder. Prefers terse replies.",
+		});
+
+		expect(result).toContain("USER.md");
+		const user = await readOrEmpty(backend, USER_PROFILE_PATH);
+		expect(user).toContain("# USER.md");
+		expect(user).toContain("## Actuel");
+		expect(user).toContain("Role: staff eng.");
+		expect(user).not.toContain("_No profile yet.");
+
+		const indexAfter = await readOrEmpty(backend, MEMORY_INDEX_PATH);
+		expect(indexAfter).toBe(indexBefore);
+	});
+
+	test("target: 'user' with rotate_actuel archives previous profile", async () => {
+		const backend = createBackend("mw-user-rotate");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		await callTool(tool, { target: "user", content: "v1 facts" });
+		await callTool(tool, {
+			target: "user",
+			content: "v2 facts",
+			mode: "rotate_actuel",
+		});
+
+		const user = await readOrEmpty(backend, USER_PROFILE_PATH);
+		expect(user).toContain("v2 facts");
+		expect(user).toContain("## Archive");
+		expect(user).toContain("v1 facts");
+	});
+
+	test("target: 'notes' without topic returns an error", async () => {
+		const backend = createBackend("mw-notes-no-topic");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		const result = await callTool(tool, { content: "orphan body" });
+		expect(result.toLowerCase()).toContain("error");
+		expect(result).toContain("topic");
 	});
 
 	test("replace mode (default) overwrites without archiving", async () => {

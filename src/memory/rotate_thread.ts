@@ -1,8 +1,8 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import type { AgentInstance, ChannelAgentSession } from "../channels/shared";
-import { estimateContentTokens, extractContentText } from "./message_content";
 import { appendLog } from "./log";
+import { estimateContentTokens, extractContentText } from "./message_content";
 import { summarizeThread, type ThreadMessage } from "./summarize";
 
 // Rotates the session to a fresh thread_id after summarizing the current one
@@ -104,7 +104,9 @@ export async function readThreadMessages(
 	} catch (error) {
 		const message =
 			error instanceof Error ? error.message : "unknown thread state error";
-		throw new Error(`Failed to read thread messages for ${threadId}: ${message}`);
+		throw new Error(
+			`Failed to read thread messages for ${threadId}: ${message}`,
+		);
 	}
 }
 
@@ -134,7 +136,9 @@ export async function rotateThread(options: {
 	try {
 		await session.persistThreadId?.(newThreadId);
 	} catch {
-		throw new Error(`Failed to persist thread ID change from ${priorThreadId} to ${newThreadId}`);
+		throw new Error(
+			`Failed to persist thread ID change from ${priorThreadId} to ${newThreadId}`,
+		);
 	}
 	session.threadId = newThreadId;
 	session.needsResumeCompaction = false;

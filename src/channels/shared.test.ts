@@ -21,8 +21,8 @@ import {
 	extractAgentReply,
 	extractTextFromContent,
 	maybeAutoCompactAndSeed,
-	maybeRunPendingTaskCheck,
 	maybeResumeCompactAndSeed,
+	maybeRunPendingTaskCheck,
 	recoverPendingSeedForEmptyThread,
 	seedFromCheckpoint,
 } from "./shared";
@@ -266,7 +266,10 @@ describe("channel task-check state", () => {
 				},
 			});
 
-			const result = await maybeRunPendingTaskCheck(session, "I fixed the bug.");
+			const result = await maybeRunPendingTaskCheck(
+				session,
+				"I fixed the bug.",
+			);
 
 			expect(result).toEqual({
 				handled: false,
@@ -632,7 +635,9 @@ describe("recoverPendingSeedForEmptyThread", () => {
 				role,
 				content,
 			})),
-		).toEqual(makeMessages(["older", "older-reply"], ["recent", "recent-reply"]));
+		).toEqual(
+			makeMessages(["older", "older-reply"], ["recent", "recent-reply"]),
+		);
 		await close();
 	});
 
@@ -877,10 +882,15 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 		});
 
 		await expect(
-			maybeAutoCompactAndSeed(session, makeMessages(["q1", "a1"]), "next", () =>
-				"rotated-thread",
+			maybeAutoCompactAndSeed(
+				session,
+				makeMessages(["q1", "a1"]),
+				"next",
+				() => "rotated-thread",
 			),
-		).rejects.toThrow("Failed to persist thread ID change from test-thread to rotated-thread");
+		).rejects.toThrow(
+			"Failed to persist thread ID change from test-thread to rotated-thread",
+		);
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 		await close();
@@ -961,7 +971,11 @@ describe("maybeResumeCompactAndSeed", () => {
 		});
 
 		await expect(
-			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () => "unused"),
+			maybeResumeCompactAndSeed(
+				session,
+				makeMessages(["q1", "a1"]),
+				() => "unused",
+			),
 		).rejects.toThrow("LLM unavailable");
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
@@ -988,10 +1002,14 @@ describe("maybeResumeCompactAndSeed", () => {
 		});
 
 		await expect(
-			maybeResumeCompactAndSeed(session, makeMessages(["q1", "a1"]), () =>
-				"rotated-thread",
+			maybeResumeCompactAndSeed(
+				session,
+				makeMessages(["q1", "a1"]),
+				() => "rotated-thread",
 			),
-		).rejects.toThrow("Failed to persist thread ID change from test-thread to rotated-thread");
+		).rejects.toThrow(
+			"Failed to persist thread ID change from test-thread to rotated-thread",
+		);
 		expect(session.threadId).toBe("test-thread");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 		expect(session.needsResumeCompaction).toBe(true);

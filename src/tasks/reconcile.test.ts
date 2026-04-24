@@ -49,7 +49,9 @@ describe("reconcileActiveTasksAtBoundary", () => {
 		expect(result.task.id).toBe(task.id);
 		expect(result.task.status).toBe("completed");
 		expect(result.task.threadIdCompleted).toBe("thread-b");
-		expect(result.agentContext).toContain("Automatically completed active task");
+		expect(result.agentContext).toContain(
+			"Automatically completed active task",
+		);
 
 		const activeTasks = await store.listActiveTasks("telegram:1");
 		expect(activeTasks).toHaveLength(1);

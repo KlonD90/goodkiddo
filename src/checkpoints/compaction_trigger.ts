@@ -49,7 +49,8 @@ export type CompactionContext = {
  */
 export function estimateTokens(messages: ThreadMessage[]): number {
 	return messages.reduce(
-		(sum, msg) => sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
+		(sum, msg) =>
+			sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
 		0,
 	);
 }
@@ -68,6 +69,23 @@ export function shouldCompactByTokenBudget(
 	budget: number,
 ): boolean {
 	return estimateTokens(messages) >= budget;
+}
+
+/**
+ * Preview the boundary that would fire for the given thresholds, without
+ * running compaction. Callers use this to decide whether to emit a
+ * user-facing "compacting…" status before the blocking LLM summary call.
+ * Mirrors the precedence inside `maybeCompactByThresholds`.
+ */
+export function previewThresholdBoundary(
+	messages: ThreadMessage[],
+	thresholds: CompactionThresholds = {},
+): "message_limit" | "token_limit" | null {
+	const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
+	const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+	if (shouldCompactByMessageLimit(messages, msgLimit)) return "message_limit";
+	if (shouldCompactByTokenBudget(messages, tokenBudget)) return "token_limit";
+	return null;
 }
 
 /**

@@ -68,16 +68,18 @@ describe("TaskStore", () => {
 		expect(indexNames).toContain("idx_tasks_user_status_updated_at");
 		expect(indexNames).toContain("idx_tasks_user_list_status");
 
-		const updatedAtIndex =
-			await db<IndexInfoRow[]>`PRAGMA index_info(idx_tasks_user_status_updated_at)`;
+		const updatedAtIndex = await db<
+			IndexInfoRow[]
+		>`PRAGMA index_info(idx_tasks_user_status_updated_at)`;
 		expect(updatedAtIndex.map((column) => column.name)).toEqual([
 			"user_id",
 			"status",
 			"updated_at",
 		]);
 
-		const listIndex =
-			await db<IndexInfoRow[]>`PRAGMA index_info(idx_tasks_user_list_status)`;
+		const listIndex = await db<
+			IndexInfoRow[]
+		>`PRAGMA index_info(idx_tasks_user_list_status)`;
 		expect(listIndex.map((column) => column.name)).toEqual([
 			"user_id",
 			"list_name",
@@ -316,7 +318,9 @@ describe("TaskStore", () => {
 		const recentTasks = await store.listRecentlyCompletedTasks("telegram:1", {
 			completedSince: 9_000,
 		});
-		expect(recentTasks.map((task) => task.title)).toEqual(["Recent completion"]);
+		expect(recentTasks.map((task) => task.title)).toEqual([
+			"Recent completion",
+		]);
 		expect(recentTasks[0]?.threadIdCompleted).toBe("thread-recent-done");
 	});
 

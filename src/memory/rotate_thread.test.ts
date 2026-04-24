@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { SqliteStateBackend } from "../backends";
-import { createDb, detectDialect } from "../db";
 import type { ChannelAgentSession } from "../channels/shared";
+import { createDb, detectDialect } from "../db";
 import { readOrEmpty } from "./fs";
 import { MEMORY_LOG_PATH } from "./layout";
 import { readThreadMessages, rotateThread } from "./rotate_thread";
@@ -134,7 +134,9 @@ describe("rotateThread", () => {
 			},
 		};
 
-		await expect(readThreadMessages(agent as never, "broken-thread")).rejects.toThrow(
+		await expect(
+			readThreadMessages(agent as never, "broken-thread"),
+		).rejects.toThrow(
 			"Failed to read thread messages for broken-thread: db unavailable",
 		);
 
@@ -191,7 +193,9 @@ describe("rotateThread", () => {
 				backend,
 				mintThreadId: () => "thread-after",
 			}),
-		).rejects.toThrow("Failed to persist thread ID change from thread-before to thread-after");
+		).rejects.toThrow(
+			"Failed to persist thread ID change from thread-before to thread-after",
+		);
 		expect(session.threadId).toBe("thread-before");
 	});
 });

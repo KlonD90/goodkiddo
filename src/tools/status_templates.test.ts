@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderStatus, hasTemplate } from "./status_templates";
+import { hasTemplate, renderStatus } from "./status_templates";
 
 describe("status_templates", () => {
 	describe("hasTemplate", () => {
@@ -55,9 +55,7 @@ describe("status_templates", () => {
 					{ file_path: "/src/index.ts", offset: 10, limit: 50 },
 					"en",
 				);
-				expect(result?.message).toBe(
-					"Reading /src/index.ts (lines 10:50)",
-				);
+				expect(result?.message).toBe("Reading /src/index.ts (lines 10:50)");
 			});
 
 			test("read_file without offset/limit", () => {
@@ -137,7 +135,9 @@ describe("status_templates", () => {
 					{ url: "https://example.com" },
 					"en",
 				);
-				expect(result?.message).toBe("Taking browser snapshot https://example.com");
+				expect(result?.message).toBe(
+					"Taking browser snapshot https://example.com",
+				);
 			});
 
 			test("browser_snapshot with selector", () => {
@@ -172,7 +172,12 @@ describe("status_templates", () => {
 			test("browser_action fill redacts text", () => {
 				const result = renderStatus(
 					"browser_action",
-					{ sessionKey: "s-abc123", action: "fill", ref: "@e1", text: "secret password" },
+					{
+						sessionKey: "s-abc123",
+						action: "fill",
+						ref: "@e1",
+						text: "secret password",
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Browser action: fill @e1");
@@ -182,7 +187,12 @@ describe("status_templates", () => {
 			test("browser_action scroll", () => {
 				const result = renderStatus(
 					"browser_action",
-					{ sessionKey: "s-abc123", action: "scroll", direction: "down", amount: 500 },
+					{
+						sessionKey: "s-abc123",
+						action: "scroll",
+						direction: "down",
+						amount: 500,
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Browser action: scroll down");
@@ -193,7 +203,11 @@ describe("status_templates", () => {
 			test("execute_script", () => {
 				const result = renderStatus(
 					"execute_script",
-					{ runtime: "bun", script: "/scripts/deploy.sh", filename: "deploy.sh" },
+					{
+						runtime: "bun",
+						script: "/scripts/deploy.sh",
+						filename: "deploy.sh",
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Running script /scripts/deploy.sh");
@@ -211,7 +225,12 @@ describe("status_templates", () => {
 			test("execute_script with args", () => {
 				const result = renderStatus(
 					"execute_script",
-					{ runtime: "shell", script: "/scripts/test.sh", filename: "test.sh", args: ["--verbose"] },
+					{
+						runtime: "shell",
+						script: "/scripts/test.sh",
+						filename: "test.sh",
+						args: ["--verbose"],
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Running script /scripts/test.sh");
@@ -222,7 +241,11 @@ describe("status_templates", () => {
 			test("memory_write redacts content", () => {
 				const result = renderStatus(
 					"memory_write",
-					{ topic: "User Preferences", content: "secret info", mode: "replace" },
+					{
+						topic: "User Preferences",
+						content: "secret info",
+						mode: "replace",
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Writing note: User Preferences");
@@ -232,7 +255,11 @@ describe("status_templates", () => {
 			test("skill_write redacts content", () => {
 				const result = renderStatus(
 					"skill_write",
-					{ name: "Deploy Procedure", content: "step 1: do something", mode: "replace" },
+					{
+						name: "Deploy Procedure",
+						content: "step 1: do something",
+						mode: "replace",
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Writing skill: Deploy Procedure");
@@ -259,11 +286,7 @@ describe("status_templates", () => {
 			});
 
 			test("task_complete", () => {
-				const result = renderStatus(
-					"task_complete",
-					{ taskId: 42 },
-					"en",
-				);
+				const result = renderStatus("task_complete", { taskId: 42 }, "en");
 				expect(result?.message).toBe("Completing task 42");
 			});
 
@@ -277,11 +300,7 @@ describe("status_templates", () => {
 			});
 
 			test("task_list_active", () => {
-				const result = renderStatus(
-					"task_list_active",
-					{ limit: 10 },
-					"en",
-				);
+				const result = renderStatus("task_list_active", { limit: 10 }, "en");
 				expect(result?.message).toBe("Listing active tasks");
 			});
 		});
@@ -328,11 +347,7 @@ describe("status_templates", () => {
 
 		describe("fallback behavior", () => {
 			test("returns null for unknown tool", () => {
-				const result = renderStatus(
-					"unknown_tool",
-					{ foo: "bar" },
-					"en",
-				);
+				const result = renderStatus("unknown_tool", { foo: "bar" }, "en");
 				expect(result).toBeNull();
 			});
 

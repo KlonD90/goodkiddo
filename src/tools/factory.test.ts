@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
 import { createDb, detectDialect } from "../db";
-import type { StatusEmitter } from "./status_emitter";
-import { createExecutionToolset } from "./factory";
 import type { SupportedLocale } from "../i18n/locale";
+import { createExecutionToolset } from "./factory";
+import type { StatusEmitter } from "./status_emitter";
 
 class FakeStatusEmitter implements StatusEmitter {
 	public calls: Array<{ callerId: string; message: string }> = [];

@@ -19,8 +19,23 @@ const ALLOWLISTED_ARGS: Record<string, readonly string[]> = {
 	edit_file: ["file_path", "replace_all", "replaceAll"],
 	glob: ["pattern", "path"],
 	grep: ["pattern", "path", "glob", "pathGlob"],
-	browser_snapshot: ["url", "selector", "interactiveOnly", "sessionKey", "urlSelector"],
-	browser_action: ["sessionKey", "action", "ref", "direction", "amount", "ms", "until", "directionText"], // direction is in allowlist but handled via directionText
+	browser_snapshot: [
+		"url",
+		"selector",
+		"interactiveOnly",
+		"sessionKey",
+		"urlSelector",
+	],
+	browser_action: [
+		"sessionKey",
+		"action",
+		"ref",
+		"direction",
+		"amount",
+		"ms",
+		"until",
+		"directionText",
+	], // direction is in allowlist but handled via directionText
 	execute_script: ["runtime", "script", "filename", "args"],
 	execute_workspace: ["runtime", "entrypoint", "args"],
 	memory_write: ["topic", "mode"],
@@ -104,7 +119,10 @@ const dictionaries: LocaleDictionary = {
 	},
 };
 
-function truncate(value: string, maxLength: number): { value: string; truncated: boolean } {
+function truncate(
+	value: string,
+	maxLength: number,
+): { value: string; truncated: boolean } {
 	const cleaned = value.replace(/[\r\n\t]/g, " ");
 	if (cleaned.length <= maxLength) {
 		return { value: cleaned, truncated: false };
@@ -123,7 +141,10 @@ function formatValue(value: unknown): { value: string; truncated: boolean } {
 		return { value: String(value), truncated: false };
 	}
 	if (typeof value === "string") {
-		const { value: truncated, truncated: wasTruncated } = truncate(value, MAX_VALUE_LENGTH);
+		const { value: truncated, truncated: wasTruncated } = truncate(
+			value,
+			MAX_VALUE_LENGTH,
+		);
 		return { value: truncated, truncated: wasTruncated };
 	}
 	if (Array.isArray(value)) {
@@ -161,7 +182,10 @@ function interpolate(
 		result = result.replace(new RegExp(`\\{${key}\\}`, "g"), formatted);
 	}
 
-	const { value: finalResult, truncated: finalTruncated } = truncate(result, MAX_TOTAL_LENGTH);
+	const { value: finalResult, truncated: finalTruncated } = truncate(
+		result,
+		MAX_TOTAL_LENGTH,
+	);
 	return { message: finalResult, truncated: anyTruncated || finalTruncated };
 }
 
@@ -270,7 +294,11 @@ export function renderStatus(
 	}
 
 	const augmentedArgs = buildInterpolatedArgs(toolName, args);
-	const { message, truncated } = interpolate(template, augmentedArgs, allowlist);
+	const { message, truncated } = interpolate(
+		template,
+		augmentedArgs,
+		allowlist,
+	);
 
 	return { message, truncated };
 }

@@ -51,6 +51,7 @@ export interface UpdateTimerParams {
 	cronExpression?: string;
 	timezone?: string;
 	enabled?: boolean;
+	nextRunAt?: number;
 }
 
 function rowToTimer(row: TimerRow): TimerRecord {
@@ -272,13 +273,15 @@ export class TimerStore {
 		const cronExpression = updates.cronExpression ?? existing.cronExpression;
 		const timezone = updates.timezone ?? existing.timezone;
 		const enabled = updates.enabled ?? existing.enabled;
+		const nextRunAt = updates.nextRunAt ?? existing.nextRunAt;
 
 		const rows = await this.db<TimerRow[]>`
 			UPDATE timers
 			SET
 				cron_expression = ${cronExpression},
 				timezone = ${timezone},
-				enabled = ${enabled ? 1 : 0}
+				enabled = ${enabled ? 1 : 0},
+				next_run_at = ${nextRunAt}
 			WHERE id = ${id} AND user_id = ${userId}
 			RETURNING
 				id,

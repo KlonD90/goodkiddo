@@ -17,6 +17,13 @@ export type CheckpointSummary = {
 	unfinished_work: string[];
 	pending_approvals: string[];
 	important_artifacts: string[];
+	/**
+	 * True when the model failed to produce parseable JSON for this checkpoint.
+	 * The goal field will contain the raw text; other fields will be empty.
+	 * Runtime context rendering can use this to warn the agent that context
+	 * is partial.
+	 */
+	degraded?: boolean;
 };
 
 const EMPTY_SUMMARY: CheckpointSummary = {
@@ -64,11 +71,13 @@ function contentToString(content: unknown): string {
 	return String(content);
 }
 
-function normalizeSummary(parsed: Partial<CheckpointSummary>): CheckpointSummary {
+function normalizeSummary(
+	parsed: Partial<CheckpointSummary>,
+): CheckpointSummary {
 	const toStringArray = (v: unknown): string[] =>
 		Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
 
-	return {
+	const normalized: CheckpointSummary = {
 		current_goal:
 			typeof parsed.current_goal === "string" ? parsed.current_goal : "",
 		decisions: toStringArray(parsed.decisions),
@@ -77,7 +86,28 @@ function normalizeSummary(parsed: Partial<CheckpointSummary>): CheckpointSummary
 		pending_approvals: toStringArray(parsed.pending_approvals),
 		important_artifacts: toStringArray(parsed.important_artifacts),
 	};
+	if (parsed.degraded === true) normalized.degraded = true;
+	return normalized;
 }
+
+function tryParseSummary(raw: string): CheckpointSummary | null {
+	const jsonStr = extractJson(raw);
+	try {
+		const parsed = JSON.parse(jsonStr) as Partial<CheckpointSummary>;
+		return normalizeSummary(parsed);
+	} catch {
+		return null;
+	}
+}
+
+// Tighter reminder for the retry attempt. We keep the original system prompt
+// in place and just hand the model its own bad output plus an explicit ask for
+// valid JSON — enough context to self-correct without re-feeding the transcript.
+const RETRY_SYSTEM = [
+	"Your previous response was not valid JSON matching the required schema.",
+	"Respond now with ONLY the JSON object. No code fences, no prose, no preamble.",
+	'Required keys: "current_goal" (string), "decisions", "constraints", "unfinished_work", "pending_approvals", "important_artifacts" (each a string array).',
+].join("\n");
 
 export async function generateCheckpointSummary(
 	model: BaseChatModel,
@@ -90,25 +120,50 @@ export async function generateCheckpointSummary(
 		{ role: "system", content: STRUCTURED_SUMMARY_SYSTEM },
 		{ role: "user", content: transcript },
 	]);
-
 	const raw = contentToString(response.content).trim();
-	const jsonStr = extractJson(raw);
+
+	const firstParse = tryParseSummary(raw);
+	if (firstParse !== null) return firstParse;
+
+	// Parse failed. Log enough to audit (raw output truncated, message count)
+	// and try once more with a stricter reminder. If the retry also fails, we
+	// return a degraded summary so callers can surface the problem.
+	console.warn(
+		"[checkpoint_compaction] summary JSON parse failed; retrying once.",
+		{
+			rawPreview: raw.slice(0, 400),
+			rawLength: raw.length,
+			messageCount: messages.length,
+		},
+	);
 
 	try {
-		const parsed = JSON.parse(jsonStr) as Partial<CheckpointSummary>;
-		return normalizeSummary(parsed);
-	} catch {
-		// Model returned non-parseable output — preserve raw text as the goal
-		// so at least partial operational state survives compaction.
-		return { ...EMPTY_SUMMARY, current_goal: raw };
+		const retry = await model.invoke([
+			{ role: "system", content: RETRY_SYSTEM },
+			{ role: "user", content: raw },
+		]);
+		const retryRaw = contentToString(retry.content).trim();
+		const secondParse = tryParseSummary(retryRaw);
+		if (secondParse !== null) return secondParse;
+		console.warn("[checkpoint_compaction] retry also failed to parse.", {
+			retryPreview: retryRaw.slice(0, 400),
+		});
+	} catch (retryErr) {
+		console.warn("[checkpoint_compaction] retry invocation threw:", retryErr);
 	}
+
+	// Preserve the original raw text as the goal so at least partial context
+	// survives. `degraded` tells the runtime renderer to flag this to the agent.
+	return { ...EMPTY_SUMMARY, current_goal: raw, degraded: true };
 }
 
 export function serializeCheckpointSummary(summary: CheckpointSummary): string {
 	return JSON.stringify(summary);
 }
 
-export function deserializeCheckpointSummary(payload: string): CheckpointSummary {
+export function deserializeCheckpointSummary(
+	payload: string,
+): CheckpointSummary {
 	try {
 		const parsed = JSON.parse(payload) as Partial<CheckpointSummary>;
 		return normalizeSummary(parsed);

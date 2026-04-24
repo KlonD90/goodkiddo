@@ -1,11 +1,14 @@
 import type { AppConfig } from "../config";
 import {
-	decideAttachmentBudget,
-	estimateAttachmentTokens,
 	type AttachmentBudgetConfig,
 	type AttachmentBudgetDecision,
+	decideAttachmentBudget,
+	estimateAttachmentTokens,
 } from "./attachment_budget";
-import { createPdfCapability, type PdfCapabilityOptions } from "./pdf/capability";
+import {
+	createPdfCapability,
+	type PdfCapabilityOptions,
+} from "./pdf/capability";
 import {
 	createSpreadsheetCapability,
 	type SpreadsheetCapabilityOptions,
@@ -16,7 +19,10 @@ import type {
 	FileCapability,
 	FileMetadata,
 } from "./types";
-import { createVoiceCapability, type VoiceCapabilityOptions } from "./voice/capability";
+import {
+	createVoiceCapability,
+	type VoiceCapabilityOptions,
+} from "./voice/capability";
 
 export type CapabilityRegistryOptions = {
 	voice?: VoiceCapabilityOptions;

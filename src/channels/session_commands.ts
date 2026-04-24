@@ -1,17 +1,18 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
 import {
-	runCompaction,
 	type CompactionContext,
+	runCompaction,
 } from "../checkpoints/compaction_trigger";
 import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import { compactionStatusMessage } from "../i18n/locale";
 import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import { extractRecentTurns } from "../memory/runtime_context";
 import type { AccessStore, ScopeKind } from "../server/access_store";
-import { compactInline } from "../utils/text";
 import type { TaskRecord } from "../tasks/store";
 import { buildShareUrl } from "../tools/share_tools";
+import { compactInline } from "../utils/text";
 import type { ChannelAgentSession } from "./shared";
 
 // Channel-agnostic session-control commands — separate concern from permission
@@ -45,8 +46,7 @@ export type SessionCommandContext = {
 
 export const NEW_THREAD_ACTIVE_TASK_LIMIT = 8;
 export const NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT = 5;
-export const NEW_THREAD_RECENT_COMPLETED_WINDOW_MS =
-	7 * 24 * 60 * 60 * 1000;
+export const NEW_THREAD_RECENT_COMPLETED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 function formatTaskReplyBlock(
 	heading: string,
@@ -69,7 +69,9 @@ function formatTaskReplyBlock(
 
 	for (const task of visibleTasks) {
 		const note = task.note ? ` — ${compactInline(task.note)}` : "";
-		lines.push(`- [${task.id}] ${task.listName}: ${compactInline(task.title)}${note}`);
+		lines.push(
+			`- [${task.id}] ${task.listName}: ${compactInline(task.title)}${note}`,
+		);
 	}
 
 	if (tasks.length > visibleTasks.length) {
@@ -132,7 +134,9 @@ async function handleOpenFs(
 	].join("\n");
 }
 
-async function handleRevokeFs(context: WebShareCommandContext): Promise<string> {
+async function handleRevokeFs(
+	context: WebShareCommandContext,
+): Promise<string> {
 	const count = await context.access.revokeByUser(context.callerId);
 	return count === 0
 		? "No active share links to revoke."
@@ -153,9 +157,7 @@ export async function maybeHandleSessionCommand(
 		.split("@", 1)[0];
 
 	if (command === "new-thread" || command === "new_thread") {
-		let pendingSeed:
-			| ChannelAgentSession["pendingCompactionSeed"]
-			| undefined;
+		let pendingSeed: ChannelAgentSession["pendingCompactionSeed"] | undefined;
 		if (context.compaction) {
 			const messages = await readThreadMessages(
 				context.session.agent,
@@ -168,12 +170,24 @@ export async function maybeHandleSessionCommand(
 				model: context.model,
 				store: context.compaction.store,
 			};
+			if (context.session.statusEmitter) {
+				try {
+					await context.session.statusEmitter.emit(
+						context.compaction.caller,
+						compactionStatusMessage(context.session.locale),
+					);
+				} catch {
+					// best-effort — compaction proceeds regardless
+				}
+			}
 			const checkpoint = await runCompaction(compactionCtx, "new_thread");
 
 			// Seed the first turn in the new thread with the checkpoint context
 			// so the model has operational continuity without replaying full history.
 			const recentTurns = extractRecentTurns(messages, 2);
-			const summaryObj = deserializeCheckpointSummary(checkpoint.summaryPayload);
+			const summaryObj = deserializeCheckpointSummary(
+				checkpoint.summaryPayload,
+			);
 			pendingSeed = {
 				summary: summaryObj,
 				recentTurns,
@@ -204,8 +218,7 @@ export async function maybeHandleSessionCommand(
 		const recentCompletedTasks =
 			taskStore && callerId
 				? await taskStore.listRecentlyCompletedTasks(callerId, {
-						completedSince:
-							now() - NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
+						completedSince: now() - NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
 						limit: NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT + 1,
 					})
 				: [];
@@ -221,8 +234,7 @@ export async function maybeHandleSessionCommand(
 				}),
 				formatTaskReplyBlock(
 					`Recently completed tasks (last ${Math.floor(
-						NEW_THREAD_RECENT_COMPLETED_WINDOW_MS /
-							(24 * 60 * 60 * 1000),
+						NEW_THREAD_RECENT_COMPLETED_WINDOW_MS / (24 * 60 * 60 * 1000),
 					)} days):`,
 					recentCompletedTasks,
 					{

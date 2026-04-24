@@ -21,6 +21,23 @@ function createStubModel(response: string | object) {
 	return { model, seen };
 }
 
+// Returns a different response each invocation so we can test the retry path.
+function createSequencedStubModel(responses: Array<string | object>) {
+	const seen: Array<{ role: string; content: string }> = [];
+	let call = 0;
+	const model = {
+		async invoke(messages: Array<{ role: string; content: string }>) {
+			for (const m of messages) seen.push(m);
+			const response = responses[Math.min(call, responses.length - 1)];
+			call++;
+			const content =
+				typeof response === "string" ? response : JSON.stringify(response);
+			return { content };
+		},
+	} as unknown as BaseChatModel;
+	return { model, seen, callCount: () => call };
+}
+
 const SAMPLE_MESSAGES: ThreadMessage[] = [
 	{ role: "user", content: "Build a CSV export feature" },
 	{
@@ -96,16 +113,83 @@ describe("generateCheckpointSummary", () => {
 		expect(summary.important_artifacts).toEqual(["auth.ts"]);
 	});
 
-	test("falls back gracefully when model returns invalid JSON", async () => {
-		const { model } = createStubModel("sorry I cannot summarize this");
+	test("falls back gracefully when model returns invalid JSON on both attempts", async () => {
+		const { model, callCount } = createSequencedStubModel([
+			"sorry I cannot summarize this",
+			"still not JSON",
+		]);
 		const summary = await generateCheckpointSummary(model, [
 			{ role: "user", content: "hello" },
 		]);
 		expect(summary).toBeDefined();
 		expect(Array.isArray(summary.decisions)).toBe(true);
 		expect(Array.isArray(summary.unfinished_work)).toBe(true);
-		// raw text preserved as goal
+		// Raw (first-attempt) text preserved as goal so at least some signal survives.
 		expect(summary.current_goal).toBe("sorry I cannot summarize this");
+		// Flag lets runtime_context warn the agent that the checkpoint is partial.
+		expect(summary.degraded).toBe(true);
+		// Retry was attempted (2 invocations total).
+		expect(callCount()).toBe(2);
+	});
+
+	test("retries once and recovers when model self-corrects on second attempt", async () => {
+		const validPayload = {
+			current_goal: "Ship the feature",
+			decisions: ["Use approach A"],
+			constraints: [],
+			unfinished_work: [],
+			pending_approvals: [],
+			important_artifacts: [],
+		};
+		const { model, callCount } = createSequencedStubModel([
+			"not JSON at all",
+			JSON.stringify(validPayload),
+		]);
+		const summary = await generateCheckpointSummary(model, [
+			{ role: "user", content: "hello" },
+		]);
+		expect(summary.current_goal).toBe("Ship the feature");
+		expect(summary.decisions).toEqual(["Use approach A"]);
+		expect(summary.degraded).toBeUndefined();
+		expect(callCount()).toBe(2);
+	});
+
+	test("does not retry when first attempt parses successfully", async () => {
+		const payload = {
+			current_goal: "Goal",
+			decisions: [],
+			constraints: [],
+			unfinished_work: [],
+			pending_approvals: [],
+			important_artifacts: [],
+		};
+		const { model, callCount } = createSequencedStubModel([
+			JSON.stringify(payload),
+			"never returned",
+		]);
+		const summary = await generateCheckpointSummary(model, [
+			{ role: "user", content: "hello" },
+		]);
+		expect(summary.current_goal).toBe("Goal");
+		expect(callCount()).toBe(1);
+	});
+
+	test("returns degraded summary when retry invocation itself throws", async () => {
+		let call = 0;
+		const model = {
+			async invoke(_messages: Array<{ role: string; content: string }>) {
+				call++;
+				if (call === 1) return { content: "not JSON" };
+				throw new Error("model network error");
+			},
+		} as unknown as BaseChatModel;
+
+		const summary = await generateCheckpointSummary(model, [
+			{ role: "user", content: "hello" },
+		]);
+		expect(summary.current_goal).toBe("not JSON");
+		expect(summary.degraded).toBe(true);
+		expect(call).toBe(2);
 	});
 
 	test("preserves key operational state across compaction boundary", async () => {
@@ -202,6 +286,23 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 		expect(result.unfinished_work).toEqual([]);
 		expect(result.pending_approvals).toEqual([]);
 		expect(result.important_artifacts).toEqual([]);
+	});
+
+	test("round-trips the degraded flag when set", () => {
+		const summary: CheckpointSummary = {
+			current_goal: "raw fallback text",
+			decisions: [],
+			constraints: [],
+			unfinished_work: [],
+			pending_approvals: [],
+			important_artifacts: [],
+			degraded: true,
+		};
+		const restored = deserializeCheckpointSummary(
+			serializeCheckpointSummary(summary),
+		);
+		expect(restored.degraded).toBe(true);
+		expect(restored.current_goal).toBe("raw fallback text");
 	});
 
 	test("filters non-string entries from array fields", () => {

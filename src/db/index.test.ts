@@ -25,6 +25,8 @@ describe("detectDialect", () => {
 	});
 
 	test("throws for empty string", () => {
-		expect(() => detectDialect("")).toThrow("Unsupported database URL scheme: ");
+		expect(() => detectDialect("")).toThrow(
+			"Unsupported database URL scheme: ",
+		);
 	});
 });

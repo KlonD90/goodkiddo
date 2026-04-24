@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
 	DEFAULT_STATUS_LOCALE,
-	SUPPORTED_LOCALES,
 	extractLocaleFromCli,
 	extractLocaleFromTelegram,
 	resolveLocale,
+	SUPPORTED_LOCALES,
 } from "./locale";
 
 describe("locale resolution", () => {
@@ -49,7 +49,9 @@ describe("locale resolution", () => {
 		});
 
 		test("falls back to DEFAULT_STATUS_LOCALE when config default is not a supported locale", () => {
-			expect(resolveLocale("fr", "invalid" as "en")).toBe(DEFAULT_STATUS_LOCALE);
+			expect(resolveLocale("fr", "invalid" as "en")).toBe(
+				DEFAULT_STATUS_LOCALE,
+			);
 		});
 
 		test("falls back to DEFAULT_STATUS_LOCALE when hint is unknown and no config default", () => {
@@ -119,11 +121,14 @@ describe("locale resolution", () => {
 
 		test("extracts locale from LANG environment variable", () => {
 			const originalLang = process.env.LANG;
+			const originalLcAll = process.env.LC_ALL;
 			try {
+				delete process.env.LC_ALL;
 				process.env.LANG = "en_US.UTF-8";
 				expect(extractLocaleFromCli()).toBe("en");
 			} finally {
 				if (originalLang !== undefined) process.env.LANG = originalLang;
+				if (originalLcAll !== undefined) process.env.LC_ALL = originalLcAll;
 			}
 		});
 

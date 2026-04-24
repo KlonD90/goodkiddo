@@ -1,4 +1,5 @@
 import type { BackendProtocol } from "deepagents";
+import { withLock } from "../utils/async_lock";
 import { append, exists, overwrite } from "./fs";
 import { MEMORY_LOG_PATH } from "./layout";
 
@@ -34,10 +35,15 @@ export async function appendLog(
 	now: Date = new Date(),
 ): Promise<string> {
 	const entry = formatLogEntry(op, detail, todayIso(now));
-	if (await exists(backend, MEMORY_LOG_PATH)) {
-		await append(backend, MEMORY_LOG_PATH, entry);
-	} else {
-		await overwrite(backend, MEMORY_LOG_PATH, `# Log\n\n${entry}`);
-	}
-	return entry;
+	// Serialize: the exists() check before append-or-create otherwise races —
+	// two concurrent first-ever calls could each see "not exists" and both
+	// overwrite with a fresh header, losing one entry.
+	return withLock(MEMORY_LOG_PATH, async () => {
+		if (await exists(backend, MEMORY_LOG_PATH)) {
+			await append(backend, MEMORY_LOG_PATH, entry);
+		} else {
+			await overwrite(backend, MEMORY_LOG_PATH, `# Log\n\n${entry}`);
+		}
+		return entry;
+	});
 }

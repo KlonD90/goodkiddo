@@ -48,6 +48,12 @@ export function renderCompactionPromptContext(options: {
 export function renderCheckpointSummary(summary: CheckpointSummary): string {
 	const lines: string[] = ["[Conversation Checkpoint]"];
 
+	if (summary.degraded) {
+		lines.push(
+			"Note: This checkpoint is partial — structured summarization failed and only the raw goal text below is available. Ask the user to restate anything important you might be missing.",
+		);
+	}
+
 	if (summary.current_goal) {
 		lines.push(`Goal: ${summary.current_goal}`);
 	}

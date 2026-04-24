@@ -9,8 +9,8 @@ import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createDb, detectDialect } from "../db";
 import { TaskStore } from "../tasks/store";
 import {
-	NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
 	maybeHandleSessionCommand,
+	NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
 	type SessionCommandContext,
 } from "./session_commands";
 import type { ChannelAgentSession } from "./shared";
@@ -541,7 +541,10 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		expect(session.threadId).toBe("thread-rotation-failure");
 		expect(session.pendingCompactionSeed).toBeUndefined();
 
-		const checkpoint = await store.readLatest("dora", "thread-rotation-failure");
+		const checkpoint = await store.readLatest(
+			"dora",
+			"thread-rotation-failure",
+		);
 		expect(checkpoint?.sourceBoundary).toBe("new_thread");
 		await close();
 	});

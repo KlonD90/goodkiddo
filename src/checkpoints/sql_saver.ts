@@ -185,7 +185,13 @@ export class SqlSaver extends MemorySaver {
 		row: CheckpointRow,
 	): Promise<CheckpointTuple> {
 		const pendingWrites = await Promise.all(
-			(await this.readPendingWrites(threadId, checkpointNamespace, checkpointId)).map(
+			(
+				await this.readPendingWrites(
+					threadId,
+					checkpointNamespace,
+					checkpointId,
+				)
+			).map(
 				async (write) =>
 					[
 						write.task_id,
@@ -265,7 +271,9 @@ export class SqlSaver extends MemorySaver {
 			);
 		}
 
-		const latestRows = await this.db<(CheckpointRow & { checkpoint_id: string })[]>`
+		const latestRows = await this.db<
+			(CheckpointRow & { checkpoint_id: string })[]
+		>`
 			SELECT
 				checkpoint_id,
 				checkpoint_type,

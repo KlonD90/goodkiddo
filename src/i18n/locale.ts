@@ -43,3 +43,18 @@ export function extractLocaleFromCli(): string | null {
 	const lang = process.env.LC_ALL ?? process.env.LANG ?? null;
 	return normalizeLocaleHint(lang);
 }
+
+// Localized strings for turn-lifecycle events (not tool invocations — those
+// use the allowlisted templates in src/tools/status_templates.ts).
+const LIFECYCLE_STATUS: Record<SupportedLocale, { compacting: string }> = {
+	en: { compacting: "Compacting context…" },
+	ru: { compacting: "Сжимаю контекст…" },
+	es: { compacting: "Compactando contexto…" },
+};
+
+export function compactionStatusMessage(
+	locale: SupportedLocale | undefined,
+): string {
+	const effective = locale ?? DEFAULT_STATUS_LOCALE;
+	return (LIFECYCLE_STATUS[effective] ?? LIFECYCLE_STATUS.en).compacting;
+}

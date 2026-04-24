@@ -6,7 +6,11 @@ let db: InstanceType<typeof Bun.SQL>;
 let store: TimerStore;
 let currentTime: number;
 let readMdFileMock: (path: string) => Promise<string>;
-let computeNextRunMock: (cronExpression: string, fromDate?: Date) => number;
+let computeNextRunMock: (
+	cronExpression: string,
+	timezone: string,
+	fromDate?: Date,
+) => number;
 const callerId = "telegram:1";
 
 function createMockStore() {
@@ -166,6 +170,53 @@ describe("TimerTools", () => {
 					timezone: "America/New_York",
 				}),
 			);
+			expect(computeNextRunMock).toHaveBeenCalledWith(
+				"0 10 * * 1-5",
+				"America/New_York",
+			);
+		});
+
+		test("stores provided chat id separately from user id", async () => {
+			const createSpy = vi.spyOn(store, "create");
+			const tools = createTimerTools(store, {
+				timezone: "UTC",
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+				chatId: "1",
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			await createTool.invoke({
+				mdFilePath: "/memory/daily-news.md",
+				cronExpression: "0 10 * * 1-5",
+			});
+
+			expect(createSpy).toHaveBeenCalledWith(
+				expect.objectContaining({
+					userId: "telegram:1",
+					chatId: "1",
+				}),
+			);
+		});
+
+		test("returns error for invalid timezone", async () => {
+			const tools = createTimerTools(store, {
+				timezone: "UTC",
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const createTool = tools.find((t) => t.name === "create_timer")!;
+
+			const result = await createTool.invoke({
+				mdFilePath: "/memory/daily-news.md",
+				cronExpression: "0 10 * * 1-5",
+				timezone: "Mars/Base",
+			});
+
+			expect(result).toBe("Error: Invalid timezone: Mars/Base");
+			expect(computeNextRunMock).not.toHaveBeenCalled();
 		});
 	});
 
@@ -272,6 +323,43 @@ describe("TimerTools", () => {
 
 			expect(result).toContain("updated");
 			expect(result).toContain("America/New_York");
+
+			const updated = await store.getById(timer.id);
+			expect(updated?.nextRunAt).toBe(2000);
+			expect(updated?.lastRunAt).toBeNull();
+			expect(computeNextRunMock).toHaveBeenCalledWith(
+				"0 10 * * *",
+				"America/New_York",
+			);
+		});
+
+		test("returns error for invalid timezone in update", async () => {
+			const timer = await store.create({
+				userId: callerId,
+				chatId: callerId,
+				mdFilePath: "timer.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const tools = createTimerTools(store, {
+				timezone: "UTC",
+				computeNextRun: computeNextRunMock,
+				readMdFile: readMdFileMock,
+				callerId,
+			});
+			const updateTool = tools.find((t) => t.name === "update_timer")!;
+
+			const result = await updateTool.invoke({
+				timerId: timer.id,
+				timezone: "Mars/Base",
+			});
+
+			expect(result).toBe("Error: Invalid timezone: Mars/Base");
+			const unchanged = await store.getById(timer.id);
+			expect(unchanged?.timezone).toBe("UTC");
+			expect(unchanged?.nextRunAt).toBe(2000);
 		});
 
 		test("updates timer enabled state", async () => {

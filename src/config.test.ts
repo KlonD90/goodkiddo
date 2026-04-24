@@ -368,6 +368,21 @@ describe("config", () => {
 		);
 	});
 
+	test("reports invalid timezone settings", async () => {
+		await withEnv(
+			{
+				TIMEZONE: "Mars/Base",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "TIMEZONE",
+					reason:
+						'TIMEZONE must be a valid IANA timezone, for example "UTC" or "America/New_York".',
+				});
+			},
+		);
+	});
+
 	test("reports an invalid transcription provider value", async () => {
 		await withEnv(
 			{

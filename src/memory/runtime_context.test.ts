@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { deserializeCheckpointSummary } from "./checkpoint_compaction";
 import type { CheckpointSummary } from "./checkpoint_compaction";
+import { deserializeCheckpointSummary } from "./checkpoint_compaction";
 import {
 	buildRuntimeContext,
 	extractRecentTurns,
-	renderCompactionPromptContext,
 	renderCheckpointSummary,
+	renderCompactionPromptContext,
 } from "./runtime_context";
 import type { ThreadMessage } from "./summarize";
 

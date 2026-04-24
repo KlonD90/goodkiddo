@@ -27,11 +27,13 @@ Use this when you need the latest SQL-backed task state before planning or
 closing a loop.`;
 
 function normalizeTurnText(value: string | undefined): string {
-	return value
-		?.toLowerCase()
-		.replace(/['’]/g, "")
-		.replace(/[^a-z0-9]+/g, " ")
-		.trim() ?? "";
+	return (
+		value
+			?.toLowerCase()
+			.replace(/['’]/g, "")
+			.replace(/[^a-z0-9]+/g, " ")
+			.trim() ?? ""
+	);
 }
 
 function hasDismissConfirmation(
@@ -82,10 +84,9 @@ export function createTaskAddTool(contextValue: TaskToolContext) {
 					title,
 					note,
 				});
-				return [
-					`Added active task ${task.id}.`,
-					formatTaskLine(task),
-				].join("\n");
+				return [`Added active task ${task.id}.`, formatTaskLine(task)].join(
+					"\n",
+				);
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return `Error: ${message}`;
@@ -128,10 +129,7 @@ export function createTaskCompleteTool(contextValue: TaskToolContext) {
 				if (!task) {
 					return `Task ${taskId} was not found, does not belong to this caller, or is already closed.`;
 				}
-				return [
-					`Completed task ${task.id}.`,
-					formatTaskLine(task),
-				].join("\n");
+				return [`Completed task ${task.id}.`, formatTaskLine(task)].join("\n");
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				return `Error: ${message}`;
@@ -141,7 +139,11 @@ export function createTaskCompleteTool(contextValue: TaskToolContext) {
 			name: "task_complete",
 			description: TASK_COMPLETE_PROMPT,
 			schema: z.object({
-				taskId: z.number().int().positive().describe("Active task id to complete."),
+				taskId: z
+					.number()
+					.int()
+					.positive()
+					.describe("Active task id to complete."),
 			}),
 		},
 	);
@@ -182,7 +184,11 @@ export function createTaskDismissTool(contextValue: TaskToolContext) {
 			name: "task_dismiss",
 			description: TASK_DISMISS_PROMPT,
 			schema: z.object({
-				taskId: z.number().int().positive().describe("Active task id to dismiss."),
+				taskId: z
+					.number()
+					.int()
+					.positive()
+					.describe("Active task id to dismiss."),
 				reason: z
 					.string()
 					.trim()
@@ -228,7 +234,9 @@ export function createTaskListActiveTool(contextValue: TaskToolContext) {
 					.positive()
 					.max(100)
 					.optional()
-					.describe("Maximum number of active tasks to return. Defaults to 12."),
+					.describe(
+						"Maximum number of active tasks to return. Defaults to 12.",
+					),
 			}),
 		},
 	);

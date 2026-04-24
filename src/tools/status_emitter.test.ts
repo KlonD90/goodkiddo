@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import type { OutboundChannel, OutboundSendFileArgs } from "../channels/outbound";
-import {
-	createStatusEmitter,
-	noopStatusEmitter,
-} from "./status_emitter";
+import type {
+	OutboundChannel,
+	OutboundSendFileArgs,
+} from "../channels/outbound";
+import { createStatusEmitter, noopStatusEmitter } from "./status_emitter";
 
 class FakeOutboundChannel implements OutboundChannel {
 	sendStatusCalls: Array<{ callerId: string; message: string }> = [];
@@ -28,9 +28,7 @@ describe("StatusEmitter", () => {
 		});
 
 		test("emit accepts any callerId and message", async () => {
-			await expect(
-				noopStatusEmitter.emit("", ""),
-			).resolves.toBeUndefined();
+			await expect(noopStatusEmitter.emit("", "")).resolves.toBeUndefined();
 			await expect(
 				noopStatusEmitter.emit("cli:user", "Reading file.txt"),
 			).resolves.toBeUndefined();

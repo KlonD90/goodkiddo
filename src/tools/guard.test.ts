@@ -6,11 +6,10 @@ import type {
 	ApprovalOutcome,
 	ApprovalRequest,
 } from "../permissions/approval";
-import { NoopAuditLogger } from "../permissions/audit";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import type { StatusEmitter } from "./status_emitter";
 import { wrapToolWithGuard } from "./guard";
+import type { StatusEmitter } from "./status_emitter";
 
 class FakeBroker implements ApprovalBroker {
 	public lastRequest: ApprovalRequest | null = null;
@@ -65,7 +64,6 @@ describe("wrapToolWithGuard", () => {
 			caller,
 			store,
 			broker,
-			audit: new NoopAuditLogger(),
 		});
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
 			value: "y",
@@ -86,7 +84,6 @@ describe("wrapToolWithGuard", () => {
 			caller,
 			store,
 			broker,
-			audit: new NoopAuditLogger(),
 		});
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
 			value: "x",
@@ -107,7 +104,6 @@ describe("wrapToolWithGuard", () => {
 			caller,
 			store,
 			broker,
-			audit: new NoopAuditLogger(),
 		});
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
 			value: "x",
@@ -128,7 +124,6 @@ describe("wrapToolWithGuard", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 			},
 		);
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
@@ -150,7 +145,6 @@ describe("wrapToolWithGuard", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 			},
 		);
 		const result = await (wrapped.invoke as (i: unknown) => Promise<unknown>)({
@@ -174,7 +168,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "en",
 			},
@@ -201,7 +194,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "ru",
 			},
@@ -227,7 +219,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "es",
 			},
@@ -253,7 +244,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "en",
 			},
@@ -279,7 +269,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "en",
 			},
@@ -309,7 +298,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "en",
 			},
@@ -334,7 +322,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 				locale: "en",
 			},
@@ -358,7 +345,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				locale: "en",
 			},
 		);
@@ -381,7 +367,6 @@ describe("wrapToolWithGuard status emission", () => {
 				caller,
 				store,
 				broker,
-				audit: new NoopAuditLogger(),
 				statusEmitter: emitter,
 			},
 		);

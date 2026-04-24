@@ -11,6 +11,7 @@ import {
 	type SupportedAiTypes,
 	type UsingMode,
 } from "./types";
+import { isValidTimezone } from "./utils/timezone";
 
 export type AppConfig = {
 	aiApiKey: string;
@@ -488,6 +489,14 @@ export const findConfigIssues = (
 		issues.push({
 			field: "WEB_PUBLIC_BASE_URL",
 			reason: "WEB_PUBLIC_BASE_URL must not be empty.",
+		});
+	}
+
+	if (config.timezone !== undefined && !isValidTimezone(config.timezone)) {
+		issues.push({
+			field: "TIMEZONE",
+			reason:
+				'TIMEZONE must be a valid IANA timezone, for example "UTC" or "America/New_York".',
 		});
 	}
 

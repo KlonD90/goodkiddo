@@ -189,9 +189,7 @@ export class SqliteStateBackend implements BackendProtocol {
 		return rows[0] ?? null;
 	}
 
-	private async listRowsInDirectory(
-		dirPath: string,
-	): Promise<SqliteFileRow[]> {
+	private async listRowsInDirectory(dirPath: string): Promise<SqliteFileRow[]> {
 		await this._ready;
 		const normalizedDir = normalizePath(dirPath, "dir");
 		const db = this.database;
@@ -381,9 +379,7 @@ export class SqliteStateBackend implements BackendProtocol {
 
 		return (await this.listAllRows())
 			.filter((row) => row.path.startsWith(normalizedDir))
-			.filter((row) =>
-				glob.match(relativeToDirectory(normalizedDir, row.path)),
-			)
+			.filter((row) => glob.match(relativeToDirectory(normalizedDir, row.path)))
 			.sort((left, right) => right.modified_at.localeCompare(left.modified_at))
 			.map((row) => ({
 				path: row.path,

@@ -124,7 +124,7 @@ LLM tools that let the agent set, list, update, and delete cron-like scheduled j
 - [x] Add `timezone: string` field to `AppConfig` in `src/config.ts` (default `"UTC"`)
 - [x] Add to `.env` persistence pattern
 - [x] When displaying next run time to user, convert from UTC to user's timezone
-- [x] Cron expressions are always stored and evaluated in UTC internally; timezone is for display only
+- [x] Cron expressions are evaluated in the timer's configured IANA timezone
 - [x] For the timer tools, `create_timer` accepts an optional `timezone` override; defaults to `config.timezone`
 
 ### Task 7: Add telegram channel integration tests

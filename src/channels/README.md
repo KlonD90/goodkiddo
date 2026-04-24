@@ -272,7 +272,14 @@ User-facing timer operations are available via agent tools:
 - `update_timer(timerId, updates)` — change cron, timezone, or enabled state
 - `delete_timer(timerId)` — remove a timer
 
-The scheduler runs in-process, polling every 60 seconds for due timers. When a timer fires, the scheduler reads the referenced memory file, executes it via the LLM, and streams the result to the user's Telegram chat.
+The Telegram channel starts the scheduler in-process during normal bot startup,
+polling every 60 seconds for due timers. When a timer fires, the scheduler
+reads the referenced memory file, executes it via the LLM, and streams the
+result to the user's Telegram chat.
+
+Cron expressions are evaluated in each timer's configured IANA timezone. If a
+timer does not specify one, it uses the `TIMEZONE` config value, defaulting to
+`UTC`.
 
 Failure handling:
 

@@ -103,7 +103,10 @@ export class AccessStore {
 		}
 	}
 
-	async issue(userId: string, options: IssueOptions = {}): Promise<IssuedGrant> {
+	async issue(
+		userId: string,
+		options: IssueOptions = {},
+	): Promise<IssuedGrant> {
 		await this._ready;
 		const ttlMs = Math.min(options.ttlMs ?? MAX_TTL_MS, MAX_TTL_MS);
 		if (ttlMs <= 0) {

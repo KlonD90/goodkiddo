@@ -203,9 +203,9 @@ describe("task tools", () => {
 		const tool = createTaskListActiveTool(ctx);
 
 		const result = await tool.invoke({});
-		expect(result.split("\n").filter((line) => line.startsWith("- ["))).toHaveLength(
-			12,
-		);
+		expect(
+			result.split("\n").filter((line) => line.startsWith("- [")),
+		).toHaveLength(12);
 		expect(result).toContain("2 more active task(s).");
 		await ctx.db.close();
 	});

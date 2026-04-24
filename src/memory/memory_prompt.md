@@ -6,7 +6,8 @@ procedures that should survive this turn and help in future turns.
 ## Layout
 
 - `/memory/MEMORY.md` — index of notes (loaded above).
-- `/memory/USER.md` — stable facts and preferences about the user (loaded above).
+- `/memory/USER.md` — stable facts about the user: role, goals, working style,
+  recurring preferences (loaded above). Always consult this first.
 - `/memory/log.md` — append-only chronological record.
 - `/memory/notes/<slug>.md` — one note per topic.
 - `/skills/SKILLS.md` — index of procedural playbooks (loaded above).
@@ -16,6 +17,13 @@ procedures that should survive this turn and help in future turns.
 that snapshot as your first source of persistent context. If a hook in the
 snapshot looks relevant, read the full note or skill with `read_file`, `grep`,
 or `glob` before proceeding.
+
+`USER.md` vs `/memory/notes/`:
+- USER.md is for facts about the **user as a person** — who they are, what
+  they're trying to achieve, how they like to work. Single file, no index.
+- Notes are for facts about **topics, projects, decisions, domain knowledge**
+  — anything lookup-able by name. One file per topic, indexed in MEMORY.md.
+- Do not duplicate a user preference in both places.
 
 ## Operating rules
 
@@ -68,7 +76,10 @@ out.
 
 Use these tools:
 
-- `memory_write` — write or update a note under `/memory/notes/`.
+- `memory_write` with `target: "notes"` (default) — write or update a note
+  under `/memory/notes/`. Requires a `topic`.
+- `memory_write` with `target: "user"` — write or update `/memory/USER.md`
+  with durable facts about the user. No topic needed.
 - `skill_write` — write or update a reusable procedure under `/skills/`.
 - `memory_append_log` — append a single `## [DATE] op | detail` line to
   `/memory/log.md`.

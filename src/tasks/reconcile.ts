@@ -121,7 +121,10 @@ function formatTaskLabel(task: TaskRecord): string {
 	return `[${task.id}] ${task.listName}: ${compactInline(task.title)}${note}`;
 }
 
-function findTaskMatches(message: string, activeTasks: TaskRecord[]): TaskMatch[] {
+function findTaskMatches(
+	message: string,
+	activeTasks: TaskRecord[],
+): TaskMatch[] {
 	const matches: TaskMatch[] = [];
 	const referencedTaskId = extractReferencedTaskId(message);
 	if (referencedTaskId !== null) {

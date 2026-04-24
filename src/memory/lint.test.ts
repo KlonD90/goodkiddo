@@ -14,11 +14,28 @@ function createBackend(namespace: string) {
 }
 
 describe("runLint", () => {
-	test("returns empty findings for a fresh workspace", async () => {
+	test("fresh workspace flags only userProfileEmpty — nothing else to maintain", async () => {
 		const backend = createBackend("lint-fresh");
 		await ensureMemoryBootstrapped(backend);
 		const findings = await runLint(backend);
-		expect(isEmpty(findings)).toBe(true);
+		expect(findings.userProfileEmpty).toBe(true);
+		expect(findings.staleNotes).toEqual([]);
+		expect(findings.orphans).toEqual([]);
+		expect(findings.duplicates).toEqual([]);
+		expect(findings.overBudget).toBeNull();
+		expect(isEmpty(findings)).toBe(false);
+	});
+
+	test("populated USER.md clears the empty-profile flag", async () => {
+		const backend = createBackend("lint-profile-populated");
+		await ensureMemoryBootstrapped(backend);
+		await overwrite(
+			backend,
+			"/memory/USER.md",
+			"# USER.md\n\n## Actuel\nRole: staff eng. Prefers terse replies.\n",
+		);
+		const findings = await runLint(backend);
+		expect(findings.userProfileEmpty).toBe(false);
 	});
 
 	test("flags notes present on disk but not in the index as orphans", async () => {
@@ -70,6 +87,7 @@ describe("formatMaintenanceBlock", () => {
 			orphans: [],
 			duplicates: [],
 			overBudget: null,
+			userProfileEmpty: false,
 		});
 		expect(block).toBe("");
 	});
@@ -80,6 +98,7 @@ describe("formatMaintenanceBlock", () => {
 			orphans: ["/memory/notes/a.md"],
 			duplicates: [],
 			overBudget: null,
+			userProfileEmpty: false,
 		});
 		expect(block).toContain("## Memory maintenance");
 		expect(block).toContain("/memory/notes/a.md");
@@ -92,6 +111,7 @@ describe("formatMaintenanceBlock", () => {
 			orphans: [],
 			duplicates: [],
 			overBudget: { memoryChars: 9999, skillsChars: 0 },
+			userProfileEmpty: false,
 		});
 		expect(block).toContain("9999");
 		expect(block).toContain("budget");
@@ -104,6 +124,7 @@ describe("formatMaintenanceBlock", () => {
 			orphans: many,
 			duplicates: [],
 			overBudget: null,
+			userProfileEmpty: false,
 		});
 		expect(block).toContain("+3 more");
 	});

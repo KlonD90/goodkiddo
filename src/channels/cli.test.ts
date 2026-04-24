@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { PassThrough } from "node:stream";
+import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
-import { buildSessionRuntimeMessages } from "./shared";
-import { CliOutboundChannel, seedCliUser } from "./cli";
 import { createStatusEmitter } from "../tools/status_emitter";
-import { resolveLocale, extractLocaleFromCli } from "../i18n/locale";
+import { CliOutboundChannel, seedCliUser } from "./cli";
+import { buildSessionRuntimeMessages } from "./shared";
 
 let db: InstanceType<typeof Bun.SQL>;
 let store: PermissionsStore;

@@ -33,14 +33,31 @@ much context is reserved for summaries, recent turns, and the next turn.
 Telegram also emits an ephemeral attachment-compaction notice by default;
 set `ENABLE_ATTACHMENT_COMPACTION_NOTICE=false` to disable only that notice,
 not the underlying compaction behavior.
-Set `TIMEZONE=America/New_York` to control the default timezone for
-scheduled timers (defaults to `UTC`).
+Set `TIMEZONE=America/New_York` to control the default IANA timezone used to
+evaluate and display scheduled timers (defaults to `UTC`).
 
 ```bash
 ./dev.sh
 ```
 
 If config is missing, the app starts an interactive setup wizard.
+
+Telegram users must be provisioned before they can use the bot. Add a chat with:
+
+```bash
+bun src/bin/admin.ts add-user telegram <chat-id> "Display name"
+```
+
+Unknown or suspended Telegram users receive the configured blocked-user message.
+
+For release checks, run:
+
+```bash
+pnpm check
+pnpm lint
+pnpm test
+pnpm exec tsc --noEmit
+```
 
 ## Plans
 

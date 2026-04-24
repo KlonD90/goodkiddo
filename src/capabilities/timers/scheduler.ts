@@ -8,8 +8,15 @@ export interface SchedulerOptions {
 	notifyUser: (userId: string, message: string) => Promise<void>;
 }
 
-function computeNextRunAt(cronExpression: string, fromDate: Date = new Date()): number {
-	const expr = CronExpressionParser.parse(cronExpression, { currentDate: fromDate });
+export function computeNextRunAt(
+	cronExpression: string,
+	timezone: string,
+	fromDate: Date = new Date(),
+): number {
+	const expr = CronExpressionParser.parse(cronExpression, {
+		currentDate: fromDate,
+		tz: timezone,
+	});
 	return expr.next().getTime();
 }
 
@@ -47,11 +54,17 @@ export function startScheduler(
 
 			try {
 				await onTick(timer, promptText);
-				const nextRunAt = computeNextRunAt(timer.cronExpression);
+				const nextRunAt = computeNextRunAt(
+					timer.cronExpression,
+					timer.timezone,
+				);
 				await store.touchRun(timer.id, nextRunAt);
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
-				const nextRunAt = computeNextRunAt(timer.cronExpression);
+				const nextRunAt = computeNextRunAt(
+					timer.cronExpression,
+					timer.timezone,
+				);
 				const consecutiveFailures = await store.touchError(timer.id, timer.userId, message, nextRunAt);
 				if (consecutiveFailures >= 3) {
 					try {

@@ -115,7 +115,9 @@ export function formatActiveTaskSnapshot(
 	}
 
 	if (totalCount > visibleTasks.length) {
-		lines.push(`- ... ${totalCount - visibleTasks.length} more active task(s).`);
+		lines.push(
+			`- ... ${totalCount - visibleTasks.length} more active task(s).`,
+		);
 	}
 
 	return lines.join("\n");
