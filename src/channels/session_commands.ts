@@ -13,7 +13,10 @@ import {
 	resolvePreset,
 	normalizeId,
 } from "../identities/registry";
-import { compactionStatusMessage } from "../i18n/locale";
+import {
+	compactionStatusMessage,
+	switchingIdentityStatusMessage,
+} from "../i18n/locale";
 import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import { extractRecentTurns } from "../memory/runtime_context";
@@ -316,10 +319,21 @@ export async function maybeHandleSessionCommand(
 // /identity command helpers
 // ---------------------------------------------------------------------------
 
-function formatPresetList(): string {
+function formatIdentityList(selectedId: string | null): string {
+	const currentId = selectedId ?? DEFAULT_IDENTITY_ID;
+	const { preset: current } = resolveIdentityPrompt(currentId);
 	const presets = listPresets();
-	const lines = presets.map((p) => `• *${p.id}* — ${p.label}: ${p.description}`);
-	return lines.join("\n");
+
+	const lines: string[] = [`Current: *${current.label}*`, ""];
+
+	for (const p of presets) {
+		const marker = p.id === current.id ? "✓" : "•";
+		lines.push(`${marker} *${p.label}* — ${p.description}`);
+		lines.push(`  \`/identity ${p.id}\``);
+		lines.push("");
+	}
+
+	return lines.join("\n").trimEnd();
 }
 
 async function handleIdentityCommand(
@@ -331,97 +345,35 @@ async function handleIdentityCommand(
 		return "Identity selection is not configured for this session.";
 	}
 
-	const sub = args.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
-	const rest = args.slice(sub.length).trim();
+	// /identity — list all identities with the command to switch to each
+	if (!args) {
+		return formatIdentityList(session.selectedIdentityId ?? null);
+	}
 
-	// /identity  or  /identity list
-	if (sub === "" || sub === "list") {
-		const currentId = session.selectedIdentityId ?? DEFAULT_IDENTITY_ID;
-		const { preset: current } = resolveIdentityPrompt(currentId);
+	// /identity <preset> — switch to that preset
+	const targetPreset = resolvePreset(args);
+	if (!targetPreset) {
 		return [
-			`Current identity: *${current.id}* — ${current.label}`,
+			`Unknown identity "${normalizeId(args)}".`,
 			"",
-			"Available presets:",
-			formatPresetList(),
-			"",
-			"Use `/identity use <preset>` to switch, `/identity reset` to return to default.",
+			formatIdentityList(session.selectedIdentityId ?? null),
 		].join("\n");
 	}
 
-	// /identity current
-	if (sub === "current") {
-		const storedId = session.selectedIdentityId ?? null;
-		const { preset, wasFallback } = resolveIdentityPrompt(storedId);
-		const source =
-			storedId === null
-				? "server default"
-				: wasFallback
-					? `stored as "${storedId}" (stale — falling back to default)`
-					: "your preference";
-		return `Active identity: *${preset.id}* — ${preset.label} (${source}).`;
+	const currentId = session.selectedIdentityId ?? DEFAULT_IDENTITY_ID;
+	if (normalizeId(currentId) === targetPreset.id) {
+		return `Already using *${targetPreset.label}*. No change.`;
 	}
 
-	// /identity use <preset>
-	if (sub === "use") {
-		if (!rest) {
-			return `Missing preset name. Usage: \`/identity use <preset>\`\n\nAvailable:\n${formatPresetList()}`;
-		}
-		const targetPreset = resolvePreset(rest);
-		if (!targetPreset) {
-			const normalizedRest = normalizeId(rest);
-			return [
-				`Unknown preset "${normalizedRest}". Available presets:`,
-				formatPresetList(),
-			].join("\n");
-		}
+	await identity.store.setUserIdentity(identity.callerId, targetPreset.id);
+	session.selectedIdentityId = targetPreset.id;
 
-		const currentId = session.selectedIdentityId ?? DEFAULT_IDENTITY_ID;
-		if (normalizeId(currentId) === targetPreset.id) {
-			return `Already using *${targetPreset.id}* — ${targetPreset.label}. No change.`;
-		}
-
-		// Persist preference
-		await identity.store.setUserIdentity(identity.callerId, targetPreset.id);
-		session.selectedIdentityId = targetPreset.id;
-
-		// Rotate thread with summary seed
-		await rotateIdentityThread(context);
-
-		return [
-			`Identity switched to *${targetPreset.id}* — ${targetPreset.label}.`,
-			"",
-			"Started a fresh context for this preset. Previous conversation summarized and saved.",
-		].join("\n");
-	}
-
-	// /identity reset
-	if (sub === "reset") {
-		const storedId = session.selectedIdentityId ?? null;
-		const defaultPreset = resolveIdentityPrompt(null).preset;
-
-		if (storedId === null || storedId === DEFAULT_IDENTITY_ID) {
-			return `Already using the default identity (*${defaultPreset.id}* — ${defaultPreset.label}). No change.`;
-		}
-
-		await identity.store.clearUserIdentity(identity.callerId);
-		session.selectedIdentityId = null;
-
-		await rotateIdentityThread(context);
-
-		return [
-			`Identity reset to default: *${defaultPreset.id}* — ${defaultPreset.label}.`,
-			"",
-			"Started a fresh context. Previous conversation summarized and saved.",
-		].join("\n");
-	}
+	await rotateIdentityThread(context);
 
 	return [
-		`Unknown subcommand "${sub}". Supported forms:`,
-		"  `/identity` — show current and available presets",
-		"  `/identity list` — list all presets",
-		"  `/identity current` — show active preset and source",
-		"  `/identity use <preset>` — switch to a preset",
-		"  `/identity reset` — return to the server default",
+		`Switched to *${targetPreset.label}*.`,
+		"",
+		"Started a fresh context. Previous conversation summarized and saved.",
 	].join("\n");
 }
 
@@ -434,6 +386,18 @@ async function rotateIdentityThread(
 	context: SessionCommandContext,
 ): Promise<void> {
 	const { session, model, backend, mintThreadId } = context;
+
+	// Notify the user that a context switch is in progress (best-effort).
+	if (session.statusEmitter && context.compaction) {
+		try {
+			await session.statusEmitter.emit(
+				context.compaction.caller,
+				switchingIdentityStatusMessage(session.locale),
+			);
+		} catch {
+			// best-effort
+		}
+	}
 
 	let pendingSeed: ChannelAgentSession["pendingCompactionSeed"] | undefined;
 

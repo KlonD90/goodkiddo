@@ -10,9 +10,6 @@ import type { Caller } from "../../permissions/types";
 import type { ChannelRunOptions } from "../types";
 import { buildAttachmentBudgetConfig } from "./attachment";
 import { sendTelegramMessage } from "./outbound";
-import { createLogger } from "../../logger";
-
-const log = createLogger("telegram");
 import type {
 	ProcessTelegramFileHelpers,
 	TelegramAgentSession,
@@ -26,24 +23,6 @@ const INCOMING_IMAGE_EXTENSIONS = new Set([
 	"webp",
 	"gif",
 ]);
-
-export const IMAGE_MIME_TYPES = new Set([
-	"image/png",
-	"image/jpeg",
-	"image/jpg",
-	"image/gif",
-	"image/webp",
-	"image/bmp",
-	"image/svg+xml",
-]);
-
-export function isImageMimeType(mimeType: string | undefined): boolean {
-	if (!mimeType) return false;
-	const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-	const result = IMAGE_MIME_TYPES.has(normalized);
-	log.debug("isImageMimeType", { mimeType, normalized, result });
-	return result;
-}
 
 function detectTelegramImageMimeType(filePath: string | undefined): string {
 	switch (extname(filePath ?? "").toLowerCase()) {
@@ -173,11 +152,8 @@ export async function processTelegramFile(
 ): Promise<void> {
 	const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
 	const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
-	log.info("processTelegramFile called", { metadata: params.metadata });
 	const capability = registry.match(params.metadata);
-	log.info("processTelegramFile matched capability", { name: capability?.name ?? "null" });
 	const result = await registry.handle(params.metadata, params.download);
-	log.info("processTelegramFile result", { ok: result.ok, userMessage: result.ok ? "N/A" : result.userMessage });
 	if (!result.ok) {
 		await sendMessage(bot, chatId, result.userMessage);
 		return;
