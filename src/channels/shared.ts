@@ -40,6 +40,7 @@ import { reconcileActiveTasksAtBoundary } from "../tasks/reconcile";
 import { TaskStore } from "../tasks/store";
 import type { WebShareOptions } from "../tools/factory";
 import type { StatusEmitter } from "../tools/status_emitter";
+import { resolveIdentityPrompt } from "../identities/registry";
 import { ActiveThreadStore } from "./active_thread_store";
 import type { OutboundChannel } from "./outbound";
 
@@ -96,6 +97,8 @@ export type ChannelAgentSession = {
 	locale?: SupportedLocale;
 	/** Set when memory files injected into the system prompt changed this turn. */
 	promptNeedsRefresh?: boolean;
+	/** The active identity preset id for this session. Null means server default. */
+	selectedIdentityId?: string | null;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -130,8 +133,9 @@ export async function createChannelAgentSession(
 	await activeThreadStore.ready();
 
 	let session: ChannelAgentSession | undefined;
-	const makeBundle = () =>
-		createAppAgent(config, {
+	const makeBundle = () => {
+		const { preset } = resolveIdentityPrompt(session?.selectedIdentityId);
+		return createAppAgent(config, {
 			db: options.db,
 			dialect: options.dialect,
 			caller: options.caller,
@@ -147,10 +151,12 @@ export async function createChannelAgentSession(
 			timerTools: options.timerTools,
 			statusEmitter: options.statusEmitter,
 			locale: session?.locale ?? options.locale,
+			identityPrompt: preset.prompt,
 			onMemoryMutation: () => {
 				if (session) session.promptNeedsRefresh = true;
 			},
 		});
+	};
 	let bundle = await makeBundle();
 
 	const createdSession: ChannelAgentSession = {
@@ -179,6 +185,11 @@ export async function createChannelAgentSession(
 		locale: options.locale,
 	};
 	session = createdSession;
+
+	// Resolve the caller's stored identity preference so makeBundle picks it up
+	// on the first call and all subsequent refreshAgent() calls.
+	const userRecord = await options.store.getUserById(options.caller.id);
+	createdSession.selectedIdentityId = userRecord?.identityId ?? null;
 
 	createdSession.threadId = await activeThreadStore.getOrCreate(
 		options.caller.id,

@@ -7,7 +7,7 @@ import type { createTimerTools } from "./capabilities/timers/tools";
 import type { OutboundChannel } from "./channels/outbound";
 import type { AppConfig } from "./config";
 import type { SupportedLocale } from "./i18n/locale";
-import DO_IT_MD from "./identities/DO_IT.md?raw";
+import { resolveDefaultPreset } from "./identities/registry";
 import { ensureMemoryBootstrapped } from "./memory/bootstrap";
 import { buildSystemPrompt } from "./memory/session_loader";
 import { modelChooser } from "./model/model_chooser";
@@ -42,6 +42,8 @@ export interface CreateAppAgentOptions {
 	locale?: SupportedLocale;
 	onMemoryMutation?: MemoryMutationCallback;
 	imageUnderstandingProvider?: ImageUnderstandingProvider | null;
+	/** Resolved identity prompt to use as the agent's system identity. Defaults to the registry default. */
+	identityPrompt?: string;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -125,7 +127,7 @@ export const createAppAgent = async (
 	const tools = [...executionTools, ...guardedTimerTools];
 
 	const systemPrompt = await buildSystemPrompt({
-		identityPrompt: DO_IT_MD,
+		identityPrompt: options.identityPrompt ?? resolveDefaultPreset().prompt,
 		backend: workspace,
 		activeTaskSnapshot,
 		runtimeContextBlock: options.runtimeContextBlock,
