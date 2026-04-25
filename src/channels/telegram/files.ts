@@ -173,11 +173,11 @@ export async function processTelegramFile(
 ): Promise<void> {
 	const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
 	const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
-	log.debug("processTelegramFile", { metadata: params.metadata });
+	log.info("processTelegramFile called", { metadata: params.metadata });
 	const capability = registry.match(params.metadata);
-	log.debug("processTelegramFile matched capability", { name: capability?.name ?? "null" });
+	log.info("processTelegramFile matched capability", { name: capability?.name ?? "null" });
 	const result = await registry.handle(params.metadata, params.download);
-	log.debug("processTelegramFile result", { ok: result.ok, userMessage: result.ok ? "N/A" : result.userMessage });
+	log.info("processTelegramFile result", { ok: result.ok, userMessage: result.ok ? "N/A" : result.userMessage });
 	if (!result.ok) {
 		await sendMessage(bot, chatId, result.userMessage);
 		return;

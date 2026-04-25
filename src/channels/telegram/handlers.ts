@@ -331,6 +331,11 @@ export const telegramChannel: AppChannel = {
 				byteSize: document.file_size,
 			});
 
+			log.info("document: checking mime type", {
+				chatId: resolved.chatIdString,
+				mimeType: document.mime_type,
+			});
+
 			log.debug("document mime check", {
 				chatId: resolved.chatIdString,
 				filename: document.file_name,
@@ -418,6 +423,9 @@ export const telegramChannel: AppChannel = {
 					chatId: resolved.chatIdString,
 					filename: document.file_name,
 					mimeType: document.mime_type,
+				});
+				log.info("document: calling processTelegramFile", {
+					chatId: resolved.chatIdString,
 				});
 				await processTelegramFile(
 					config,
