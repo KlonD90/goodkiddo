@@ -13,7 +13,10 @@ import {
 	resolvePreset,
 	normalizeId,
 } from "../identities/registry";
-import { compactionStatusMessage } from "../i18n/locale";
+import {
+	compactionStatusMessage,
+	switchingIdentityStatusMessage,
+} from "../i18n/locale";
 import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import { extractRecentTurns } from "../memory/runtime_context";
@@ -434,6 +437,18 @@ async function rotateIdentityThread(
 	context: SessionCommandContext,
 ): Promise<void> {
 	const { session, model, backend, mintThreadId } = context;
+
+	// Notify the user that a context switch is in progress (best-effort).
+	if (session.statusEmitter && context.compaction) {
+		try {
+			await session.statusEmitter.emit(
+				context.compaction.caller,
+				switchingIdentityStatusMessage(session.locale),
+			);
+		} catch {
+			// best-effort
+		}
+	}
 
 	let pendingSeed: ChannelAgentSession["pendingCompactionSeed"] | undefined;
 
