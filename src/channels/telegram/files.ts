@@ -10,6 +10,9 @@ import type { Caller } from "../../permissions/types";
 import type { ChannelRunOptions } from "../types";
 import { buildAttachmentBudgetConfig } from "./attachment";
 import { sendTelegramMessage } from "./outbound";
+import { createLogger } from "../../logger";
+
+const log = createLogger("telegram");
 import type {
 	ProcessTelegramFileHelpers,
 	TelegramAgentSession,
@@ -38,7 +41,7 @@ export function isImageMimeType(mimeType: string | undefined): boolean {
 	if (!mimeType) return false;
 	const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 	const result = IMAGE_MIME_TYPES.has(normalized);
-	console.log("[DEBUG isImageMimeType] mimeType=", mimeType, "normalized=", normalized, "result=", result);
+	log.debug("isImageMimeType", { mimeType, normalized, result });
 	return result;
 }
 
@@ -170,11 +173,11 @@ export async function processTelegramFile(
 ): Promise<void> {
 	const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
 	const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
-	console.log("[DEBUG processTelegramFile] metadata=", JSON.stringify(params.metadata));
+	log.debug("processTelegramFile", { metadata: params.metadata });
 	const capability = registry.match(params.metadata);
-	console.log("[DEBUG processTelegramFile] matched capability=", capability?.name ?? "null");
+	log.debug("processTelegramFile matched capability", { name: capability?.name ?? "null" });
 	const result = await registry.handle(params.metadata, params.download);
-	console.log("[DEBUG processTelegramFile] result.ok=", result.ok, "userMessage=", result.ok ? "N/A" : result.userMessage);
+	log.debug("processTelegramFile result", { ok: result.ok, userMessage: result.ok ? "N/A" : result.userMessage });
 	if (!result.ok) {
 		await sendMessage(bot, chatId, result.userMessage);
 		return;
