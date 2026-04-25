@@ -24,6 +24,22 @@ const INCOMING_IMAGE_EXTENSIONS = new Set([
 	"gif",
 ]);
 
+export const IMAGE_MIME_TYPES = new Set([
+	"image/png",
+	"image/jpeg",
+	"image/jpg",
+	"image/gif",
+	"image/webp",
+	"image/bmp",
+	"image/svg+xml",
+]);
+
+export function isImageMimeType(mimeType: string | undefined): boolean {
+	if (!mimeType) return false;
+	const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+	return IMAGE_MIME_TYPES.has(normalized);
+}
+
 function detectTelegramImageMimeType(filePath: string | undefined): string {
 	switch (extname(filePath ?? "").toLowerCase()) {
 		case ".png":

@@ -6,10 +6,6 @@ import {
 	estimateAttachmentTokens,
 } from "./attachment_budget";
 import {
-	createImageFileCapability,
-	type ImageFileCapabilityOptions,
-} from "./image_file/capability";
-import {
 	createPdfCapability,
 	type PdfCapabilityOptions,
 } from "./pdf/capability";
@@ -32,7 +28,6 @@ export type CapabilityRegistryOptions = {
 	voice?: VoiceCapabilityOptions;
 	pdf?: PdfCapabilityOptions;
 	spreadsheet?: SpreadsheetCapabilityOptions;
-	image_file?: ImageFileCapabilityOptions;
 	extra?: readonly FileCapability[];
 };
 
@@ -170,8 +165,6 @@ export function createCapabilityRegistry(
 	if (pdf) capabilities.push(pdf);
 	const sheet = createSpreadsheetCapability(config, options.spreadsheet);
 	if (sheet) capabilities.push(sheet);
-	const image = createImageFileCapability(config, options.image_file);
-	if (image) capabilities.push(image);
 	if (options.extra) capabilities.push(...options.extra);
 	return new CapabilityRegistry(capabilities);
 }
