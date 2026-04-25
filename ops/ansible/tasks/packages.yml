@@ -1,17 +1,33 @@
 ---
-- name: Install system packages
+- name: Install base system packages
   ansible.builtin.apt:
     name:
+      - acl
       - ca-certificates
-      - certbot
       - curl
-      - docker-compose
-      - docker.io
       - gnupg
       - git
+      - software-properties-common
+    state: present
+    update_cache: true
+
+- name: Enable Ubuntu universe repository
+  ansible.builtin.command:
+    argv:
+      - add-apt-repository
+      - --yes
+      - universe
+  register: universe_repository
+  changed_when: "'Adding component' in universe_repository.stdout"
+  when: ansible_distribution == "Ubuntu"
+
+- name: Install runtime system packages
+  ansible.builtin.apt:
+    name:
+      - certbot
+      - docker-compose
+      - docker.io
       - nginx
-      - nodejs
-      - npm
       - unzip
     state: present
     update_cache: true
@@ -63,15 +79,71 @@
     state: present
     update_cache: true
 
+- name: Check existing NVM install
+  ansible.builtin.stat:
+    path: "{{ nvm_dir }}/nvm.sh"
+  register: nvm_script
+
+- name: Remove incomplete NVM checkout
+  ansible.builtin.file:
+    path: "{{ nvm_dir }}"
+    state: absent
+  when: not nvm_script.stat.exists
+
+- name: Install NVM
+  ansible.builtin.git:
+    repo: https://github.com/nvm-sh/nvm.git
+    dest: "{{ nvm_dir }}"
+    version: "{{ nvm_version }}"
+    depth: 1
+    update: false
+    recursive: false
+
+- name: Install Node.js with NVM
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export NVM_DIR="{{ nvm_dir }}"
+    . "{{ nvm_dir }}/nvm.sh"
+    nvm install "{{ node_version }}"
+    nvm alias default "{{ node_version }}"
+  args:
+    executable: /bin/bash
+    creates: "{{ nvm_dir }}/versions/node/v{{ node_version }}/bin/node"
+
+- name: Symlink NVM Node.js commands
+  ansible.builtin.file:
+    src: "{{ nvm_dir }}/versions/node/v{{ node_version }}/bin/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+    force: true
+  loop:
+    - node
+    - npm
+    - npx
+
 - name: Install pnpm globally
   ansible.builtin.command:
-    cmd: "npm install -g pnpm@{{ bot_pnpm_version }}"
+    cmd: "npm install -g --prefix /usr/local pnpm@{{ bot_pnpm_version }}"
   changed_when: true
 
 - name: Install agent-browser globally
   ansible.builtin.command:
-    cmd: "npm install -g {{ bot_agent_browser_package_spec }}"
+    cmd: "npm install -g --prefix /usr/local {{ bot_agent_browser_package_spec }}"
   changed_when: true
+
+- name: Download uv standalone installer
+  ansible.builtin.get_url:
+    url: "{{ uv_install_script_url }}"
+    dest: /tmp/uv-install.sh
+    mode: "0755"
+
+- name: Install uv and uvx
+  ansible.builtin.command:
+    cmd: sh /tmp/uv-install.sh
+    creates: "{{ uv_install_dir }}/uvx"
+  environment:
+    UV_UNMANAGED_INSTALL: "{{ uv_install_dir }}"
+    UV_NO_MODIFY_PATH: "1"
 
 - name: Download Bun release archive
   ansible.builtin.get_url:

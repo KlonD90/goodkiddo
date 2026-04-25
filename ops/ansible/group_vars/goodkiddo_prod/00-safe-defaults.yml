@@ -11,7 +11,7 @@ bot_home: /home/goodkiddo
 bot_app_dir: /opt/goodkiddo/app
 bot_env_dir: /etc/goodkiddo
 bot_env_file: "{{ bot_env_dir }}/bot.env"
-bot_landing_dir: "{{ bot_app_dir }}/landing/dist"
+bot_landing_dir: "{{ bot_app_dir }}/landing"
 bot_nginx_site_name: goodkiddo
 bot_acme_webroot: /var/www/letsencrypt
 bot_searxng_service_name: goodkiddo-searxng
@@ -29,9 +29,14 @@ bot_repo_version: main
 bot_repo_update: false
 
 bot_pnpm_version: 10.4.1
+nvm_version: v0.40.3
+nvm_dir: /opt/nvm
+node_version: 24.14.1
 bun_version: 1.3.11
 bun_install_dir: /opt/bun
 bun_download_base: "https://github.com/oven-sh/bun/releases/download/bun-v{{ bun_version }}"
+uv_install_script_url: https://astral.sh/uv/install.sh
+uv_install_dir: /usr/local/bin
 
 bot_manage_postgres: true
 bot_postgres_host: 127.0.0.1
@@ -57,6 +62,7 @@ enable_execute: false
 enable_voice_messages: true
 enable_pdf_documents: true
 enable_spreadsheets: true
+enable_image_understanding: false
 enable_tool_status: true
 enable_attachment_compaction_notice: true
 
@@ -68,3 +74,4 @@ context_reserve_next_turn_tokens: 2000
 transcription_provider: openai
 transcription_api_key: "{{ ai_api_key | default('') }}"
 transcription_base_url: "{{ ai_base_url | default('') }}"
+minimax_api_host: https://api.minimax.io

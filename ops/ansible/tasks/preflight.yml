@@ -33,6 +33,16 @@
       Store it in ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml.
   when: bot_manage_postgres
 
+- name: Fail when image understanding is enabled without a MiniMax key
+  ansible.builtin.assert:
+    that:
+      - minimax_api_key is defined
+      - (minimax_api_key | string | trim) != ""
+    fail_msg: >-
+      minimax_api_key is required when enable_image_understanding=true.
+      Store it in ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml.
+  when: enable_image_understanding | default(false) | bool
+
 - name: Fill derived domain defaults
   ansible.builtin.set_fact:
     bot_app_domain: "{{ bot_app_domain | default('') | trim or ('app.' ~ bot_main_domain) }}"

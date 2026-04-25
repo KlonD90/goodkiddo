@@ -9,7 +9,7 @@ services:
     image: docker.io/searxng/searxng:${SEARXNG_VERSION:-latest}
     restart: always
     ports:
-      - ${SEARXNG_HOST:+${SEARXNG_HOST}:}${SEARXNG_PORT:-8080}:${SEARXNG_PORT:-8080}
+      - ${SEARXNG_HOST:-127.0.0.1}:${SEARXNG_PORT:-8080}:8080
     env_file: ./.env
     volumes:
       - ./core-config/:/etc/searxng/:Z

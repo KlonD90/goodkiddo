@@ -36,6 +36,7 @@ enable_execute: false
 enable_voice_messages: true
 enable_pdf_documents: true
 enable_spreadsheets: true
+enable_image_understanding: false
 enable_tool_status: true
 enable_attachment_compaction_notice: true
 
@@ -45,3 +46,5 @@ context_reserve_recent_turn_tokens: 2000
 context_reserve_next_turn_tokens: 2000
 
 transcription_provider: openai
+transcription_base_url: https://api.openai.com/v1
+minimax_api_host: https://api.minimax.io

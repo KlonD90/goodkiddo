@@ -4,18 +4,21 @@ Production provisioning for Ubuntu lives in [`ops/ansible/`](./ansible/).
 
 The playbook provisions:
 
-- Bun and `pnpm`
+- Bun, NVM-managed Node.js/npm, and `pnpm`
 - Google Chrome Stable for browser automation
 - `agent-browser` as the browser CLI used by the runtime
+- `uv`/`uvx` for MiniMax MCP image understanding
 - Docker and `docker-compose`
 - local SearXNG + Valkey via Docker Compose for search, managed by systemd
 - a dedicated system user
 - local PostgreSQL with a dedicated database and role
 - nginx as the only public entrypoint
 - Let's Encrypt certificates for the apex domain and `app.` subdomain
-- a static landing bundle built from `landing/` and served by nginx
+- the `landing/` directory served by nginx after running its `bun build` script
 - a managed environment file at `/etc/goodkiddo/bot.env`
 - a systemd service that runs `bun src/bin/bot.ts`
+- optional Telegram image understanding through MiniMax MCP when
+  `enable_image_understanding=true`
 
 It deliberately does **not** provision Firecracker or any execution sandbox
 hardening yet. The example vars keep `ENABLE_EXECUTE=false` so the bot runs as
@@ -51,6 +54,9 @@ fails before making changes.
 endpoint via `ai_base_url`. `openrouter` still requires a key.
 The playbook always provisions the browser/search stack and expects
 `bot_searxng_secret` in the Vault file.
+When `enable_image_understanding=true`, it also expects `minimax_api_key` in the
+Vault file and installs `uvx` so the runtime can launch
+`minimax-coding-plan-mcp`.
 
 ## Usage
 
@@ -121,9 +127,13 @@ The playbook always provisions the browser/search stack and expects
   `bot_searxng_host:bot_searxng_port`.
 - The SearXNG compose stack is managed by `{{ bot_searxng_service_name }}`
   through systemd instead of a one-off `docker-compose up -d` task.
-- nginx serves the built landing on `https://<bot_main_domain>/` and proxies
+- nginx serves `landing/` on `https://<bot_main_domain>/` and proxies
   the Bun file-share UI on `https://<bot_app_domain>/`.
 - The bot gets `SEARXNG_API_BASE` and `AGENT_BROWSER_EXECUTABLE_PATH` through
   `/etc/goodkiddo/bot.env`, which is what the current runtime expects.
-- `pnpm install --prod --frozen-lockfile` is used on the server to match the
+- MiniMax image understanding is controlled by `enable_image_understanding`,
+  `minimax_api_key`, and `minimax_api_host`; these render to
+  `ENABLE_IMAGE_UNDERSTANDING`, `MINIMAX_API_KEY`, and `MINIMAX_API_HOST`.
+- Node.js/npm are installed through NVM and symlinked into `/usr/local/bin`;
+  `pnpm install --prod --frozen-lockfile` is used on the server to match the
   repository lockfile without bringing in dev tooling.

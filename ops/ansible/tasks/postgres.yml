@@ -20,7 +20,7 @@
   community.postgresql.postgresql_db:
     name: "{{ bot_postgres_db }}"
     owner: "{{ bot_postgres_user }}"
-    login_db: postgres
+    maintenance_db: postgres
     login_unix_socket: /var/run/postgresql
   become_user: postgres
   when: bot_manage_postgres
