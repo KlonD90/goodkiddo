@@ -15,7 +15,6 @@ import type { AppChannel, ChannelRunOptions } from "../types";
 import {
 	buildTelegramPhotoUserInput,
 	fetchTelegramFileBytes,
-	isImageMimeType,
 	processTelegramFile,
 } from "./files";
 import { sendTelegramMessage, TelegramOutboundChannel } from "./outbound";
@@ -322,7 +321,6 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			const document = ctx.message.document;
-			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			log.info("document message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
@@ -330,89 +328,25 @@ export const telegramChannel: AppChannel = {
 				mimeType: document.mime_type,
 				byteSize: document.file_size,
 			});
-
-			if (isImageMimeType(document.mime_type)) {
-				try {
-					if (
-						await handleTelegramControlInput(
-							resolved.session,
-							bot,
-							resolved.chatIdString,
-							caption,
-							resolved.caller,
-							store,
-							webShare,
-						)
-					) {
-						return;
-					}
-
-					const file = await ctx.getFile();
-					const downloaded = await fetchTelegramFileBytes(
-						file,
-						config.telegramBotToken,
-					);
-					const content = await buildTelegramPhotoUserInput(
-						config,
-						resolved.session.workspace,
-						downloaded.data,
-						{
-							caption,
-							filePath: downloaded.filePath,
-						},
-					);
-
-					await handleTelegramQueuedTurn(
-						resolved.session,
-						bot,
-						resolved.chatIdString,
-						"",
-						content,
-						resolved.caller,
-						store,
-						webShare,
-						undefined,
-						undefined,
-						dateFromTelegramMessage(ctx.message.date),
-					);
-				} catch (error) {
-					const message =
-						error instanceof Error
-							? error.message
-							: "Unknown Telegram document handling error";
-					log.error("document handler failed", {
-						chatId: resolved.chatIdString,
-						callerId: resolved.caller.id,
-						error: message,
-					});
-					await sendTelegramMessage(
-						bot,
-						resolved.chatIdString,
-						`Request failed: ${message}`,
-					);
-				}
-			} else {
-				await processTelegramFile(
-					config,
-					capabilityRegistry,
-					resolved.session,
-					bot,
-					resolved.chatIdString,
-					resolved.caller,
-					store,
-					webShare,
-					{
-						metadata: {
-							mimeType: document.mime_type,
-							filename: document.file_name,
-							byteSize: document.file_size,
-							caption,
-						},
-						download: downloadTelegramFile(() => ctx.getFile()),
-						currentMessageDate: dateFromTelegramMessage(ctx.message.date),
+			await processTelegramFile(
+				config,
+				capabilityRegistry,
+				resolved.session,
+				bot,
+				resolved.chatIdString,
+				resolved.caller,
+				store,
+				webShare,
+				{
+					metadata: {
+						mimeType: document.mime_type,
+						filename: document.file_name,
+						byteSize: document.file_size,
 					},
-				);
-			}
+					download: downloadTelegramFile(() => ctx.getFile()),
+					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
+				},
+			);
 		});
 
 		bot.catch(async (error) => {

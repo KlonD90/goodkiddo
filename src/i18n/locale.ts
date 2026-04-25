@@ -46,10 +46,22 @@ export function extractLocaleFromCli(): string | null {
 
 // Localized strings for turn-lifecycle events (not tool invocations — those
 // use the allowlisted templates in src/tools/status_templates.ts).
-const LIFECYCLE_STATUS: Record<SupportedLocale, { compacting: string }> = {
-	en: { compacting: "Compacting context…" },
-	ru: { compacting: "Сжимаю контекст…" },
-	es: { compacting: "Compactando contexto…" },
+const LIFECYCLE_STATUS: Record<
+	SupportedLocale,
+	{ compacting: string; switchingIdentity: string }
+> = {
+	en: {
+		compacting: "Compacting context…",
+		switchingIdentity: "Switching identity…",
+	},
+	ru: {
+		compacting: "Сжимаю контекст…",
+		switchingIdentity: "Переключаю личность…",
+	},
+	es: {
+		compacting: "Compactando contexto…",
+		switchingIdentity: "Cambiando identidad…",
+	},
 };
 
 export function compactionStatusMessage(
@@ -57,4 +69,11 @@ export function compactionStatusMessage(
 ): string {
 	const effective = locale ?? DEFAULT_STATUS_LOCALE;
 	return (LIFECYCLE_STATUS[effective] ?? LIFECYCLE_STATUS.en).compacting;
+}
+
+export function switchingIdentityStatusMessage(
+	locale: SupportedLocale | undefined,
+): string {
+	const effective = locale ?? DEFAULT_STATUS_LOCALE;
+	return (LIFECYCLE_STATUS[effective] ?? LIFECYCLE_STATUS.en).switchingIdentity;
 }
