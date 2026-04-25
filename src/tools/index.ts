@@ -3,7 +3,6 @@ export {
 	createBrowserSnapshotTool,
 	createSessionRegistry,
 } from "./browser_tools";
-export { EchoTool } from "./echo_tool";
 export {
 	createExecuteScriptTool,
 	createExecuteWorkspaceTool,
@@ -18,3 +17,9 @@ export {
 	createWriteFileTool,
 } from "./filesystem_tools";
 export { type GuardContext, wrapToolWithGuard } from "./guard";
+export {
+	createTaskAddTool,
+	createTaskCompleteTool,
+	createTaskDismissTool,
+	createTaskListActiveTool,
+} from "./task_tools";

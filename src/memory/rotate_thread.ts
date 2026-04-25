@@ -2,6 +2,7 @@ import type { BaseChatModel } from "@langchain/core/language_models/chat_models"
 import type { BackendProtocol } from "deepagents";
 import type { AgentInstance, ChannelAgentSession } from "../channels/shared";
 import { appendLog } from "./log";
+import { estimateContentTokens, extractContentText } from "./message_content";
 import { summarizeThread, type ThreadMessage } from "./summarize";
 
 // Rotates the session to a fresh thread_id after summarizing the current one
@@ -18,6 +19,23 @@ type AgentWithState = {
 	}) => Promise<{ values?: { messages?: unknown[] } }>;
 };
 
+const CHECKPOINT_SYSTEM_HEADER = "[Conversation Checkpoint]";
+const CURRENT_MESSAGE_METADATA_HEADER = "[Current message metadata]";
+
+function isSyntheticCheckpointSystemMessage(
+	role: ThreadMessage["role"],
+	content: string,
+): boolean {
+	return (
+		role === "system" &&
+		content.trimStart().startsWith(CHECKPOINT_SYSTEM_HEADER)
+	);
+}
+
+function isSyntheticCurrentMessageMetadata(content: string): boolean {
+	return content.trimStart().startsWith(CURRENT_MESSAGE_METADATA_HEADER);
+}
+
 function toThreadMessage(raw: unknown): ThreadMessage | null {
 	if (raw === null || typeof raw !== "object") return null;
 	const obj = raw as Record<string, unknown>;
@@ -28,7 +46,14 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 		if (["user", "assistant", "system", "tool"].includes(obj.role)) {
 			const content = extractContentText(obj.content);
 			if (content.trim().length === 0) return null;
-			return { role: obj.role as ThreadMessage["role"], content };
+			const role = obj.role as ThreadMessage["role"];
+			if (isSyntheticCheckpointSystemMessage(role, content)) return null;
+			if (isSyntheticCurrentMessageMetadata(content)) return null;
+			return {
+				role,
+				content,
+				estimatedTokens: estimateContentTokens(obj.content),
+			};
 		}
 	}
 
@@ -57,32 +82,24 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 
 	const content = extractContentText(obj.content);
 	if (content.trim().length === 0) return null;
-	return { role, content };
+	if (isSyntheticCheckpointSystemMessage(role, content)) return null;
+	if (isSyntheticCurrentMessageMetadata(content)) return null;
+	return {
+		role,
+		content,
+		estimatedTokens: estimateContentTokens(obj.content),
+	};
 }
 
-function extractContentText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (Array.isArray(content)) {
-		return content.map((part) => extractContentText(part)).join("");
-	}
-	if (typeof content === "object" && content !== null) {
-		if ("text" in content) {
-			const text = (content as { text?: unknown }).text;
-			if (typeof text === "string") return text;
-		}
-		if ("content" in content) {
-			return extractContentText((content as { content?: unknown }).content);
-		}
-	}
-	return "";
-}
-
-async function readThreadMessages(
+export async function readThreadMessages(
 	agent: AgentInstance,
 	threadId: string,
 ): Promise<ThreadMessage[]> {
 	const stateful = agent as unknown as AgentWithState;
-	if (!stateful.getState) return [];
+	if (!stateful.getState) {
+		throw new Error("Agent does not support thread state retrieval.");
+	}
+
 	try {
 		const state = await stateful.getState({
 			configurable: { thread_id: threadId },
@@ -91,8 +108,12 @@ async function readThreadMessages(
 		return raw
 			.map((item) => toThreadMessage(item))
 			.filter((msg): msg is ThreadMessage => msg !== null);
-	} catch {
-		return [];
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "unknown thread state error";
+		throw new Error(
+			`Failed to read thread messages for ${threadId}: ${message}`,
+		);
 	}
 }
 
@@ -118,7 +139,16 @@ export async function rotateThread(options: {
 	await appendLog(backend, "thread_closed", summary);
 
 	const newThreadId = mintThreadId();
+	const priorThreadId = session.threadId;
+	try {
+		await session.persistThreadId?.(newThreadId);
+	} catch {
+		throw new Error(
+			`Failed to persist thread ID change from ${priorThreadId} to ${newThreadId}`,
+		);
+	}
 	session.threadId = newThreadId;
+	session.needsResumeCompaction = false;
 
 	return { summary, previousThreadId, newThreadId };
 }

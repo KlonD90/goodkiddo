@@ -14,8 +14,10 @@ import {
 	SKILLS_INDEX_PATH,
 	skillPath,
 	slugify,
+	USER_PROFILE_PATH,
 } from "../memory/layout";
 import { appendLog, todayIso } from "../memory/log";
+import { withLock } from "../utils/async_lock";
 
 // Three guarded tools. No read tools — agent already has read_file/grep/glob
 // pointed at the same backend. No lint tool — lint runs automatically and its
@@ -28,17 +30,20 @@ const MODE_SCHEMA = z
 		"replace = overwrite ## Actuel outright. rotate_actuel = move current ## Actuel into ## Archive under a dated heading, then set new ## Actuel. Use rotate_actuel when updating a persistent fact you want history for.",
 	);
 
-const MEMORY_WRITE_PROMPT = context`Save or update a note in /memory/notes/.
+const MEMORY_WRITE_PROMPT = context`Save or update a durable fact.
 
-Each note has a header (first line, typically a # title), a ## Actuel section
-(the current content), and a ## Archive section that grows over time as
-rotate_actuel is used. The index in MEMORY.md is auto-maintained.
+Two targets:
+  - target: "notes" (default) — writes /memory/notes/<slug>.md and updates
+    the MEMORY.md index. Use for topic-scoped facts: project decisions,
+    domain knowledge, lessons learned, named things worth looking up later.
+  - target: "user" — writes /memory/USER.md (no index). Use for stable facts
+    about the user: role, goals, working style, recurring preferences. The
+    "topic" argument is ignored when target is "user".
 
-Use for durable facts worth remembering beyond the current turn: user
-preferences, decisions and their reasoning, lessons learned, domain knowledge
-the user has shared. Don't use for ephemeral in-conversation scratch.
+Each file has a header, a ## Actuel section (current content), and a
+## Archive section that grows when mode: "rotate_actuel" is used.
 
-Returns the updated MEMORY.md excerpt so you can confirm the index.`;
+Returns the updated file excerpt so you can confirm the write.`;
 
 const SKILL_WRITE_PROMPT = context`Save or update a procedural skill in /skills/.
 
@@ -67,52 +72,115 @@ type WriteContext = {
 	now: Date;
 };
 
-async function performWrite(ctx: WriteContext): Promise<string> {
-	const slug = slugify(ctx.topic);
-	const header = `# ${ctx.topic.trim()}`;
-	const hadFile = await exists(ctx.backend, ctx.targetPath);
-	const existing = hadFile
-		? await readOrEmpty(ctx.backend, ctx.targetPath)
-		: "";
+export type MemoryMutationKind = "notes" | "user" | "skills";
 
+export type MemoryMutationCallback = (
+	kind: MemoryMutationKind,
+) => void | Promise<void>;
+
+async function writeActuelFile(
+	backend: BackendProtocol,
+	targetPath: string,
+	header: string,
+	content: string,
+	mode: "replace" | "rotate_actuel",
+	now: Date,
+): Promise<void> {
+	const hadFile = await exists(backend, targetPath);
+	const existing = hadFile ? await readOrEmpty(backend, targetPath) : "";
 	let nextBody: string;
 	if (!hadFile) {
-		nextBody = composeFresh(header, ctx.content);
-	} else if (ctx.mode === "rotate_actuel") {
-		nextBody = applyRotate(existing, ctx.content, todayIso(ctx.now));
+		nextBody = composeFresh(header, content);
+	} else if (mode === "rotate_actuel") {
+		nextBody = applyRotate(existing, content, todayIso(now));
 	} else {
-		nextBody = applyReplace(existing, ctx.content);
+		nextBody = applyReplace(existing, content);
 	}
-
-	await overwrite(ctx.backend, ctx.targetPath, nextBody);
-
-	const indexRaw = await readOrEmpty(ctx.backend, ctx.indexPath);
-	const { header: indexHeader, entries } = parseIndex(indexRaw);
-	const nextEntries = upsertEntry(entries, {
-		slug,
-		path: ctx.targetPath,
-		hook: ctx.hook.trim() || ctx.topic.trim(),
-	});
-	const indexFormatted = formatIndex(indexHeader, nextEntries);
-	await overwrite(ctx.backend, ctx.indexPath, indexFormatted);
-
-	return indexFormatted;
+	await overwrite(backend, targetPath, nextBody);
 }
 
-export function createMemoryWriteTool(backend: BackendProtocol) {
+async function performWrite(ctx: WriteContext): Promise<string> {
+	// Serialize by indexPath: the note file + index update is a read-modify-write
+	// pair. Without this, concurrent writes read the same stale index and the
+	// last writer silently drops earlier entries.
+	return withLock(ctx.indexPath, async () => {
+		const slug = slugify(ctx.topic);
+		const header = `# ${ctx.topic.trim()}`;
+		await writeActuelFile(
+			ctx.backend,
+			ctx.targetPath,
+			header,
+			ctx.content,
+			ctx.mode,
+			ctx.now,
+		);
+
+		const indexRaw = await readOrEmpty(ctx.backend, ctx.indexPath);
+		const { header: indexHeader, entries } = parseIndex(indexRaw);
+		const nextEntries = upsertEntry(entries, {
+			slug,
+			path: ctx.targetPath,
+			hook: ctx.hook.trim() || ctx.topic.trim(),
+		});
+		const indexFormatted = formatIndex(indexHeader, nextEntries);
+		await overwrite(ctx.backend, ctx.indexPath, indexFormatted);
+
+		return indexFormatted;
+	});
+}
+
+async function performUserWrite(
+	backend: BackendProtocol,
+	content: string,
+	mode: "replace" | "rotate_actuel",
+	now: Date,
+): Promise<string> {
+	return withLock(USER_PROFILE_PATH, async () => {
+		await writeActuelFile(
+			backend,
+			USER_PROFILE_PATH,
+			"# USER.md",
+			content,
+			mode,
+			now,
+		);
+		return readOrEmpty(backend, USER_PROFILE_PATH);
+	});
+}
+
+export function createMemoryWriteTool(
+	backend: BackendProtocol,
+	onMutation?: MemoryMutationCallback,
+) {
 	return tool(
 		async ({
 			topic,
 			content,
 			hook,
 			mode,
+			target,
 		}: {
-			topic: string;
+			topic?: string;
 			content: string;
 			hook?: string;
 			mode?: "replace" | "rotate_actuel";
+			target?: "notes" | "user";
 		}) => {
 			try {
+				const effectiveMode = mode ?? "replace";
+				if (target === "user") {
+					const updated = await performUserWrite(
+						backend,
+						content,
+						effectiveMode,
+						new Date(),
+					);
+					await onMutation?.("user");
+					return `Saved to ${USER_PROFILE_PATH}.\n\n--- Updated USER.md ---\n${updated}`;
+				}
+				if (!topic || topic.trim().length === 0) {
+					return "Error: topic is required when target is 'notes'.";
+				}
 				const targetPath = notePath(topic);
 				const updated = await performWrite({
 					backend,
@@ -120,10 +188,11 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 					indexPath: MEMORY_INDEX_PATH,
 					topic,
 					content,
-					mode: mode ?? "replace",
+					mode: effectiveMode,
 					hook: hook ?? "",
 					now: new Date(),
 				});
+				await onMutation?.("notes");
 				return `Saved to ${targetPath}.\n\n--- Updated MEMORY.md ---\n${updated}`;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -134,10 +203,18 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 			name: "memory_write",
 			description: MEMORY_WRITE_PROMPT,
 			schema: z.object({
+				target: z
+					.enum(["notes", "user"])
+					.optional()
+					.describe(
+						"'notes' (default) writes an indexed topic under /memory/notes/. 'user' writes /memory/USER.md (topic/hook ignored).",
+					),
 				topic: z
 					.string()
-					.min(1)
-					.describe("Topic title — becomes the file header and index slug."),
+					.optional()
+					.describe(
+						"Topic title — becomes the file header and index slug. Required when target is 'notes'.",
+					),
 				content: z
 					.string()
 					.min(1)
@@ -146,7 +223,7 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 					.string()
 					.optional()
 					.describe(
-						"One-line hook for the MEMORY.md index. Defaults to the topic.",
+						"One-line hook for the MEMORY.md index. Defaults to the topic. Ignored when target is 'user'.",
 					),
 				mode: MODE_SCHEMA.optional(),
 			}),
@@ -154,7 +231,10 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 	);
 }
 
-export function createSkillWriteTool(backend: BackendProtocol) {
+export function createSkillWriteTool(
+	backend: BackendProtocol,
+	onMutation?: MemoryMutationCallback,
+) {
 	return tool(
 		async ({
 			name,
@@ -179,6 +259,7 @@ export function createSkillWriteTool(backend: BackendProtocol) {
 					hook: hook ?? "",
 					now: new Date(),
 				});
+				await onMutation?.("skills");
 				return `Saved skill to ${targetPath}.\n\n--- Updated SKILLS.md ---\n${updated}`;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

@@ -1,8 +1,12 @@
+import type { PdfExtractor } from "../capabilities/pdf/extractor";
+import type { CapabilityRegistry } from "../capabilities/registry";
+import type { SpreadsheetParser } from "../capabilities/spreadsheet/parser";
+import type { SchedulerOptions } from "../capabilities/timers/scheduler";
+import type { TimerStore } from "../capabilities/timers/store";
+import type { Transcriber } from "../capabilities/voice/transcriber";
 import type { AppConfig } from "../config";
 import type { AccessStore } from "../server/access_store";
 import type { AppEntrypoint } from "../types";
-
-type SQL = InstanceType<typeof Bun.SQL>;
 
 export interface WebShareRuntime {
 	access: AccessStore;
@@ -10,9 +14,17 @@ export interface WebShareRuntime {
 }
 
 export interface ChannelRunOptions {
-	db?: SQL;
+	db?: ReturnType<typeof import("../db/index").createDb>;
 	dialect?: "sqlite" | "postgres";
 	webShare?: WebShareRuntime;
+	transcriber?: Transcriber;
+	pdfExtractor?: PdfExtractor;
+	spreadsheetParser?: SpreadsheetParser;
+	capabilityRegistry?: CapabilityRegistry;
+	timerStore?: TimerStore;
+	timerScheduler?: {
+		start(store: TimerStore, options: SchedulerOptions): { stop(): void };
+	};
 }
 
 export interface AppChannel {

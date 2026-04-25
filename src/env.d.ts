@@ -11,5 +11,7 @@ declare module "*.md" {
 declare namespace NodeJS {
 	interface ProcessEnv {
 		DATABASE_URL?: string;
+		TRANSCRIPTION_API_KEY?: string;
+		TRANSCRIPTION_BASE_URL?: string;
 	}
 }

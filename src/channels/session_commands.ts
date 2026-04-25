@@ -1,9 +1,23 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
-import { rotateThread } from "../memory/rotate_thread";
+import {
+	type CompactionContext,
+	runCompaction,
+	shouldCompactByMinimumContent,
+} from "../checkpoints/compaction_trigger";
+import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import { compactionStatusMessage } from "../i18n/locale";
+import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
+import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
+import { extractRecentTurns } from "../memory/runtime_context";
 import type { AccessStore, ScopeKind } from "../server/access_store";
+import type { TaskRecord } from "../tasks/store";
 import { buildShareUrl } from "../tools/share_tools";
-import type { ChannelAgentSession } from "./shared";
+import { compactInline } from "../utils/text";
+import {
+	buildSessionRuntimeMessages,
+	type ChannelAgentSession,
+} from "./shared";
 
 // Channel-agnostic session-control commands — separate concern from permission
 // commands in src/permissions/commands.ts.
@@ -18,13 +32,58 @@ export type WebShareCommandContext = {
 	callerId: string;
 };
 
+export type CompactionCommandContext = {
+	caller: string;
+	store: ForcedCheckpointStore;
+};
+
 export type SessionCommandContext = {
 	session: ChannelAgentSession;
 	model: BaseChatModel;
 	backend: BackendProtocol;
 	mintThreadId: () => string;
+	now?: () => number;
 	webShare?: WebShareCommandContext;
+	/** When provided, forced checkpoints are created at defined session boundaries. */
+	compaction?: CompactionCommandContext;
 };
+
+export const NEW_THREAD_ACTIVE_TASK_LIMIT = 8;
+export const NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT = 5;
+export const NEW_THREAD_RECENT_COMPLETED_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+function formatTaskReplyBlock(
+	heading: string,
+	tasks: TaskRecord[],
+	options: {
+		limit: number;
+		emptyText: string;
+	} = {
+		limit: tasks.length,
+		emptyText: "- None.",
+	},
+): string {
+	const visibleTasks = tasks.slice(0, options.limit);
+	const lines = [heading];
+
+	if (visibleTasks.length === 0) {
+		lines.push(options.emptyText);
+		return lines.join("\n");
+	}
+
+	for (const task of visibleTasks) {
+		const note = task.note ? ` — ${compactInline(task.note)}` : "";
+		lines.push(
+			`- [${task.id}] ${task.listName}: ${compactInline(task.title)}${note}`,
+		);
+	}
+
+	if (tasks.length > visibleTasks.length) {
+		lines.push(`- ... ${tasks.length - visibleTasks.length} more.`);
+	}
+
+	return lines.join("\n");
+}
 
 async function handleOpenFs(
 	args: string,
@@ -79,7 +138,9 @@ async function handleOpenFs(
 	].join("\n");
 }
 
-async function handleRevokeFs(context: WebShareCommandContext): Promise<string> {
+async function handleRevokeFs(
+	context: WebShareCommandContext,
+): Promise<string> {
 	const count = await context.access.revokeByUser(context.callerId);
 	return count === 0
 		? "No active share links to revoke."
@@ -100,18 +161,100 @@ export async function maybeHandleSessionCommand(
 		.split("@", 1)[0];
 
 	if (command === "new-thread" || command === "new_thread") {
+		let pendingSeed: ChannelAgentSession["pendingCompactionSeed"] | undefined;
+		if (context.compaction) {
+			const messages = await readThreadMessages(
+				context.session.agent,
+				context.session.threadId,
+			);
+			const compactionMessages = buildSessionRuntimeMessages(
+				context.session,
+				messages,
+			);
+			const compactionCtx: CompactionContext = {
+				caller: context.compaction.caller,
+				threadId: context.session.threadId,
+				messages: compactionMessages,
+				model: context.model,
+				store: context.compaction.store,
+			};
+			if (
+				shouldCompactByMinimumContent(compactionMessages) &&
+				context.session.statusEmitter
+			) {
+				try {
+					await context.session.statusEmitter.emit(
+						context.compaction.caller,
+						compactionStatusMessage(context.session.locale),
+					);
+				} catch {
+					// best-effort — compaction proceeds regardless
+				}
+			}
+			const checkpoint = await runCompaction(compactionCtx, "new_thread");
+
+			if (checkpoint) {
+				// Seed the first turn in the new thread with the checkpoint context
+				// so the model has operational continuity without replaying full history.
+				const recentTurns = extractRecentTurns(messages, 2);
+				const summaryObj = deserializeCheckpointSummary(
+					checkpoint.summaryPayload,
+				);
+				pendingSeed = {
+					summary: summaryObj,
+					recentTurns,
+				};
+			}
+		}
+
 		const { summary, newThreadId } = await rotateThread({
 			session: context.session,
 			model: context.model,
 			backend: context.backend,
 			mintThreadId: context.mintThreadId,
 		});
+		context.session.pendingCompactionSeed = pendingSeed;
+		if (context.compaction || pendingSeed) {
+			context.session.pendingTaskCheck = true;
+		}
+
+		const taskStore = context.session.taskCheckConfig?.store;
+		const callerId = context.session.taskCheckConfig?.caller;
+		const now = context.now ?? Date.now;
+		const activeTasks =
+			taskStore && callerId
+				? await taskStore.listActiveTasks(
+						callerId,
+						NEW_THREAD_ACTIVE_TASK_LIMIT + 1,
+					)
+				: [];
+		const recentCompletedTasks =
+			taskStore && callerId
+				? await taskStore.listRecentlyCompletedTasks(callerId, {
+						completedSince: now() - NEW_THREAD_RECENT_COMPLETED_WINDOW_MS,
+						limit: NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT + 1,
+					})
+				: [];
 		return {
 			handled: true,
 			reply: [
 				`New thread started (${newThreadId}).`,
-				"Previous thread summarized into /memory/log.md:",
+				"Previous thread summary (saved to /memory/log.md):",
 				summary,
+				formatTaskReplyBlock("Current active tasks:", activeTasks, {
+					limit: NEW_THREAD_ACTIVE_TASK_LIMIT,
+					emptyText: "- None.",
+				}),
+				formatTaskReplyBlock(
+					`Recently completed tasks (last ${Math.floor(
+						NEW_THREAD_RECENT_COMPLETED_WINDOW_MS / (24 * 60 * 60 * 1000),
+					)} days):`,
+					recentCompletedTasks,
+					{
+						limit: NEW_THREAD_RECENT_COMPLETED_TASK_LIMIT,
+						emptyText: "- None.",
+					},
+				),
 			].join("\n"),
 		};
 	}

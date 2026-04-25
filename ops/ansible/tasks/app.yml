@@ -1,0 +1,94 @@
+---
+- name: Ensure service group exists
+  ansible.builtin.group:
+    name: "{{ bot_group }}"
+    state: present
+
+- name: Ensure service user exists
+  ansible.builtin.user:
+    name: "{{ bot_user }}"
+    group: "{{ bot_group }}"
+    home: "{{ bot_home }}"
+    create_home: true
+    shell: /usr/sbin/nologin
+    system: true
+
+- name: Ensure application directories exist
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(bot_user) }}"
+    group: "{{ item.group | default(bot_group) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - path: "{{ bot_app_dir }}"
+      mode: "0755"
+    - path: "{{ bot_env_dir }}"
+      owner: root
+      group: root
+      mode: "0750"
+    - path: "{{ bot_acme_webroot }}"
+      owner: www-data
+      group: www-data
+      mode: "0755"
+
+- name: Optionally sync repository checkout
+  ansible.builtin.git:
+    repo: "{{ bot_repo_url }}"
+    dest: "{{ bot_app_dir }}"
+    version: "{{ bot_repo_version }}"
+    update: "{{ bot_repo_update }}"
+  when: bot_repo_url | length > 0
+  notify:
+    - restart bot service
+    - restart searxng stack
+
+- name: Ensure application checkout belongs to service user
+  ansible.builtin.file:
+    path: "{{ bot_app_dir }}"
+    state: directory
+    recurse: true
+    owner: "{{ bot_user }}"
+    group: "{{ bot_group }}"
+
+- name: Ensure application checkout is present
+  ansible.builtin.stat:
+    path: "{{ bot_app_dir }}/package.json"
+  register: bot_package_json
+
+- name: Stop if application checkout is missing
+  ansible.builtin.fail:
+    msg: >-
+      Expected {{ bot_app_dir }}/package.json to exist. Set bot_repo_url to let
+      Ansible clone the repository, or place the checkout there before running this play.
+  when: not bot_package_json.stat.exists
+
+- name: Install production dependencies
+  ansible.builtin.command:
+    cmd: pnpm install --prod --frozen-lockfile
+    chdir: "{{ bot_app_dir }}"
+  environment:
+    HOME: "{{ bot_home }}"
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+  become_user: "{{ bot_user }}"
+  notify: restart bot service
+
+- name: Build static landing bundle
+  ansible.builtin.command:
+    cmd: bun build ./landing/index.html --outdir=./landing/dist
+    chdir: "{{ bot_app_dir }}"
+  environment:
+    HOME: "{{ bot_home }}"
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+  become_user: "{{ bot_user }}"
+
+- name: Ensure landing bundle exists
+  ansible.builtin.stat:
+    path: "{{ bot_landing_dir }}/index.html"
+  register: bot_landing_index
+
+- name: Stop if landing bundle is missing
+  ansible.builtin.fail:
+    msg: >-
+      Expected {{ bot_landing_dir }}/index.html after building the landing bundle.
+  when: not bot_landing_index.stat.exists

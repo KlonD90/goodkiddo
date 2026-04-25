@@ -6,3 +6,11 @@ state.db*
 .claude
 .tmp
 permissions.log
+.ralphex/
+.pnpm-store/
+landing/dist/
+ops/ansible/inventory/production.ini
+ops/ansible/group_vars/goodkiddo_prod/10-env.yml
+ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml
+ops/ansible/.vault_pass.txt
+.superset/

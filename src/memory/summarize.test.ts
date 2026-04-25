@@ -35,8 +35,14 @@ describe("summarizeThread", () => {
 		expect(seen).toHaveLength(2);
 		expect(seen[0]?.role).toBe("system");
 		expect(seen[1]?.role).toBe("user");
-		expect(seen[1]?.content).toContain("USER: Please fix the bug");
-		expect(seen[1]?.content).toContain("ASSISTANT: Sure, here's the fix");
+		expect(seen[1]?.content).toContain("<transcript_to_summarize>");
+		expect(seen[1]?.content).toContain(
+			'<turn role="user">Please fix the bug</turn>',
+		);
+		expect(seen[1]?.content).toContain(
+			'<turn role="assistant">Sure, here\'s the fix</turn>',
+		);
+		expect(seen[1]?.content).toContain("Do NOT respond");
 	});
 
 	test("handles array content shape from LLM response", async () => {
@@ -57,7 +63,9 @@ describe("summarizeThread", () => {
 			{ role: "assistant", content: "real reply" },
 		]);
 		const userMessage = seen.find((m) => m.role === "user");
-		expect(userMessage?.content).not.toContain("USER:");
-		expect(userMessage?.content).toContain("ASSISTANT: real reply");
+		expect(userMessage?.content).not.toContain('<turn role="user">');
+		expect(userMessage?.content).toContain(
+			'<turn role="assistant">real reply</turn>',
+		);
 	});
 });

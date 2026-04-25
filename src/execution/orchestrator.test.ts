@@ -83,7 +83,10 @@ describe("ExecutionOrchestrator", () => {
 	test("loads workspace files before execution", async () => {
 		const backend = new FakeBackend();
 		const orchestrator = new ExecutionOrchestrator({ backend });
-		const workspace = new SqliteStateBackend({ db: createDb("sqlite://:memory:"), dialect: detectDialect("sqlite://:memory:") });
+		const workspace = new SqliteStateBackend({
+			db: createDb("sqlite://:memory:"),
+			dialect: detectDialect("sqlite://:memory:"),
+		});
 		await workspace.write("/src/main.ts", "console.log('workspace');");
 
 		const result = await orchestrator.executeWorkspace(

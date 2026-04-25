@@ -17,10 +17,25 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 
 | Feature | Execution |
 |---------|-----------|
+| [Telegram Identity Selection](feature-telegram-identity-selection.md) | [RALPHEX plan](../plans/telegram-identity-selection.md) |
+| [Telegram Welcome Message](feature-telegram-welcome-message.md) | [RALPHEX plan](../plans/telegram-welcome-message.md) |
+| [Telegram Free Tier Users](feature-telegram-free-tier-users.md) | [RALPHEX plan](../plans/telegram-free-tier-users.md) |
+| [Skip Trivial Compaction](feature-skip-trivial-compaction.md) | [RALPHEX plan](../plans/skip-trivial-compaction.md) |
+| [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
+
+## Completed
+
+| Feature | Execution |
+|---------|-----------|
 | [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/plan/` |
-| [Voice Messages](feature-voice-messages.md) | Legacy task lists in `docs/plan/` |
 | [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
 | [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |
+| [Large Attachment Handling](feature-large-attachment-handling.md) | [RALPHEX plan](../plans/large-attachment-handling.md) |
+| [Voice Messages](feature-voice-messages.md) | [RALPHEX plan](../plans/telegram-voice-messages.md) |
+| [PDF Documents](feature-pdf.md) | [RALPHEX plan](../plans/pdf.md) |
+| [CSV and Excel Spreadsheets](feature-csv-excel.md) | [RALPHEX plan](../plans/csv-excel.md) |
+| [Scheduled Timers](feature-scheduled-timers.md) | [RALPHEX plan](../plans/scheduled-timers.md) |
+| [Tool Activity Status Messages](feature-tool-activity-status.md) | [RALPHEX plan](../plans/tool-activity-status.md) |
 
 ---
 

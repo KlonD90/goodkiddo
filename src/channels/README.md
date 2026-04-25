@@ -6,18 +6,66 @@ Channel runtime adapters for the CLI and Telegram entrypoints.
 - `cli.ts` — interactive local channel
 - `telegram.ts` — multi-tenant Telegram channel
 - `shared.ts` — shared agent-session helpers, including the persistent checkpointer wiring
-- `session_commands.ts` — channel-agnostic session commands (`/new-thread` summarizes and rotates the thread)
+- `session_commands.ts` — channel-agnostic session commands (`/new_thread` summarizes and rotates the thread and surfaces task state)
 
 ## Shared Session State
 
 CLI and Telegram sessions share the same LangGraph checkpoint flow:
 
 - live thread state is persisted in the database selected by `DATABASE_URL`
+- the active thread id per caller is persisted in `active_threads`, so `/new_thread` and compaction-triggered rotations survive restarts
 - checkpoints are handled by the SQL-backed saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts)
+- forced checkpoint summaries are stored separately in [`src/checkpoints/forced_checkpoint_store.ts`](../checkpoints/forced_checkpoint_store.ts)
+- `pendingTaskCheck` marks the next substantive turn after session start or `/new_thread` so boundary-only task reconciliation runs once
 - the checkpointer, permission store, workspace backend, and web access store share one injected `Bun.SQL` connection created in [`src/bin/bot.ts`](../bin/bot.ts)
 - rebuilding the agent between turns refreshes the system prompt without losing thread history
 
-This is separate from the `/memory/` wiki. The wiki stores durable notes and preferences; the checkpointer stores the current turn-by-turn conversation state.
+This is separate from the `/memory/` wiki. The wiki stores durable notes and preferences; the checkpointer stores the current turn-by-turn conversation state; the SQL task store holds open and recently closed actionable work.
+
+## Compacted context loading
+
+After a forced checkpoint is created, channel sessions load compacted runtime context instead of replaying full stored history.
+
+`full_history != runtime_context`. Full turn history stays in the SQL saver for audit and recovery. The model sees only:
+
+1. Latest forced checkpoint summary (serialized as a runtime-only prompt block)
+2. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
+3. Current user input
+
+Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by [`src/checkpoints/compaction_trigger.ts`](../checkpoints/compaction_trigger.ts). That trigger layer decides which boundary fired, skips empty or tiny histories below the 20,000-character minimum meaningful-content threshold, calls [`src/memory/checkpoint_compaction.ts`](../memory/checkpoint_compaction.ts) to build the structured summary, persists it through `ForcedCheckpointStore`, and uses [`src/memory/runtime_context.ts`](../memory/runtime_context.ts) to render the runtime-only prompt context.
+
+The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
+
+`/new_thread` continues to rotate the thread id and summarize to `log.md`, and also triggers a forced checkpoint when the previous thread has enough meaningful content. Empty or very short threads rotate without creating a checkpoint or seed. The immediate `/new_thread` reply includes the previous-thread summary, the caller's current active tasks, and recently completed tasks from the last 7 days.
+
+The same boundary flow also runs task reconciliation once per session boundary. On the first substantive turn after session start or `/new_thread`, active SQL tasks are compared against the current user message. Exact single-task completion matches may be auto-completed; ambiguous matches are left unchanged; likely dismissals are converted into explicit confirmation prompts instead of automatic state changes.
+
+If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
+
+Runtime-only current-message metadata is ignored when reading stored thread history for compaction, summarization, and attachment budgets. This prevents a short Telegram exchange from looking meaningful enough to compact after a process restart just because the persisted turn includes timestamp/timezone guidance.
+
+When an attachment only fits after compaction, Telegram can emit an ephemeral status line before the forced checkpoint runs so the user sees why older context is being summarized. That notice is skipped when the prior context is empty or too small to summarize. It uses the same status-emitter path as tool activity, so it never enters stored history or runtime context.
+
+When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
+
+## Large Attachment Handling
+
+All attachment capabilities share one runtime-context budget seam in [`src/capabilities/registry.ts`](../capabilities/registry.ts), backed by [`src/capabilities/attachment_budget.ts`](../capabilities/attachment_budget.ts). Channel code supplies the live runtime token count and the compaction callback; capability implementations should only return extracted content.
+
+Three outcomes are possible once a capability returns extracted text:
+
+- fits comfortably: inject the capability output unchanged
+- fits only after compaction: emit the optional status notice when there is meaningful prior context, create a forced checkpoint with `sourceBoundary = "oversized_attachment"`, rebuild runtime context, then inject
+- cannot fit at all: reject the attachment and reply with a single "too large for a single turn" message
+
+Configuration knobs:
+
+- `MAX_CONTEXT_WINDOW_TOKENS` — default `150000`
+- `CONTEXT_RESERVE_SUMMARY_TOKENS` — default `2000`
+- `CONTEXT_RESERVE_RECENT_TURN_TOKENS` — default `2000`
+- `CONTEXT_RESERVE_NEXT_TURN_TOKENS` — default `2000`
+
+These knobs reserve room for the forced-checkpoint summary, the recent-turn window, and the upcoming reply/next-turn exchange so attachment injection does not consume the entire model budget.
 
 ## Telegram Formatting
 
@@ -103,6 +151,14 @@ Relevant files:
 - `src/channels/telegram.ts`
 - `src/channels/telegram.test.ts`
 
+Welcome command:
+
+- Telegram `/start` replies with a short static onboarding message
+- the reply tells users they can send normal requests, send supported files, use `/identity`, and use `/new_thread`
+- `/start` is handled directly after caller resolution
+- `/start` does not invoke the agent, enqueue a turn, mutate thread state, or enter stored conversation history
+- `/start@BotUsername` is normalized the same way as other Telegram slash commands
+
 Photo handling:
 
 - Telegram `message:photo` updates are accepted
@@ -110,7 +166,169 @@ Photo handling:
 - the largest Telegram photo variant is downloaded and sent to the model as an image content block
 - if the streamed response yields no visible text, Telegram falls back to the latest assistant text in final agent state instead of a generic placeholder or trailing user text
 
-Recommended workflow:
+Voice handling:
+
+- Telegram `message:voice` updates are accepted
+- voice messages are enabled by default and can be disabled with `ENABLE_VOICE_MESSAGES=false`
+- supported voice payloads are capped at `1_048_576` bytes and are downloaded as `audio/ogg`
+- the channel transcribes voice audio in memory, prefixes it as `_Transcribed: ..._`, and appends any caption text after the transcript
+- approvals and slash/session commands are parsed from the raw transcript before the prefixed agent-facing text is queued
+- transcription uses the configured backend selected by `TRANSCRIPTION_PROVIDER=openai|openrouter`
+- `openai` uses the Audio Transcriptions API; `openrouter` uses OpenRouter's documented `/chat/completions` audio-input flow with the default `openai/whisper-1` model
+- set `TRANSCRIPTION_API_KEY` when voice transcription cannot reuse `AI_API_KEY`, and use `TRANSCRIPTION_BASE_URL` to override the provider endpoint used for transcription
+- disabled voice support replies with `Voice messages are not supported on this server.`
+- oversized audio replies with `Voice message is too large`
+- download failures reply with `Failed to download voice message: <message>`
+- transcription failures reply with `Transcription failed: <message>`
+
+Relevant voice files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/voice/README.md`
+
+PDF handling:
+
+- Telegram `message:document` updates are accepted when `mime_type === "application/pdf"`
+- PDF documents are enabled by default and can be disabled with `ENABLE_PDF_DOCUMENTS=false`
+- PDFs are capped at 20 MB (hard limit defined in `PDF_MAX_BYTES`)
+- the channel downloads the file, extracts text per page, and injects it as `_Document: <filename> — N pages_` prefixed content
+- encrypted/password-protected PDFs reply with `This PDF is password-protected and cannot be read.`
+- corrupt or invalid PDFs reply with `Failed to read PDF: <reason>`
+- empty PDFs (no extractable text) reply with `This PDF appears to contain no text.`
+- oversized PDFs reply with `PDF is too large (max 20 MB).`
+- non-PDF documents are silently ignored (no error reply)
+
+Relevant PDF files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/pdf/README.md`
+
+Spreadsheet handling:
+
+- Telegram `message:document` updates are accepted for CSV and Excel files (.csv, .xlsx, .xls)
+- supported MIME types: `text/csv`, `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+- spreadsheets are enabled by default and can be disabled with `ENABLE_SPREADSHEETS=false`
+- spreadsheets are capped at 10 MB (hard limit defined in `SPREADSHEET_MAX_BYTES`)
+- the channel downloads the file, parses all sheets, and injects it as `_Spreadsheet: <filename> — N rows, M columns_` prefixed content with markdown tables
+- CSV files render as a single markdown table (sheet name header omitted)
+- Excel files render all sheets with sheet name headers as separators
+- corrupt or invalid files reply with `Failed to read spreadsheet: <reason>`
+- empty spreadsheets (no data rows) reply with `This spreadsheet appears to be empty.`
+- oversized spreadsheets reply with `Spreadsheet is too large (max 10 MB).`
+- non-spreadsheet documents are silently ignored (no error reply)
+
+Relevant spreadsheet files:
+
+- `src/channels/telegram.ts`
+- `src/channels/telegram.test.ts`
+- `src/capabilities/spreadsheet/README.md`
+
+## Tool Activity Status
+
+Status messages surface short, human-readable lines to the active channel whenever the agent invokes a tool (e.g. "Reading a.txt", "Searching for X", "Running workspace entrypoint"). Users see what is happening between turn start and the final reply.
+
+### sendStatus Interface
+
+```typescript
+interface OutboundChannel {
+  sendStatus(callerId: string, message: string): Promise<void>;
+  // ... other methods
+}
+```
+
+- `callerId` — session identifier (e.g. `cli:username` or Telegram chat ID)
+- `message` — localized, pre-truncated status string
+- **Ephemeral** — status messages are never stored in conversation history and never replayed into runtime context
+- **Must never throw** — emitter failures are caught internally and ignored
+
+### CLI Status Output
+
+The CLI channel writes status lines to stdout with a `>` prefix:
+
+```
+> Reading a.txt
+> Searching for X
+```
+
+### Telegram Status Output
+
+The Telegram channel sends status messages as plain text via `bot.api.sendMessage`, without touching conversation memory.
+
+### Configuration
+
+- `enableToolStatus` (default `true`) — enables or disables status emission globally
+- `enableAttachmentCompactionNotice` (default `true`) — emits the ephemeral "making room for this attachment" notice before attachment-triggered compaction
+- `defaultStatusLocale` (default `"en"`) — fallback locale when user preference is unknown
+
+### Relevant Files
+
+- `src/channels/outbound.ts` — OutboundChannel interface with sendStatus
+- `src/channels/cli.ts` — CLI implementation of sendStatus
+- `src/channels/telegram.ts` — Telegram implementation of sendStatus
+- `src/tools/status_emitter.ts` — StatusEmitter factory and no-op emitter
+- `src/tools/status_templates.ts` — per-tool, per-locale status templates
+- `src/i18n/locale.ts` — locale resolution utilities
+
+## Scheduled Timers
+
+Timers let the agent run memory file prompts on cron schedules or send one-time
+reminder notifications to the user's Telegram chat.
+
+User-facing timer operations are available via agent tools:
+
+- `create_timer(type, ...)` — set a recurring timer with `type: "always"` or a one-time reminder with `type: "once"`
+- `list_timers()` — show all active timers
+- `update_timer(timerId, updates)` — change cron, timezone, or enabled state
+- `delete_timer(timerId)` — remove a timer
+
+The Telegram channel starts the scheduler in-process during normal bot startup,
+polling every 60 seconds for due timers. When a recurring timer fires, the
+scheduler reads the referenced memory file, executes it via the LLM, and
+streams the result to the user's Telegram chat. When a one-time reminder fires,
+the scheduler sends the reminder text directly and marks the timer completed.
+
+Cron expressions are evaluated in each timer's configured IANA timezone.
+Telegram does not provide a user's timezone in normal bot messages, so
+Telegram timer creation requires an explicit IANA timezone from the current
+request or from `/memory/USER.md` for wall-clock and recurring schedules. For
+duration-only one-time reminders like "in 5 minutes" or "in 30 minutes", the
+agent uses the current Telegram message timestamp to compute `runAtUtc` instead
+of asking for the user's timezone. If a wall-clock or recurring timer is
+missing a timezone, the agent asks for it and saves it to `USER.md` before
+creating the timer. The current Telegram message timestamp is prepended to the
+user turn as message metadata so relative requests can be converted without
+changing the cacheable system prompt. If a compaction boundary is crossed around
+that exchange, the rebuilt prompt keeps active checkpoint context, while
+`USER.md` remains the canonical source for durable facts like timezone.
+Successful `USER.md` writes mark the prompt for rebuild before the next turn.
+Recurring timers use `cronExpression`;
+one-time reminders use `runAtUtc` and are disabled after the first successful
+send.
+
+Failure handling:
+
+- On LLM error: error is logged, `last_error` is stored, `next_run_at` is still updated
+- After 3 consecutive failures: warning message sent to user via Telegram
+- If memory file is deleted: timer is hard-deleted and user is notified
+
+Timers persist in the database and survive restarts. Each timer is user-scoped: `user_id` and `chat_id` are stored on creation, and all operations validate ownership.
+
+Relevant timer files:
+
+- `src/capabilities/timers/store.ts` — SQL-backed timer persistence
+- `src/capabilities/timers/scheduler.ts` — in-process background scheduler
+- `src/capabilities/timers/tools.ts` — LLM tool definitions
+- `src/capabilities/timers/README.md` — full timer documentation
+
+Cron format: `minute hour day-of-month month day-of-week`. Examples:
+
+- `0 10 * * 1-5` = every weekday at 10 AM
+- `*/15 * * * *` = every 15 minutes
+- `0 9 * * *` = every day at 9 AM
+
+## Recommended workflow:
 
 1. Update rendering or chunking logic in `src/channels/telegram.ts`
 2. Add or update regression tests in `src/channels/telegram.test.ts`
@@ -128,6 +346,7 @@ When editing this path:
 - treat stream chunking and final message chunking as separate problems
 - preserve table header context when splitting
 - prefer readable Telegram output over literal Markdown fidelity
+- keep voice downloads in memory only and route new transcription logic through `src/capabilities/voice/`
 
 ## Telegram troubleshooting
 

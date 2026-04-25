@@ -1,0 +1,47 @@
+---
+# Copy to: ops/ansible/group_vars/goodkiddo_prod/10-env.yml
+# Non-secret production config only.
+
+bot_main_domain: example.com
+bot_app_domain: "app.{{ bot_main_domain }}"
+bot_letsencrypt_email: admin@example.com
+
+# Set this when Ansible should clone/update the repository on the host.
+# Leave empty when you place the checkout on the host yourself.
+bot_repo_url: ""
+bot_repo_version: main
+bot_repo_update: false
+
+bot_manage_postgres: true
+bot_postgres_db: goodkiddo
+bot_postgres_user: goodkiddo
+
+ai_type: anthropic
+ai_model_name: claude-sonnet-4-20250514
+ai_base_url: https://api.anthropic.com
+
+permissions_mode: enforce
+using_mode: single
+default_status_locale: en
+timezone: UTC
+
+web_port: 8083
+web_host: 127.0.0.1
+web_public_base_url: "https://{{ bot_app_domain }}"
+
+bot_searxng_host: 127.0.0.1
+bot_searxng_port: 8080
+
+enable_execute: false
+enable_voice_messages: true
+enable_pdf_documents: true
+enable_spreadsheets: true
+enable_tool_status: true
+enable_attachment_compaction_notice: true
+
+max_context_window_tokens: 150000
+context_reserve_summary_tokens: 2000
+context_reserve_recent_turn_tokens: 2000
+context_reserve_next_turn_tokens: 2000
+
+transcription_provider: openai

@@ -86,6 +86,12 @@ describe("buildSystemPrompt", () => {
 			"/memory/notes/alpha.md",
 			"# Alpha\n\n## Actuel\nOK\n",
 		);
+		// USER.md must be populated or lint will flag the onboarding nudge.
+		await overwrite(
+			backend,
+			"/memory/USER.md",
+			"# USER.md\n\n## Actuel\nRole: staff eng. Prefers terse replies.\n",
+		);
 		const prompt = await buildSystemPrompt({
 			identityPrompt: "# Identity",
 			backend,
@@ -94,5 +100,29 @@ describe("buildSystemPrompt", () => {
 		// the memory-rules markdown also references the phrase in backticks, so
 		// we look for the actual block shape, not a bare substring.
 		expect(prompt).not.toMatch(/\n## Memory maintenance\n- /);
+	});
+
+	test("appends runtime-only compaction context when provided", async () => {
+		const backend = createBackend("prompt-runtime-context");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+			runtimeContextBlock: "## Compacted Conversation Context\n\n{}",
+		});
+		expect(prompt).toContain("## Compacted Conversation Context");
+	});
+
+	test("appends active-task snapshot when provided", async () => {
+		const backend = createBackend("prompt-active-tasks");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+			activeTaskSnapshot:
+				"## Active tasks\n- [12] today: Ship task tools\n- [9] backlog: Follow up",
+		});
+		expect(prompt).toContain("## Active tasks");
+		expect(prompt).toContain("today: Ship task tools");
 	});
 });

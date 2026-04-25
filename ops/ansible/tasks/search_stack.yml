@@ -1,0 +1,26 @@
+---
+- name: Ensure SearxNG env file exists
+  ansible.builtin.template:
+    src: templates/searxng.env.j2
+    dest: "{{ bot_searxng_env_file }}"
+    owner: root
+    group: "{{ bot_group }}"
+    mode: "0640"
+  notify: restart searxng stack
+
+- name: Ensure Docker service is enabled
+  ansible.builtin.service:
+    name: docker
+    state: started
+    enabled: true
+
+- name: Render SearxNG systemd service unit
+  ansible.builtin.template:
+    src: templates/goodkiddo-searxng.service.j2
+    dest: "/etc/systemd/system/{{ bot_searxng_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - reload systemd
+    - restart searxng stack

@@ -74,9 +74,9 @@ describe("maybeHandleCommand", () => {
 			args: null,
 			decision: "allow",
 		});
-		expect(
-			(await maybeHandleCommand("/reset", caller, store)).handled,
-		).toBe(true);
+		expect((await maybeHandleCommand("/reset", caller, store)).handled).toBe(
+			true,
+		);
 		expect(await store.listRulesForUser(caller.id)).toHaveLength(0);
 	});
 

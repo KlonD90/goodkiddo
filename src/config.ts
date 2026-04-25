@@ -11,6 +11,7 @@ import {
 	type SupportedAiTypes,
 	type UsingMode,
 } from "./types";
+import { isValidTimezone } from "./utils/timezone";
 
 export type AppConfig = {
 	aiApiKey: string;
@@ -22,18 +23,56 @@ export type AppConfig = {
 	telegramAllowedChatId: string;
 	usingMode: UsingMode;
 	blockedUserMessage: string;
+	maxContextWindowTokens: number;
+	contextReserveSummaryTokens: number;
+	contextReserveRecentTurnTokens: number;
+	contextReserveNextTurnTokens: number;
 	permissionsMode: "enforce" | "disabled";
 	databaseUrl: string;
 	enableExecute: boolean;
+	enableVoiceMessages: boolean;
+	enablePdfDocuments: boolean;
+	enableSpreadsheets: boolean;
+	enableImageUnderstanding: boolean;
+	enableToolStatus: boolean;
+	enableAttachmentCompactionNotice: boolean;
+	defaultStatusLocale: string;
+	transcriptionProvider: TranscriptionProvider;
+	transcriptionApiKey: string;
+	transcriptionBaseUrl: string;
+	minimaxApiKey: string;
+	minimaxApiHost: string;
+	webHost: string;
 	webPort: number;
 	webPublicBaseUrl: string;
+	timezone: string;
 };
+
+export type TranscriptionProvider = "openai" | "openrouter";
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
+const DEFAULT_MAX_CONTEXT_WINDOW_TOKENS = 150000;
+const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
+const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
+const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
 const DEFAULT_DATABASE_URL = "sqlite://./state.db";
+const DEFAULT_WEB_HOST = "127.0.0.1";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
+const DEFAULT_ENABLE_VOICE_MESSAGES = true;
+const DEFAULT_ENABLE_PDF_DOCUMENTS = true;
+const DEFAULT_ENABLE_SPREADSHEETS = true;
+const DEFAULT_ENABLE_IMAGE_UNDERSTANDING = false;
+const DEFAULT_ENABLE_TOOL_STATUS = true;
+const DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE = true;
+const DEFAULT_STATUS_LOCALE = "en";
+const DEFAULT_TIMEZONE = "UTC";
+const DEFAULT_MINIMAX_API_HOST = "https://api.minimax.io";
+const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
+	"openai",
+	"openrouter",
+];
 
 type ConfigIssueField =
 	| "AI_API_KEY"
@@ -42,12 +81,30 @@ type ConfigIssueField =
 	| "AI_TYPE"
 	| "APP_ENTRYPOINT"
 	| "BLOCKED_USER_MESSAGE"
+	| "CONTEXT_RESERVE_NEXT_TURN_TOKENS"
+	| "CONTEXT_RESERVE_RECENT_TURN_TOKENS"
+	| "CONTEXT_RESERVE_SUMMARY_TOKENS"
 	| "ENABLE_EXECUTE"
+	| "ENABLE_IMAGE_UNDERSTANDING"
+	| "ENABLE_PDF_DOCUMENTS"
+	| "ENABLE_SPREADSHEETS"
+	| "ENABLE_ATTACHMENT_COMPACTION_NOTICE"
+	| "ENABLE_TOOL_STATUS"
+	| "ENABLE_VOICE_MESSAGES"
+	| "MAX_CONTEXT_WINDOW_TOKENS"
+	| "MINIMAX_API_HOST"
+	| "MINIMAX_API_KEY"
 	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
+	| "DEFAULT_STATUS_LOCALE"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
+	| "TIMEZONE"
+	| "TRANSCRIPTION_API_KEY"
+	| "TRANSCRIPTION_BASE_URL"
+	| "TRANSCRIPTION_PROVIDER"
 	| "USING_MODE"
+	| "WEB_HOST"
 	| "WEB_PORT"
 	| "WEB_PUBLIC_BASE_URL";
 
@@ -85,15 +142,41 @@ const PERSISTED_ENV_KEYS = [
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
+	"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+	"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+	"CONTEXT_RESERVE_SUMMARY_TOKENS",
 	"ENABLE_EXECUTE",
+	"ENABLE_IMAGE_UNDERSTANDING",
+	"ENABLE_PDF_DOCUMENTS",
+	"ENABLE_SPREADSHEETS",
+	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
+	"ENABLE_TOOL_STATUS",
+	"ENABLE_VOICE_MESSAGES",
+	"MAX_CONTEXT_WINDOW_TOKENS",
+	"MINIMAX_API_HOST",
+	"MINIMAX_API_KEY",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
+	"DEFAULT_STATUS_LOCALE",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TIMEZONE",
+	"TRANSCRIPTION_API_KEY",
+	"TRANSCRIPTION_BASE_URL",
+	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
+	"WEB_HOST",
 	"WEB_PORT",
 	"WEB_PUBLIC_BASE_URL",
 ] as const;
+const PERSISTED_ENV_ASSIGNMENT_REGEX = new RegExp(
+	`^(${PERSISTED_ENV_KEYS.join("|")})=(.*)$`,
+	"u",
+);
+const PERSISTED_ENV_LINE_REGEX = new RegExp(
+	`^(${PERSISTED_ENV_KEYS.join("|")})=`,
+	"u",
+);
 
 const getEnv = (
 	name: ConfigIssueField,
@@ -108,6 +191,22 @@ const getEnv = (
 };
 const normalize = (value: string | null | undefined): string =>
 	(value ?? "").trim();
+const parsePositiveInteger = (rawValue: string): number => {
+	if (!/^\d+$/u.test(rawValue)) {
+		return Number.NaN;
+	}
+
+	const value = Number.parseInt(rawValue, 10);
+	return Number.isSafeInteger(value) && value > 0 ? value : Number.NaN;
+};
+const readPositiveIntegerEnv = (
+	name: ConfigIssueField,
+	persistedValues: PersistedEnvValues,
+	fallback: number,
+): number => {
+	const rawValue = getEnv(name, persistedValues);
+	return rawValue === "" ? fallback : parsePositiveInteger(rawValue);
+};
 
 const defaultPrompt: WizardPrompt = (message) => prompt(message);
 
@@ -132,6 +231,28 @@ const USING_MODE_OPTIONS: readonly WizardOption<UsingMode>[] =
 				: "multi: reserve multi-agent mode",
 	}));
 
+const checkTranscriptionProvider = (
+	value: string,
+): value is TranscriptionProvider =>
+	SUPPORTED_TRANSCRIPTION_PROVIDERS.includes(value as TranscriptionProvider);
+
+const defaultTranscriptionProviderForAiType = (
+	aiType: SupportedAiTypes | undefined,
+): TranscriptionProvider => (aiType === "openrouter" ? "openrouter" : "openai");
+
+const isAiApiKeyRequired = (
+	aiType: SupportedAiTypes | undefined,
+	aiBaseUrl: string | undefined,
+): boolean => aiType === "openrouter" || (aiBaseUrl ?? "") === "";
+
+export const canReusePrimaryAiCredentialsForTranscription = (
+	aiType: SupportedAiTypes | undefined,
+	transcriptionProvider: TranscriptionProvider | undefined,
+): boolean =>
+	transcriptionProvider !== undefined &&
+	(aiType === "openai" || aiType === "openrouter") &&
+	aiType === transcriptionProvider;
+
 export const readConfigFromEnv = (
 	persistedValues: PersistedEnvValues = {},
 ): Partial<AppConfig> => {
@@ -146,10 +267,119 @@ export const readConfigFromEnv = (
 	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
 	const enableExecute = enableExecuteRaw !== "false";
 
+	const enableVoiceMessagesRaw = getEnv(
+		"ENABLE_VOICE_MESSAGES",
+		persistedValues,
+	);
+	const enableVoiceMessages =
+		enableVoiceMessagesRaw === ""
+			? DEFAULT_ENABLE_VOICE_MESSAGES
+			: enableVoiceMessagesRaw !== "false";
+
+	const enablePdfDocumentsRaw = getEnv("ENABLE_PDF_DOCUMENTS", persistedValues);
+	const enablePdfDocuments =
+		enablePdfDocumentsRaw === ""
+			? DEFAULT_ENABLE_PDF_DOCUMENTS
+			: enablePdfDocumentsRaw !== "false";
+
+	const enableSpreadsheetsRaw = getEnv("ENABLE_SPREADSHEETS", persistedValues);
+	const enableSpreadsheets =
+		enableSpreadsheetsRaw === ""
+			? DEFAULT_ENABLE_SPREADSHEETS
+			: enableSpreadsheetsRaw !== "false";
+
+	const enableImageUnderstandingRaw = getEnv(
+		"ENABLE_IMAGE_UNDERSTANDING",
+		persistedValues,
+	);
+	const enableImageUnderstanding =
+		enableImageUnderstandingRaw === ""
+			? DEFAULT_ENABLE_IMAGE_UNDERSTANDING
+			: enableImageUnderstandingRaw === "true";
+
+	const minimaxApiKey = getEnv("MINIMAX_API_KEY", persistedValues);
+	const minimaxApiHostRaw = getEnv("MINIMAX_API_HOST", persistedValues);
+	const minimaxApiHost =
+		minimaxApiHostRaw === "" ? DEFAULT_MINIMAX_API_HOST : minimaxApiHostRaw;
+
+	const enableToolStatusRaw = getEnv("ENABLE_TOOL_STATUS", persistedValues);
+	const enableToolStatus =
+		enableToolStatusRaw === ""
+			? DEFAULT_ENABLE_TOOL_STATUS
+			: enableToolStatusRaw !== "false";
+
+	const enableAttachmentCompactionNoticeRaw = getEnv(
+		"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
+		persistedValues,
+	);
+	const enableAttachmentCompactionNotice =
+		enableAttachmentCompactionNoticeRaw === ""
+			? DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE
+			: enableAttachmentCompactionNoticeRaw !== "false";
+
+	const defaultStatusLocaleRaw = getEnv(
+		"DEFAULT_STATUS_LOCALE",
+		persistedValues,
+	);
+	const defaultStatusLocale =
+		defaultStatusLocaleRaw !== ""
+			? defaultStatusLocaleRaw
+			: DEFAULT_STATUS_LOCALE;
+
+	const aiType = checkAiType(aiTypeValue) ? aiTypeValue : undefined;
+	const transcriptionProviderRaw = getEnv(
+		"TRANSCRIPTION_PROVIDER",
+		persistedValues,
+	);
+	const transcriptionProvider =
+		transcriptionProviderRaw === ""
+			? defaultTranscriptionProviderForAiType(aiType)
+			: checkTranscriptionProvider(transcriptionProviderRaw)
+				? transcriptionProviderRaw
+				: undefined;
+	const transcriptionApiKeyRaw = getEnv(
+		"TRANSCRIPTION_API_KEY",
+		persistedValues,
+	);
+	const transcriptionApiKey =
+		transcriptionApiKeyRaw !== ""
+			? transcriptionApiKeyRaw
+			: canReusePrimaryAiCredentialsForTranscription(
+						aiType,
+						transcriptionProvider,
+					)
+				? getEnv("AI_API_KEY", persistedValues)
+				: "";
+	const transcriptionBaseUrl = getEnv(
+		"TRANSCRIPTION_BASE_URL",
+		persistedValues,
+	);
+
+	const webHostRaw = getEnv("WEB_HOST", persistedValues);
 	const webPortRaw = getEnv("WEB_PORT", persistedValues);
 	const webPort =
 		webPortRaw === "" ? DEFAULT_WEB_PORT : Number.parseInt(webPortRaw, 10);
 	const webPublicBaseUrlRaw = getEnv("WEB_PUBLIC_BASE_URL", persistedValues);
+	const maxContextWindowTokens = readPositiveIntegerEnv(
+		"MAX_CONTEXT_WINDOW_TOKENS",
+		persistedValues,
+		DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+	);
+	const contextReserveSummaryTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_SUMMARY_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+	);
+	const contextReserveRecentTurnTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+	);
+	const contextReserveNextTurnTokens = readPositiveIntegerEnv(
+		"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+		persistedValues,
+		DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
+	);
 
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
@@ -158,7 +388,7 @@ export const readConfigFromEnv = (
 		appEntrypoint: checkAppEntrypoint(entrypointValue)
 			? entrypointValue
 			: undefined,
-		aiType: checkAiType(aiTypeValue) ? aiTypeValue : undefined,
+		aiType,
 		telegramAllowedChatId: getEnv(
 			"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 			persistedValues,
@@ -168,11 +398,30 @@ export const readConfigFromEnv = (
 		blockedUserMessage:
 			getEnv("BLOCKED_USER_MESSAGE", persistedValues) ||
 			DEFAULT_BLOCKED_USER_MESSAGE,
+		maxContextWindowTokens,
+		contextReserveSummaryTokens,
+		contextReserveRecentTurnTokens,
+		contextReserveNextTurnTokens,
 		permissionsMode,
-		databaseUrl: getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
+		databaseUrl:
+			getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
+		enableVoiceMessages,
+		enablePdfDocuments,
+		enableSpreadsheets,
+		enableImageUnderstanding,
+		enableToolStatus,
+		enableAttachmentCompactionNotice,
+		defaultStatusLocale,
+		transcriptionProvider,
+		transcriptionApiKey,
+		transcriptionBaseUrl,
+		minimaxApiKey,
+		minimaxApiHost,
+		webHost: webHostRaw || DEFAULT_WEB_HOST,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
+		timezone: getEnv("TIMEZONE", persistedValues) || DEFAULT_TIMEZONE,
 	};
 };
 
@@ -184,6 +433,10 @@ export const findConfigIssues = (
 	const rawAiType = getEnv("AI_TYPE", persistedValues);
 	const rawUsingMode = getEnv("USING_MODE", persistedValues);
 	const rawEntrypoint = getEnv("APP_ENTRYPOINT", persistedValues);
+	const rawTranscriptionProvider = getEnv(
+		"TRANSCRIPTION_PROVIDER",
+		persistedValues,
+	);
 
 	if (rawAiType !== "" && !checkAiType(rawAiType)) {
 		issues.push({
@@ -206,6 +459,16 @@ export const findConfigIssues = (
 		});
 	}
 
+	if (
+		rawTranscriptionProvider !== "" &&
+		!checkTranscriptionProvider(rawTranscriptionProvider)
+	) {
+		issues.push({
+			field: "TRANSCRIPTION_PROVIDER",
+			reason: `Invalid TRANSCRIPTION_PROVIDER "${rawTranscriptionProvider}". Supported values: ${SUPPORTED_TRANSCRIPTION_PROVIDERS.join(", ")}`,
+		});
+	}
+
 	if (config.aiModelName === undefined || config.aiModelName === "") {
 		issues.push({
 			field: "AI_MODEL_NAME",
@@ -213,10 +476,16 @@ export const findConfigIssues = (
 		});
 	}
 
-	if (config.aiApiKey === undefined || config.aiApiKey === "") {
+	if (
+		isAiApiKeyRequired(config.aiType, config.aiBaseUrl) &&
+		(config.aiApiKey === undefined || config.aiApiKey === "")
+	) {
 		issues.push({
 			field: "AI_API_KEY",
-			reason: "AI_API_KEY is missing.",
+			reason:
+				config.aiType === "openrouter"
+					? "AI_API_KEY is required for AI_TYPE=openrouter."
+					: "AI_API_KEY is required unless AI_BASE_URL points to a local/custom endpoint.",
 		});
 	}
 
@@ -235,6 +504,44 @@ export const findConfigIssues = (
 	}
 
 	if (
+		config.appEntrypoint === "telegram" &&
+		config.enableVoiceMessages !== false &&
+		!canReusePrimaryAiCredentialsForTranscription(
+			config.aiType,
+			config.transcriptionProvider,
+		) &&
+		(config.transcriptionApiKey === undefined ||
+			config.transcriptionApiKey === "")
+	) {
+		issues.push({
+			field: "TRANSCRIPTION_API_KEY",
+			reason:
+				"TRANSCRIPTION_API_KEY is not set. Voice transcription will use NoOpTranscriber (transcription capability unavailable).",
+		});
+	}
+
+	if (
+		config.enableImageUnderstanding === true &&
+		(config.minimaxApiKey === undefined || config.minimaxApiKey === "")
+	) {
+		issues.push({
+			field: "MINIMAX_API_KEY",
+			reason:
+				"MINIMAX_API_KEY is required when ENABLE_IMAGE_UNDERSTANDING=true.",
+		});
+	}
+
+	if (
+		config.webHost !== undefined &&
+		config.webHost.trim() === ""
+	) {
+		issues.push({
+			field: "WEB_HOST",
+			reason: "WEB_HOST must not be empty.",
+		});
+	}
+
+	if (
 		config.webPort !== undefined &&
 		(!Number.isFinite(config.webPort) || config.webPort <= 0)
 	) {
@@ -249,6 +556,59 @@ export const findConfigIssues = (
 			field: "WEB_PUBLIC_BASE_URL",
 			reason: "WEB_PUBLIC_BASE_URL must not be empty.",
 		});
+	}
+
+	if (config.timezone !== undefined && !isValidTimezone(config.timezone)) {
+		issues.push({
+			field: "TIMEZONE",
+			reason:
+				'TIMEZONE must be a valid IANA timezone, for example "UTC" or "America/New_York".',
+		});
+	}
+
+	for (const field of [
+		"MAX_CONTEXT_WINDOW_TOKENS",
+		"CONTEXT_RESERVE_SUMMARY_TOKENS",
+		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
+		"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+	] as const) {
+		const rawValue = getEnv(field, persistedValues);
+		if (rawValue === "") {
+			continue;
+		}
+
+		if (Number.isNaN(parsePositiveInteger(rawValue))) {
+			issues.push({
+				field,
+				reason: `${field} must be a positive integer.`,
+			});
+		}
+	}
+
+	if (
+		config.maxContextWindowTokens !== undefined &&
+		config.contextReserveSummaryTokens !== undefined &&
+		config.contextReserveRecentTurnTokens !== undefined &&
+		config.contextReserveNextTurnTokens !== undefined
+	) {
+		const totalContextReserves =
+			config.contextReserveSummaryTokens +
+			config.contextReserveRecentTurnTokens +
+			config.contextReserveNextTurnTokens;
+		if (config.maxContextWindowTokens <= config.contextReserveNextTurnTokens) {
+			issues.push({
+				field: "MAX_CONTEXT_WINDOW_TOKENS",
+				reason:
+					"MAX_CONTEXT_WINDOW_TOKENS must be greater than CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
+			});
+		}
+		if (config.maxContextWindowTokens <= totalContextReserves) {
+			issues.push({
+				field: "MAX_CONTEXT_WINDOW_TOKENS",
+				reason:
+					"MAX_CONTEXT_WINDOW_TOKENS must be greater than the sum of CONTEXT_RESERVE_SUMMARY_TOKENS, CONTEXT_RESERVE_RECENT_TURN_TOKENS, and CONTEXT_RESERVE_NEXT_TURN_TOKENS.",
+			});
+		}
 	}
 
 	if (
@@ -476,22 +836,53 @@ Example: claude-3-5-sonnet or gpt-4.1> `,
 					(value) => (value === "" ? "AI_MODEL_NAME cannot be empty." : null),
 				);
 
+	const aiBaseUrl =
+		initialConfig.aiBaseUrl && initialConfig.aiBaseUrl !== ""
+			? initialConfig.aiBaseUrl
+			: promptOptionalValue(
+					promptUser,
+					`Step 4. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
+Press enter to use the provider default.> `,
+					"",
+				);
 	const aiApiKey =
 		initialConfig.aiApiKey && initialConfig.aiApiKey !== ""
 			? initialConfig.aiApiKey
-			: promptRequiredValue(
-					promptUser,
-					`Step 4. Enter AI_API_KEY for ${aiType}.
-This is the credential used to call the selected model provider.> `,
-					(value) => (value === "" ? "AI_API_KEY cannot be empty." : null),
-				);
-
-	const aiBaseUrl = promptOptionalValue(
-		promptUser,
-		`Step 5. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
-Press enter to use the provider default.> `,
-		initialConfig.aiBaseUrl ?? "",
-	);
+			: isAiApiKeyRequired(aiType, aiBaseUrl)
+				? promptRequiredValue(
+						promptUser,
+						`Step 5. Enter AI_API_KEY for ${aiType}.
+This is required for the selected provider settings.> `,
+						(value) => (value === "" ? "AI_API_KEY cannot be empty." : null),
+					)
+				: promptOptionalValue(
+						promptUser,
+						`Step 5. Enter AI_API_KEY for ${aiType} if your local/custom endpoint still expects one.
+Press enter to leave it empty.> `,
+						"",
+					);
+	const transcriptionProvider =
+		initialConfig.transcriptionProvider ??
+		defaultTranscriptionProviderForAiType(aiType);
+	const transcriptionApiKey =
+		initialConfig.transcriptionApiKey &&
+		initialConfig.transcriptionApiKey !== ""
+			? initialConfig.transcriptionApiKey
+			: canReusePrimaryAiCredentialsForTranscription(
+						aiType,
+						transcriptionProvider,
+					)
+				? aiApiKey
+				: appEntrypoint === "telegram" &&
+						(initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES)
+					? promptOptionalValue(
+							promptUser,
+							`Voice step. Enter TRANSCRIPTION_API_KEY for ${transcriptionProvider}.
+Press enter to skip (transcription will not be available).> `,
+							"",
+						)
+					: "";
+	const transcriptionBaseUrl = initialConfig.transcriptionBaseUrl ?? "";
 
 	const usingMode = await promptUsingMode(initialConfig, selectValue);
 
@@ -552,12 +943,46 @@ Press enter to allow any chat the bot is added to.> `,
 		usingMode,
 		blockedUserMessage:
 			initialConfig.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+		maxContextWindowTokens:
+			initialConfig.maxContextWindowTokens ?? DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+		contextReserveSummaryTokens:
+			initialConfig.contextReserveSummaryTokens ??
+			DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+		contextReserveRecentTurnTokens:
+			initialConfig.contextReserveRecentTurnTokens ??
+			DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+		contextReserveNextTurnTokens:
+			initialConfig.contextReserveNextTurnTokens ??
+			DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
 		permissionsMode: initialConfig.permissionsMode ?? "enforce",
 		databaseUrl: initialConfig.databaseUrl ?? DEFAULT_DATABASE_URL,
 		enableExecute: initialConfig.enableExecute ?? true,
+		enableVoiceMessages:
+			initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
+		enablePdfDocuments:
+			initialConfig.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
+		enableSpreadsheets:
+			initialConfig.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
+		enableImageUnderstanding:
+			initialConfig.enableImageUnderstanding ??
+			DEFAULT_ENABLE_IMAGE_UNDERSTANDING,
+		enableToolStatus:
+			initialConfig.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
+		enableAttachmentCompactionNotice:
+			initialConfig.enableAttachmentCompactionNotice ??
+			DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
+		defaultStatusLocale:
+			initialConfig.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
+		transcriptionProvider,
+		transcriptionApiKey,
+		transcriptionBaseUrl,
+		minimaxApiKey: initialConfig.minimaxApiKey ?? "",
+		minimaxApiHost: initialConfig.minimaxApiHost || DEFAULT_MINIMAX_API_HOST,
+		webHost: initialConfig.webHost || DEFAULT_WEB_HOST,
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
+		timezone: initialConfig.timezone ?? DEFAULT_TIMEZONE,
 	};
 };
 
@@ -580,8 +1005,52 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.appEntrypoint)}`;
 		case "BLOCKED_USER_MESSAGE":
 			return `${key}=${escapeEnvValue(config.blockedUserMessage)}`;
+		case "CONTEXT_RESERVE_NEXT_TURN_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveNextTurnTokens),
+			)}`;
+		case "CONTEXT_RESERVE_RECENT_TURN_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveRecentTurnTokens),
+			)}`;
+		case "CONTEXT_RESERVE_SUMMARY_TOKENS":
+			return `${key}=${escapeEnvValue(
+				String(config.contextReserveSummaryTokens),
+			)}`;
 		case "ENABLE_EXECUTE":
 			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
+		case "ENABLE_IMAGE_UNDERSTANDING":
+			return `${key}=${escapeEnvValue(
+				config.enableImageUnderstanding ? "true" : "false",
+			)}`;
+		case "ENABLE_PDF_DOCUMENTS":
+			return `${key}=${escapeEnvValue(
+				config.enablePdfDocuments ? "true" : "false",
+			)}`;
+		case "ENABLE_SPREADSHEETS":
+			return `${key}=${escapeEnvValue(
+				config.enableSpreadsheets ? "true" : "false",
+			)}`;
+		case "ENABLE_ATTACHMENT_COMPACTION_NOTICE":
+			return `${key}=${escapeEnvValue(
+				config.enableAttachmentCompactionNotice ? "true" : "false",
+			)}`;
+		case "ENABLE_TOOL_STATUS":
+			return `${key}=${escapeEnvValue(
+				config.enableToolStatus ? "true" : "false",
+			)}`;
+		case "DEFAULT_STATUS_LOCALE":
+			return `${key}=${escapeEnvValue(config.defaultStatusLocale)}`;
+		case "ENABLE_VOICE_MESSAGES":
+			return `${key}=${escapeEnvValue(
+				config.enableVoiceMessages ? "true" : "false",
+			)}`;
+		case "MAX_CONTEXT_WINDOW_TOKENS":
+			return `${key}=${escapeEnvValue(String(config.maxContextWindowTokens))}`;
+		case "MINIMAX_API_HOST":
+			return `${key}=${escapeEnvValue(config.minimaxApiHost)}`;
+		case "MINIMAX_API_KEY":
+			return `${key}=${escapeEnvValue(config.minimaxApiKey)}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "DATABASE_URL":
@@ -590,8 +1059,18 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "TIMEZONE":
+			return `${key}=${escapeEnvValue(config.timezone)}`;
+		case "TRANSCRIPTION_API_KEY":
+			return `${key}=${escapeEnvValue(config.transcriptionApiKey)}`;
+		case "TRANSCRIPTION_BASE_URL":
+			return `${key}=${escapeEnvValue(config.transcriptionBaseUrl)}`;
+		case "TRANSCRIPTION_PROVIDER":
+			return `${key}=${escapeEnvValue(config.transcriptionProvider)}`;
 		case "USING_MODE":
 			return `${key}=${escapeEnvValue(config.usingMode)}`;
+		case "WEB_HOST":
+			return `${key}=${escapeEnvValue(config.webHost)}`;
 		case "WEB_PORT":
 			return `${key}=${escapeEnvValue(String(config.webPort))}`;
 		case "WEB_PUBLIC_BASE_URL":
@@ -629,9 +1108,7 @@ const readPersistedEnvFile = (
 	const persistedValues: PersistedEnvValues = {};
 	const envContent = readFileSync(envFilePath, "utf8");
 	for (const line of envContent.replace(/\r\n/g, "\n").split("\n")) {
-		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=(.*)$/u,
-		);
+		const match = line.match(PERSISTED_ENV_ASSIGNMENT_REGEX);
 		if (!match) {
 			continue;
 		}
@@ -659,9 +1136,7 @@ const persistConfigToEnvFile = (
 			: existingContent.replace(/\r\n/g, "\n").split("\n");
 	const seenKeys = new Set<(typeof PERSISTED_ENV_KEYS)[number]>();
 	const updatedLines = existingLines.map((line) => {
-		const match = line.match(
-			/^(AI_API_KEY|AI_BASE_URL|AI_MODEL_NAME|AI_TYPE|APP_ENTRYPOINT|BLOCKED_USER_MESSAGE|ENABLE_EXECUTE|PERMISSIONS_MODE|DATABASE_URL|TELEGRAM_BOT_ALLOWED_CHAT_ID|TELEGRAM_BOT_TOKEN|USING_MODE|WEB_PORT|WEB_PUBLIC_BASE_URL)=/,
-		);
+		const match = line.match(PERSISTED_ENV_LINE_REGEX);
 		if (!match) {
 			return line;
 		}
@@ -715,11 +1190,44 @@ export const resolveConfig = async (
 			usingMode: config.usingMode ?? DEFAULT_USING_MODE,
 			blockedUserMessage:
 				config.blockedUserMessage ?? DEFAULT_BLOCKED_USER_MESSAGE,
+			maxContextWindowTokens:
+				config.maxContextWindowTokens ?? DEFAULT_MAX_CONTEXT_WINDOW_TOKENS,
+			contextReserveSummaryTokens:
+				config.contextReserveSummaryTokens ??
+				DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS,
+			contextReserveRecentTurnTokens:
+				config.contextReserveRecentTurnTokens ??
+				DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS,
+			contextReserveNextTurnTokens:
+				config.contextReserveNextTurnTokens ??
+				DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
 			permissionsMode: config.permissionsMode ?? "enforce",
 			databaseUrl: config.databaseUrl ?? DEFAULT_DATABASE_URL,
 			enableExecute: config.enableExecute ?? true,
+			enableVoiceMessages:
+				config.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
+			enablePdfDocuments:
+				config.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
+			enableSpreadsheets:
+				config.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
+			enableImageUnderstanding:
+				config.enableImageUnderstanding ?? DEFAULT_ENABLE_IMAGE_UNDERSTANDING,
+			enableToolStatus: config.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
+			enableAttachmentCompactionNotice:
+				config.enableAttachmentCompactionNotice ??
+				DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
+			defaultStatusLocale: config.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
+			transcriptionProvider:
+				config.transcriptionProvider ??
+				defaultTranscriptionProviderForAiType(config.aiType),
+			transcriptionApiKey: config.transcriptionApiKey ?? "",
+			transcriptionBaseUrl: config.transcriptionBaseUrl ?? "",
+			minimaxApiKey: config.minimaxApiKey ?? "",
+			minimaxApiHost: config.minimaxApiHost || DEFAULT_MINIMAX_API_HOST,
+			webHost: config.webHost || DEFAULT_WEB_HOST,
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
+			timezone: config.timezone ?? DEFAULT_TIMEZONE,
 		};
 		return resolvedConfig;
 	}

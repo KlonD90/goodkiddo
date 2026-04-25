@@ -115,7 +115,11 @@ export async function maybeHandleCommand(
 		}
 
 		if (command === "ask") {
-			const removed = await store.deleteMatchingRules(caller.id, toolName, matcher);
+			const removed = await store.deleteMatchingRules(
+				caller.id,
+				toolName,
+				matcher,
+			);
 			return {
 				handled: true,
 				reply: `Removed ${removed} matching rule(s). '${toolName}' now follows the default policy.`,

@@ -1,0 +1,717 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Good Kiddo — Your AI Assistant in Telegram</title>
+        <link rel="icon" type="image/png" href="src/img/icon.png" />
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+        <link
+            href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=DM+Mono:wght@400;500&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+            rel="stylesheet"
+        />
+        <link rel="stylesheet" href="src/css/styles.css" />
+    </head>
+    <body>
+        <!-- Nav -->
+        <nav id="nav">
+            <div class="container nav-inner">
+                <a href="#" class="logo"> 🐶 Good Kiddo </a>
+                <ul class="nav-links">
+                    <li><a href="#proactivity">Personas</a></li>
+                    <li><a href="#features">Features</a></li>
+                    <li><a href="#pricing">Pricing</a></li>
+                    <li>
+                        <a
+                            href="#start"
+                            class="btn btn-primary"
+                            style="padding: 10px 22px; font-size: 0.85rem"
+                            >Start Free</a
+                        >
+                    </li>
+                </ul>
+            </div>
+        </nav>
+
+        <!-- Hero -->
+        <section class="hero">
+            <div class="container">
+                <div class="hero-grid">
+                    <div class="hero-content">
+                        <div class="hero-badge">
+                            <span class="hero-badge-dot"></span>
+                            Works inside Telegram — no app to install
+                        </div>
+                        <h1>
+                            Your office AI<br />assistant that<br /><em
+                                >just works.</em
+                            >
+                        </h1>
+                        <p class="hero-desc">
+                            Good Kiddo drafts your emails, researches on
+                            command, and remembers everything — right inside
+                            Telegram. No setup, no learning curve.
+                        </p>
+                        <div class="hero-actions">
+                            <a href="#start" class="btn btn-telegram">
+                                <svg viewBox="0 0 24 24" fill="currentColor">
+                                    <path
+                                        d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"
+                                    />
+                                </svg>
+                                Open in Telegram
+                            </a>
+                            <a href="#proactivity" class="btn btn-ghost"
+                                >Choose your assistant</a
+                            >
+                        </div>
+                        <div class="hero-meta">
+                            <div class="hero-meta-item">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                No installation
+                            </div>
+                            <div class="hero-meta-item">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                Works in 0 seconds
+                            </div>
+                            <div class="hero-meta-item">
+                                <svg
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    stroke-width="2.5"
+                                >
+                                    <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                                Free to start
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="hero-visual">
+                        <div class="phone-mockup">
+                            <div class="phone-screen">
+                                <div class="phone-header">
+                                    <div class="phone-avatar">🧒</div>
+                                    <div>
+                                        <div class="phone-name">Good Kiddo</div>
+                                        <div class="phone-status">● Online</div>
+                                    </div>
+                                </div>
+                                <div class="phone-chat">
+                                    <div class="msg msg-user">
+                                        Draft a follow-up email to the client
+                                        about the Q3 report we discussed
+                                        yesterday
+                                    </div>
+                                    <div class="msg msg-bot">
+                                        Done! Here's a professional follow-up
+                                        referencing the key points from your
+                                        conversation. I also pulled the latest
+                                        Q3 numbers from your shared docs. Want
+                                        me to adjust the tone?
+                                    </div>
+                                    <div class="msg msg-user">
+                                        Make it warmer, less formal
+                                    </div>
+                                    <div class="msg msg-bot">
+                                        Updated. I also noticed the client's
+                                        birthday is next Tuesday — want me to
+                                        add a personal note?
+                                    </div>
+                                    <div class="msg msg-user">
+                                        That's exactly why I keep you around
+                                    </div>
+                                    <div class="typing-indicator">
+                                        <div class="typing-dot"></div>
+                                        <div class="typing-dot"></div>
+                                        <div class="typing-dot"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="float-card float-card-1">
+                            <div class="float-icon float-icon-blue">📧</div>
+                            <div class="float-text">
+                                <strong>Email drafted</strong>
+                                <span>Ready to send</span>
+                            </div>
+                        </div>
+
+                        <div class="float-card float-card-2">
+                            <div class="float-icon float-icon-orange">📊</div>
+                            <div class="float-text">
+                                <strong>Research complete</strong>
+                                <span>3 sources cited</span>
+                            </div>
+                        </div>
+
+                        <div class="float-card float-card-3">
+                            <div class="float-icon float-icon-green">🧠</div>
+                            <div class="float-text">
+                                <strong>Reminder set</strong>
+                                <span>Client birthday Tue</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Integrations Marquee -->
+        <section class="integrations">
+            <div class="container">
+                <div class="section-header reveal">
+                    <div class="section-label">Integrations</div>
+                    <h2 class="section-title" style="text-align: center">
+                        Plugs into the tools you already use.
+                    </h2>
+                    <p class="section-desc">
+                        Good Kiddo works with your existing workflow —
+                        documents, emails, spreadsheets, and more. Just connect
+                        and go.
+                    </p>
+                </div>
+            </div>
+
+            <div class="marquee-wrapper">
+                <div class="marquee-track">
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(232, 57, 42, 0.1)"
+                        >
+                            📄
+                        </div>
+                        <span class="chip-label">PDF</span>
+                        <span class="chip-desc">Read, summarize, extract</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(66, 133, 244, 0.1)"
+                        >
+                            📧
+                        </div>
+                        <span class="chip-label">Email</span>
+                        <span class="chip-desc">Draft, reply, summarize</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(74, 21, 75, 0.1)"
+                        >
+                            💬
+                        </div>
+                        <span class="chip-label">Slack</span>
+                        <span class="chip-desc">Draft messages, search</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(34, 197, 94, 0.1)"
+                        >
+                            📊
+                        </div>
+                        <span class="chip-label">Spreadsheets</span>
+                        <span class="chip-desc">Analyze, format, explain</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(66, 133, 244, 0.1)"
+                        >
+                            📝
+                        </div>
+                        <span class="chip-label">Google Docs</span>
+                        <span class="chip-desc">Draft, edit, review</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(232, 93, 42, 0.1)"
+                        >
+                            🌐
+                        </div>
+                        <span class="chip-label">Chrome</span>
+                        <span class="chip-desc">Research, summarize pages</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(42, 171, 238, 0.1)"
+                        >
+                            💬
+                        </div>
+                        <span class="chip-label">Telegram</span>
+                        <span class="chip-desc">Draft, reply, schedule</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(37, 211, 102, 0.1)"
+                        >
+                            📱
+                        </div>
+                        <span class="chip-label">WhatsApp</span>
+                        <span class="chip-desc">Draft, reply</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(0, 120, 212, 0.1)"
+                        >
+                            📎
+                        </div>
+                        <span class="chip-label">Word</span>
+                        <span class="chip-desc">Draft, format, review</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(255, 152, 0, 0.1)"
+                        >
+                            📅
+                        </div>
+                        <span class="chip-label">Calendar</span>
+                        <span class="chip-desc">Schedule, remind</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(232, 57, 42, 0.1)"
+                        >
+                            📄
+                        </div>
+                        <span class="chip-label">PDF</span>
+                        <span class="chip-desc">Read, summarize, extract</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(66, 133, 244, 0.1)"
+                        >
+                            📧
+                        </div>
+                        <span class="chip-label">Email</span>
+                        <span class="chip-desc">Draft, reply, summarize</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(74, 21, 75, 0.1)"
+                        >
+                            💬
+                        </div>
+                        <span class="chip-label">Slack</span>
+                        <span class="chip-desc">Draft messages, search</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(34, 197, 94, 0.1)"
+                        >
+                            📊
+                        </div>
+                        <span class="chip-label">Spreadsheets</span>
+                        <span class="chip-desc">Analyze, format, explain</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(66, 133, 244, 0.1)"
+                        >
+                            📝
+                        </div>
+                        <span class="chip-label">Google Docs</span>
+                        <span class="chip-desc">Draft, edit, review</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(232, 93, 42, 0.1)"
+                        >
+                            🌐
+                        </div>
+                        <span class="chip-label">Chrome</span>
+                        <span class="chip-desc">Research, summarize pages</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(42, 171, 238, 0.1)"
+                        >
+                            💬
+                        </div>
+                        <span class="chip-label">Telegram</span>
+                        <span class="chip-desc">Draft, reply, schedule</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(37, 211, 102, 0.1)"
+                        >
+                            📱
+                        </div>
+                        <span class="chip-label">WhatsApp</span>
+                        <span class="chip-desc">Draft, reply</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(0, 120, 212, 0.1)"
+                        >
+                            📎
+                        </div>
+                        <span class="chip-label">Word</span>
+                        <span class="chip-desc">Draft, format, review</span>
+                    </div>
+                    <div class="integration-chip">
+                        <div
+                            class="chip-icon"
+                            style="background: rgba(255, 152, 0, 0.1)"
+                        >
+                            📅
+                        </div>
+                        <span class="chip-label">Calendar</span>
+                        <span class="chip-desc">Schedule, remind</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Proactivity Levels -->
+        <section class="proactivity" id="proactivity">
+            <div class="container">
+                <div class="reveal">
+                    <div class="section-label">Proactivity personas</div>
+                    <h2 class="section-title">
+                        You choose how much<br />Good Kiddo takes initiative.
+                    </h2>
+                    <p class="section-desc">
+                        Not everyone wants the same level of AI independence.
+                        Pick the persona that fits your style — from "wait for
+                        me" to "handle it before I ask."
+                    </p>
+                </div>
+                <div class="proactivity-grid">
+                    <div class="pro-level pro-level-1 reveal">
+                        <div class="pro-level-icon">🎯</div>
+                        <h3>Listener</h3>
+                        <div class="pro-level-sub">WAIT FOR COMMAND</div>
+                        <p>
+                            Good Kiddo waits until you ask. No unsolicited
+                            messages, no suggestions. Pure on-demand assistant —
+                            you ask, it delivers.
+                        </p>
+                        <div class="pro-level-plan">
+                            Available on <strong>all plans</strong>
+                        </div>
+                    </div>
+                    <div class="pro-level pro-level-2 reveal">
+                        <div class="pro-level-icon">💡</div>
+                        <h3>Advisor</h3>
+                        <div class="pro-level-sub">PROPOSE & SUGGEST</div>
+                        <p>
+                            Good Kiddo notices patterns and proposes actions.
+                            "Want me to draft a follow-up?" "Should I remind you
+                            about this?" You decide what happens.
+                        </p>
+                        <div class="pro-level-plan">
+                            Available on <strong>Pro ($10/mo)</strong> and above
+                        </div>
+                    </div>
+                    <div class="pro-level pro-level-3 gold reveal">
+                        <div class="pro-level-badge">GOOD KIDDO PLAN ONLY</div>
+                        <div class="pro-level-icon">🚀</div>
+                        <h3>Operator</h3>
+                        <div class="pro-level-sub">ACT ON YOUR BEHALF</div>
+                        <p>
+                            Good Kiddo drafts emails, prepares documents,
+                            organizes research — all before you ask. Everything
+                            is ready for your review. You just approve or
+                            adjust.
+                        </p>
+                        <div class="pro-level-plan">
+                            Available on
+                            <strong>Good Kiddo ($100/mo)</strong> only
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Features -->
+        <section id="features">
+            <div class="container">
+                <div class="reveal">
+                    <div class="section-label">What makes it different</div>
+                    <h2 class="section-title">Not just another chatbot.</h2>
+                </div>
+                <div class="features-grid">
+                    <div class="feature reveal">
+                        <div class="feature-icon">🧠</div>
+                        <h3>Persistent Memory</h3>
+                        <p>
+                            Good Kiddo remembers your clients, your projects,
+                            your deadlines, and your preferences. It connects
+                            the dots so you don't have to repeat yourself.
+                        </p>
+                    </div>
+                    <div class="feature reveal">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Proactive Nudges & Routines</h3>
+                        <p>
+                            Set up daily or weekly routines — morning briefings,
+                            end-of-week summaries, follow-up reminders. Good
+                            Kiddo runs them automatically so you never miss a
+                            beat.
+                        </p>
+                    </div>
+                    <div class="feature reveal">
+                        <div class="feature-icon">✍️</div>
+                        <h3>Smart Drafting</h3>
+                        <p>
+                            Emails, Slack messages, reports, proposals — tell
+                            Good Kiddo what you need in plain language and get a
+                            polished draft in seconds. It matches your tone
+                            automatically.
+                        </p>
+                    </div>
+                    <div class="feature reveal">
+                        <div class="feature-icon">🔍</div>
+                        <h3>On-Demand Research</h3>
+                        <p>
+                            Need competitor analysis? Market data? A summary of
+                            a 40-page PDF? Just ask. Good Kiddo pulls
+                            information and delivers it clean.
+                        </p>
+                    </div>
+                    <div class="feature reveal">
+                        <div class="feature-icon">📊</div>
+                        <h3>Financial Context</h3>
+                        <p>
+                            Built for finance professionals. It understands
+                            reports, invoices, compliance language, and industry
+                            terminology — no prompting required.
+                        </p>
+                    </div>
+                    <div class="feature reveal">
+                        <div class="feature-icon">🔄</div>
+                        <h3>Self-Improving Tasks</h3>
+                        <p>
+                            On the Good Kiddo plan, after completing each task
+                            it reflects on how to do it better next time. Your
+                            assistant gets smarter with every interaction.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Pricing -->
+        <section class="pricing-section" id="pricing">
+            <div class="container">
+                <div class="reveal">
+                    <div class="section-label">Pricing</div>
+                    <h2 class="section-title">
+                        Start free.<br />Grow when ready.
+                    </h2>
+                    <p class="section-desc">
+                        No credit card to begin. Three plans that scale with how
+                        much help you need.
+                    </p>
+                </div>
+                <div class="pricing-cards">
+                    <!-- Free -->
+                    <div class="pricing-card reveal">
+                        <div class="pricing-name">Free</div>
+                        <div class="pricing-price">$0<span>/mo</span></div>
+                        <div class="pricing-desc">
+                            Try it out, no commitment
+                        </div>
+                        <div class="proactivity-badge">
+                            <div class="proactivity-dots">
+                                <div class="proactivity-dot active"></div>
+                                <div class="proactivity-dot"></div>
+                                <div class="proactivity-dot"></div>
+                            </div>
+                            Listener only
+                        </div>
+                        <div class="task-breakdown">
+                            <div class="task-type">
+                                <div class="task-type-label">Small tasks</div>
+                                <div class="task-type-value">10</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                            <div class="task-type">
+                                <div class="task-type-label">Heavy tasks</div>
+                                <div class="task-type-value">1</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                        </div>
+                        <ul class="pricing-features">
+                            <li>Email & message drafting</li>
+                            <li>Basic research</li>
+                            <li>7-day memory</li>
+                            <li>1 routine / nudge</li>
+                            <li>Telegram access</li>
+                        </ul>
+                        <a href="#start" class="btn btn-ghost">Start Free</a>
+                    </div>
+
+                    <!-- Pro -->
+                    <div class="pricing-card featured reveal">
+                        <div class="pricing-badge">Most Popular</div>
+                        <div class="pricing-name">Pro</div>
+                        <div class="pricing-price">$10<span>/mo</span></div>
+                        <div class="pricing-desc">For daily power users</div>
+                        <div class="proactivity-badge">
+                            <div class="proactivity-dots">
+                                <div class="proactivity-dot active"></div>
+                                <div class="proactivity-dot active"></div>
+                                <div class="proactivity-dot"></div>
+                            </div>
+                            Listener + Advisor
+                        </div>
+                        <div class="task-breakdown">
+                            <div class="task-type">
+                                <div class="task-type-label">Small tasks</div>
+                                <div class="task-type-value">100</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                            <div class="task-type">
+                                <div class="task-type-label">Heavy tasks</div>
+                                <div class="task-type-value">10</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                        </div>
+                        <ul class="pricing-features">
+                            <li>Advanced drafting & research</li>
+                            <li>Document analysis</li>
+                            <li>Unlimited memory</li>
+                            <li>Unlimited routines & nudges</li>
+                            <li>Advisor persona — proposes actions</li>
+                            <li>Priority support</li>
+                        </ul>
+                        <a href="#start" class="btn btn-primary"
+                            >Start Free Trial</a
+                        >
+                    </div>
+
+                    <!-- Good Kiddo -->
+                    <div class="pricing-card gold-card reveal">
+                        <div class="pricing-badge">Full Power</div>
+                        <div class="pricing-name">
+                            <span class="gold-icon">✨</span> Good Kiddo
+                        </div>
+                        <div class="pricing-price">$100<span>/mo</span></div>
+                        <div class="pricing-desc">Your proactive assitant</div>
+                        <div class="proactivity-badge gold-badge">
+                            <div class="proactivity-dots">
+                                <div class="proactivity-dot active-gold"></div>
+                                <div class="proactivity-dot active-gold"></div>
+                                <div class="proactivity-dot active-gold"></div>
+                            </div>
+                            Listener + Advisor + Operator
+                        </div>
+                        <div class="task-breakdown">
+                            <div class="task-type">
+                                <div class="task-type-label">Small tasks</div>
+                                <div class="task-type-value">200</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                            <div class="task-type">
+                                <div class="task-type-label">Heavy tasks</div>
+                                <div class="task-type-value">20</div>
+                                <div class="task-type-unit">per day</div>
+                            </div>
+                        </div>
+                        <ul class="pricing-features">
+                            <li>Operator persona — drafts on its own</li>
+                            <li>Self-improving after every task</li>
+                            <li>2x task limits (200 small / 20 heavy)</li>
+                            <li>Unlimited routines & nudges</li>
+                            <li>Custom integrations</li>
+                            <li>Dedicated support</li>
+                        </ul>
+                        <a href="#start" class="btn btn-gold">Get Good Kiddo</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Final CTA -->
+        <section class="final-cta" id="start">
+            <div class="container reveal">
+                <div class="section-label">Get started</div>
+                <h2 class="section-title">
+                    Your new assistant is<br />one message away.
+                </h2>
+                <p class="section-desc">
+                    Open Telegram, start the conversation, and feel the
+                    difference in seconds. No credit card needed.
+                </p>
+                <div class="cta-buttons">
+                    <a
+                        href="#"
+                        class="btn btn-telegram"
+                        style="font-size: 1rem; padding: 18px 36px"
+                    >
+                        <svg
+                            viewBox="0 0 24 24"
+                            fill="currentColor"
+                            width="22"
+                            height="22"
+                        >
+                            <path
+                                d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"
+                            />
+                        </svg>
+                        Start with Telegram
+                    </a>
+                    <a
+                        href="#pricing"
+                        class="btn btn-ghost"
+                        style="font-size: 1rem; padding: 18px 36px"
+                        >Compare Plans</a
+                    >
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer>
+            <div class="container footer-inner">
+                <div class="footer-left">
+                    &copy; 2026 Good Kiddo. Made with care for busy
+                    professionals.
+                </div>
+                <ul class="footer-links">
+                    <li><a href="#">Privacy</a></li>
+                    <li><a href="#">Terms</a></li>
+                    <li><a href="#">Support</a></li>
+                    <li><a href="#">Twitter</a></li>
+                </ul>
+            </div>
+        </footer>
+
+        <script src="src/js/main.js"></script>
+    </body>
+</html>

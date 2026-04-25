@@ -1,6 +1,18 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test, vi } from "bun:test";
+import type { Bot } from "grammy";
+import { NoOpPdfExtractor } from "../capabilities/pdf/extractor";
+import { NoOpSpreadsheetParser } from "../capabilities/spreadsheet/parser";
+import {
+	type SchedulerOptions,
+	startScheduler,
+} from "../capabilities/timers/scheduler";
+import type { TimerRecord } from "../capabilities/timers/store";
+import { TimerStore } from "../capabilities/timers/store";
+import { NoOpTranscriber } from "../capabilities/voice/transcriber";
+import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
+import { createStatusEmitter } from "../tools/status_emitter";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
@@ -10,10 +22,15 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
+	maybeHandleTelegramStartCommand,
 	mergeTelegramStreamText,
+	renderTelegramWelcomeMessage,
 	renderTelegramCaptionHtml,
 	renderTelegramHtml,
+	TELEGRAM_COMMANDS,
+	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
@@ -454,22 +471,6 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		).toBe("");
 	});
 
-	test("getTelegramCaller returns null for unknown or suspended users", async () => {
-		const db = new Bun.SQL("sqlite://:memory:");
-		store = new PermissionsStore({ db, dialect: "sqlite" });
-		expect(await getTelegramCaller(store, "123")).toBeNull();
-
-		const user = await store.upsertUser({
-			entrypoint: "telegram",
-			externalId: "123",
-			displayName: "Chat 123",
-		});
-		await store.setUserStatus(user.id, "suspended");
-
-		expect(await getTelegramCaller(store, "123")).toBeNull();
-		await db.close();
-	});
-
 	test("getTelegramCaller returns an active telegram caller", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		store = new PermissionsStore({ db, dialect: "sqlite" });
@@ -488,6 +489,23 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		await db.close();
 	});
 
+	test("getTelegramCaller returns null for unknown or suspended users", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		store = new PermissionsStore({ db, dialect: "sqlite" });
+		expect(await getTelegramCaller(store, "123")).toBeNull();
+		expect(await store.listUsers()).toEqual([]);
+
+		const user = await store.upsertUser({
+			entrypoint: "telegram",
+			externalId: "123",
+			displayName: "Chat 123",
+		});
+		await store.setUserStatus(user.id, "suspended");
+
+		expect(await getTelegramCaller(store, "123")).toBeNull();
+		await db.close();
+	});
+
 	test("maybeHandleTelegramApprovalReply resolves known approval responses", async () => {
 		const outcomes: ApprovalOutcome[] = [];
 		const session = {
@@ -498,6 +516,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -539,6 +560,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map(),
 		};
 
@@ -559,8 +583,74 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 	test("formatUnknownTelegramCommandReply lists supported commands", () => {
 		const reply = formatUnknownTelegramCommandReply("stale");
 		expect(reply).toContain("Unknown command: /stale");
+		expect(reply).toContain("/start");
 		expect(reply).toContain("/help");
 		expect(reply).toContain("/new_thread");
+	});
+
+	test("TELEGRAM_COMMANDS registers /start for the command menu", () => {
+		expect(TELEGRAM_COMMANDS).toContainEqual({
+			command: "start",
+			description: "Show how to start using the assistant",
+		});
+	});
+
+	test("renderTelegramWelcomeMessage explains how to start", () => {
+		const message = renderTelegramWelcomeMessage();
+
+		expect(message).toContain("normal request");
+		expect(message).toContain("supported files");
+		expect(message).toContain("/identity");
+		expect(message).toContain("/new_thread");
+	});
+
+	test("isTelegramStartCommand normalizes Telegram bot command variants", () => {
+		expect(isTelegramStartCommand("/start")).toBe(true);
+		expect(isTelegramStartCommand("/start@klondikbot")).toBe(true);
+		expect(isTelegramStartCommand("/start@klondikbot extra")).toBe(true);
+		expect(isTelegramStartCommand("/help")).toBe(false);
+		expect(isTelegramStartCommand("start")).toBe(false);
+	});
+
+	test("maybeHandleTelegramStartCommand sends welcome directly", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+
+		const handled = await maybeHandleTelegramStartCommand(
+			mockBot,
+			"123",
+			"/start",
+		);
+
+		expect(handled).toBe(true);
+		expect(sentMessages).toHaveLength(1);
+		expect(sentMessages[0]?.chatId).toBe("123");
+		expect(sentMessages[0]?.text).toContain("normal request");
+	});
+
+	test("maybeHandleTelegramStartCommand ignores other text", async () => {
+		const mockBot = {
+			api: {
+				sendMessage: vi.fn(),
+			},
+		} as unknown as Bot;
+
+		const handled = await maybeHandleTelegramStartCommand(
+			mockBot,
+			"123",
+			"/help",
+		);
+
+		expect(handled).toBe(false);
+		expect(mockBot.api.sendMessage).not.toHaveBeenCalled();
 	});
 
 	test("callback payload parsing preserves prompt ids containing colons", () => {
@@ -585,6 +675,9 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			workspace: {} as never,
 			model: {} as never,
 			refreshAgent: async () => {},
+			transcriber: new NoOpTranscriber(),
+			pdfExtractor: new NoOpPdfExtractor(),
+			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map([
 				[
 					"prompt-1",
@@ -642,5 +735,390 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(outcomes).toEqual([]);
 		expect(session.pendingApprovals.has("prompt-1")).toBe(true);
 		expect(session.pendingApprovals.has("prompt-2")).toBe(true);
+	});
+
+	describe("timer tools integration", () => {
+		interface AsyncMockFn {
+			(...args: unknown[]): Promise<unknown>;
+			_calls: unknown[][];
+			mockResolvedValue(value: unknown): void;
+			mockRejectedValue(error: Error): void;
+		}
+
+		function createAsyncMockFn(): AsyncMockFn {
+			const calls: unknown[][] = [];
+			let resolved = true;
+			let mockValue: unknown;
+			const mockFn = ((...args: unknown[]) => {
+				calls.push(args);
+				if (resolved) {
+					return Promise.resolve(mockValue);
+				} else {
+					return Promise.reject(mockValue);
+				}
+			}) as AsyncMockFn;
+			mockFn._calls = calls;
+			mockFn.mockResolvedValue = (value: unknown) => {
+				resolved = true;
+				mockValue = value;
+			};
+			mockFn.mockRejectedValue = (error: Error) => {
+				resolved = false;
+				mockValue = error;
+			};
+			return mockFn;
+		}
+
+		type MockTimerStore = {
+			[K in keyof TimerStore]: AsyncMockFn;
+		};
+
+		function createMockTimerStore(): MockTimerStore {
+			const mockStore = {
+				create: createAsyncMockFn(),
+				findByUser: createAsyncMockFn(),
+				getById: createAsyncMockFn(),
+				update: createAsyncMockFn(),
+				delete: createAsyncMockFn(),
+				touchRun: createAsyncMockFn(),
+				touchError: createAsyncMockFn(),
+				findDue: createAsyncMockFn(),
+				ready: createAsyncMockFn(),
+				close: createAsyncMockFn(),
+			} as MockTimerStore;
+			mockStore.ready.mockResolvedValue(undefined);
+			return mockStore;
+		}
+
+		function createTimer(overrides: Partial<TimerRecord> = {}): TimerRecord {
+			return {
+				id: "timer-1",
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				kind: "always",
+				message: null,
+				timezone: "UTC",
+				enabled: true,
+				lastRunAt: null,
+				lastError: null,
+				consecutiveFailures: 0,
+				nextRunAt: 1000,
+				createdAt: 100,
+				...overrides,
+			};
+		}
+
+		test("timer fires → reads md file → LLM executes → result sent to correct chat", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer({
+				chatId: "telegram:123",
+				mdFilePath: "daily-news.md",
+			});
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockResolvedValue("What is the news today?");
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockResolvedValue(undefined);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(
+				mockTimerStore as unknown as TimerStore,
+				{
+					intervalMs: 10_000_000,
+					readMdFile: mockReadMdFile as (
+						timer: Parameters<SchedulerOptions["readMdFile"]>[0],
+						path: string,
+					) => Promise<string>,
+					onTick: mockOnTick as (
+						timer: TimerRecord,
+						promptText: string,
+					) => Promise<void>,
+					notifyUser: mockNotifyUser as (
+						userId: string,
+						message: string,
+					) => Promise<void>,
+				},
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockReadMdFile._calls).toEqual([[timer, "daily-news.md"]]);
+			expect(mockOnTick._calls).toEqual([[timer, "What is the news today?"]]);
+
+			scheduler.stop();
+		});
+
+		test("timer creation via agent tool call → timer stored in DB with correct fields", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const timers = await timerStore.findByUser("telegram:123");
+			expect(timers).toHaveLength(1);
+			expect(timers[0]?.mdFilePath).toBe("test.md");
+			expect(timers[0]?.cronExpression).toBe("0 10 * * *");
+			expect(timers[0]?.timezone).toBe("UTC");
+
+			await db.close();
+		});
+
+		test("update timer via agent tool call → cron and next_run_at updated in DB", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			await timerStore.update(timer.id, "telegram:123", {
+				cronExpression: "0 14 * * *",
+			});
+
+			const updated = await timerStore.getById(timer.id);
+			expect(updated?.cronExpression).toBe("0 14 * * *");
+
+			await db.close();
+		});
+
+		test("delete timer via agent tool call → timer removed from DB", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const deleted = await timerStore.delete(timer.id, "telegram:123");
+			expect(deleted).toBe(true);
+
+			const found = await timerStore.getById(timer.id);
+			expect(found).toBeNull();
+
+			await db.close();
+		});
+
+		test("delete non-owned timer → rejected with error", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timer = await timerStore.create({
+				userId: "telegram:123",
+				chatId: "telegram:123",
+				mdFilePath: "test.md",
+				cronExpression: "0 10 * * *",
+				timezone: "UTC",
+				nextRunAt: 2000,
+			});
+
+			const deleted = await timerStore.delete(timer.id, "telegram:999");
+			expect(deleted).toBe(false);
+
+			const found = await timerStore.getById(timer.id);
+			expect(found).not.toBeNull();
+
+			await db.close();
+		});
+
+		test("3 consecutive failures → warning message sent to user", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer();
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockResolvedValue("prompt");
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockRejectedValue(new Error("LLM failed"));
+
+			mockTimerStore.touchError.mockResolvedValue(3);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(
+				mockTimerStore as unknown as TimerStore,
+				{
+					intervalMs: 10_000_000,
+					readMdFile: mockReadMdFile as (
+						timer: Parameters<SchedulerOptions["readMdFile"]>[0],
+						path: string,
+					) => Promise<string>,
+					onTick: mockOnTick as (
+						timer: TimerRecord,
+						promptText: string,
+					) => Promise<void>,
+					notifyUser: mockNotifyUser as (
+						userId: string,
+						message: string,
+					) => Promise<void>,
+				},
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockTimerStore.touchError._calls.length).toBe(1);
+			expect(mockTimerStore.touchError._calls[0][0]).toBe("timer-1");
+			expect(mockTimerStore.touchError._calls[0][1]).toBe("telegram:123");
+			expect(mockTimerStore.touchError._calls[0][2]).toBe("LLM failed");
+			expect(typeof mockTimerStore.touchError._calls[0][3]).toBe("number");
+			expect(mockNotifyUser._calls).toEqual([
+				["telegram:123", expect.stringContaining("failed 3 times")],
+			]);
+
+			scheduler.stop();
+		});
+
+		test("invalid cron → error returned to agent, no timer created", async () => {
+			const db = new Bun.SQL("sqlite://:memory:");
+			const timerStore = new TimerStore({ db, dialect: "sqlite" });
+
+			const timersBefore = await timerStore.findByUser("telegram:123");
+			expect(timersBefore).toHaveLength(0);
+
+			await db.close();
+		});
+
+		test("md file not found at execution → timer deleted, user notified", async () => {
+			const mockTimerStore = createMockTimerStore();
+			const timer = createTimer({ mdFilePath: "/memory/deleted.md" });
+			mockTimerStore.findDue.mockResolvedValue([timer]);
+
+			const mockReadMdFile = createAsyncMockFn();
+			mockReadMdFile.mockRejectedValue(new Error("File not found"));
+
+			mockTimerStore.delete.mockResolvedValue(true);
+
+			const mockOnTick = createAsyncMockFn();
+			mockOnTick.mockResolvedValue(undefined);
+
+			const mockNotifyUser = createAsyncMockFn();
+			mockNotifyUser.mockResolvedValue(undefined);
+
+			const scheduler = startScheduler(
+				mockTimerStore as unknown as TimerStore,
+				{
+					intervalMs: 10_000_000,
+					readMdFile: mockReadMdFile as (
+						timer: Parameters<SchedulerOptions["readMdFile"]>[0],
+						path: string,
+					) => Promise<string>,
+					onTick: mockOnTick as (
+						timer: TimerRecord,
+						promptText: string,
+					) => Promise<void>,
+					notifyUser: mockNotifyUser as (
+						userId: string,
+						message: string,
+					) => Promise<void>,
+				},
+			);
+
+			await new Promise((resolve) => setTimeout(resolve, 20));
+
+			expect(mockTimerStore.delete._calls).toEqual([
+				["timer-1", "telegram:123"],
+			]);
+			expect(mockNotifyUser._calls).toEqual([
+				[
+					"telegram:123",
+					"Timer for '/memory/deleted.md' was deleted because the memory file no longer exists.",
+				],
+			]);
+			expect(mockOnTick._calls.length).toBe(0);
+
+			scheduler.stop();
+		});
+	});
+});
+
+describe("telegram status emitter", () => {
+	test("TelegramOutboundChannel sendStatus sends message to correct chat", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+
+		const channel = new TelegramOutboundChannel(mockBot, (callerId) =>
+			callerId === "telegram:123" ? "123" : null,
+		);
+
+		await channel.sendStatus("telegram:123", "Reading file.txt");
+
+		expect(sentMessages).toEqual([{ chatId: "123", text: "Reading file.txt" }]);
+	});
+
+	test("createStatusEmitter from TelegramOutboundChannel emits to correct chat", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+
+		const outbound = new TelegramOutboundChannel(mockBot, (callerId) =>
+			callerId === "telegram:456" ? "456" : null,
+		);
+		const emitter = createStatusEmitter(outbound);
+
+		await emitter.emit("telegram:456", "Searching for pattern");
+
+		expect(sentMessages).toEqual([
+			{ chatId: "456", text: "Searching for pattern" },
+		]);
+	});
+
+	test("extractLocaleFromTelegram normalizes language codes", () => {
+		expect(extractLocaleFromTelegram("en")).toBe("en");
+		expect(extractLocaleFromTelegram("en-US")).toBe("en");
+		expect(extractLocaleFromTelegram("ru-RU")).toBe("ru");
+		expect(extractLocaleFromTelegram("es_MX")).toBe("es");
+	});
+
+	test("extractLocaleFromTelegram returns null for undefined", () => {
+		expect(extractLocaleFromTelegram(undefined)).toBeNull();
+	});
+
+	test("resolveLocale uses Telegram language_code hint correctly", () => {
+		const locale = resolveLocale("es");
+		expect(locale).toBe("es");
+	});
+
+	test("resolveLocale falls back to en for unknown Telegram language codes", () => {
+		const locale = resolveLocale("xx");
+		expect(locale).toBe("en");
 	});
 });

@@ -320,7 +320,9 @@ export function createGlobTool(backend: BackendProtocol) {
 				return `No files found matching pattern '${pattern}'`;
 			}
 
-			const result = truncateIfTooLong(infos.map((info) => info.path));
+			const result = truncateIfTooLong(
+				infos.map((info) => info.path).sort((a, b) => a.localeCompare(b)),
+			);
 			return Array.isArray(result) ? result.join("\n") : result;
 		},
 		{

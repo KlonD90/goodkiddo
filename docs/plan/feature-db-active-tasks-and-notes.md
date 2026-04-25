@@ -3,6 +3,8 @@
 ## Summary
 Add structured active task tracking on top of the existing per-caller memory system. Durable notes stay in the current `/memory/notes/*.md` wiki flow, while actionable work items move into a SQL-backed task store with explicit `active`, `completed`, and `dismissed` states. The agent loads active tasks into context on agent build and performs task reconciliation only at defined boundaries: the first substantive user message of a new channel session and the first substantive user message after `/new_thread`.
 
+Related execution plan: [`../plans/db-active-tasks-and-notes.md`](../plans/db-active-tasks-and-notes.md).
+
 ## User cases
 - A user tells the bot to remember a fact or decision so that it stays in durable notes and can be reused later.
 - A user gives the bot one or more actionable items so that they become active tracked tasks instead of loose memory text.

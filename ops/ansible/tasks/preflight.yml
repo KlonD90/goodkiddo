@@ -1,0 +1,60 @@
+---
+- name: Fail on unsupported CPU architecture for browser stack
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture == "x86_64"
+    fail_msg: >-
+      Production provisioning currently supports x86_64 Ubuntu hosts because it installs Google Chrome Stable.
+
+- name: Fail when required production settings are missing
+  ansible.builtin.assert:
+    that:
+      - vars[item] is defined
+      - (vars[item] | string | trim) != ""
+    fail_msg: >-
+      Required variable {{ item }} is missing.
+      Put non-secret values in ops/ansible/group_vars/goodkiddo_prod/10-env.yml
+      and secrets in ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml.
+  loop:
+    - bot_main_domain
+    - bot_letsencrypt_email
+    - ai_type
+    - ai_model_name
+    - telegram_bot_token
+    - bot_searxng_secret
+
+- name: Fail when local PostgreSQL is enabled without a password
+  ansible.builtin.assert:
+    that:
+      - bot_postgres_password is defined
+      - (bot_postgres_password | string | trim) != ""
+    fail_msg: >-
+      bot_postgres_password is required when bot_manage_postgres=true.
+      Store it in ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml.
+  when: bot_manage_postgres
+
+- name: Fill derived domain defaults
+  ansible.builtin.set_fact:
+    bot_app_domain: "{{ bot_app_domain | default('') | trim or ('app.' ~ bot_main_domain) }}"
+    web_public_base_url: "{{ web_public_base_url | default('') | trim or ('https://' ~ (bot_app_domain | default('') | trim or ('app.' ~ bot_main_domain))) }}"
+
+- name: Fill derived PostgreSQL URL for local database
+  ansible.builtin.set_fact:
+    bot_database_url: >-
+      postgresql://{{ bot_postgres_user }}:{{ bot_postgres_password | urlencode }}@{{ bot_postgres_host }}:{{ bot_postgres_port }}/{{ bot_postgres_db }}
+  when:
+    - bot_manage_postgres
+    - (bot_database_url | default('') | trim) == ""
+
+- name: Fail when managed PostgreSQL is disabled without DATABASE_URL
+  ansible.builtin.assert:
+    that:
+      - (bot_database_url | default('') | trim) != ""
+    fail_msg: >-
+      bot_database_url is required when bot_manage_postgres=false.
+      Put it in ops/ansible/group_vars/goodkiddo_prod/10-env.yml or the Vault file.
+  when: not bot_manage_postgres
+
+- name: Set Bun archive suffix
+  ansible.builtin.set_fact:
+    bun_archive_suffix: "{{ 'x64' if ansible_architecture == 'x86_64' else 'aarch64' }}"

@@ -1,0 +1,21 @@
+[Unit]
+Description=GoodKiddo Telegram bot
+After=network-online.target{% if bot_manage_postgres %} postgresql.service{% endif %}
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ bot_user }}
+Group={{ bot_group }}
+WorkingDirectory={{ bot_app_dir }}
+EnvironmentFile={{ bot_env_file }}
+ExecStart=/usr/local/bin/bun src/bin/bot.ts
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths={{ bot_app_dir }}
+
+[Install]
+WantedBy=multi-user.target

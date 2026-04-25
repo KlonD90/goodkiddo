@@ -3,17 +3,28 @@ import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import type { AppConfig } from "../config";
 import { createDb, detectDialect } from "../db/index";
+import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
+import { readThreadMessages } from "../memory/rotate_thread";
 import { CLIApprovalBroker } from "../permissions/approval";
 import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
+import { createStatusEmitter } from "../tools/status_emitter";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
 	OutboundSendResult,
 } from "./outbound";
 import { maybeHandleSessionCommand } from "./session_commands";
-import { createChannelAgentSession, extractAgentReply } from "./shared";
+import {
+	buildInvokeMessages,
+	clearPendingTaskCheckContext,
+	createChannelAgentSession,
+	extractAgentReply,
+	maybeRunPendingTaskCheck,
+	prepareSessionForIncomingTurn,
+	refreshAgentIfPromptDirty,
+} from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 
 const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
@@ -38,6 +49,12 @@ export class CliOutboundChannel implements OutboundChannel {
 		}
 		this.stream.write("--- end ---\n");
 		return { ok: true };
+	}
+
+	async sendStatus(_callerId: string, message: string): Promise<void> {
+		try {
+			this.stream.write(`[status] ${message}\n`);
+		} catch {}
 	}
 }
 
@@ -84,6 +101,12 @@ export const cliChannel: AppChannel = {
 
 		const broker = new CLIApprovalBroker(store);
 		const outbound = new CliOutboundChannel();
+		const statusEmitter = createStatusEmitter(outbound);
+		const localeHint = extractLocaleFromCli();
+		const locale = resolveLocale(
+			localeHint,
+			config.defaultStatusLocale as "en" | "ru" | "es",
+		);
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
 			db,
@@ -94,6 +117,8 @@ export const cliChannel: AppChannel = {
 			threadId: baseThreadId,
 			outbound,
 			webShare,
+			statusEmitter,
+			locale,
 		});
 
 		const mintThreadId = () => `${baseThreadId}-${Date.now()}`;
@@ -127,6 +152,12 @@ export const cliChannel: AppChannel = {
 				model: session.model,
 				backend: session.workspace,
 				mintThreadId,
+				compaction: session.compactionConfig
+					? {
+							caller: session.compactionConfig.caller,
+							store: session.compactionConfig.store,
+						}
+					: undefined,
 				webShare: webShare
 					? {
 							access: webShare.access,
@@ -157,9 +188,38 @@ export const cliChannel: AppChannel = {
 			}, 80);
 
 			try {
+				session.currentUserText = userInput;
+				session.currentTurnContext = {
+					now: new Date(),
+					source: "cli",
+				};
 				await session.refreshAgent();
+				const currentMessages = await readThreadMessages(
+					session.agent,
+					session.threadId,
+				);
+				const preparedTurn = await prepareSessionForIncomingTurn(
+					session,
+					currentMessages,
+					userInput,
+					mintThreadId,
+				);
+				const taskCheck = await maybeRunPendingTaskCheck(session, userInput);
+				if (taskCheck.handled) {
+					clearInterval(spinner);
+					process.stdout.write("\rAssistant: ");
+					console.log(`${taskCheck.reply ?? ""}\n`);
+					continue;
+				}
+				if (preparedTurn.compacted || taskCheck.needsRefresh) {
+					await session.refreshAgent();
+				}
+				const invokeMessages = buildInvokeMessages(session, {
+					role: "user",
+					content: userInput,
+				});
 				const result = await session.agent.invoke(
-					{ messages: [{ role: "user", content: userInput }] },
+					{ messages: invokeMessages },
 					{ configurable: { thread_id: session.threadId } },
 				);
 				const reply = extractAgentReply(result);
@@ -173,6 +233,11 @@ export const cliChannel: AppChannel = {
 					error instanceof Error ? error.message : "Unknown CLI error";
 				process.stdout.write("\rAssistant: ");
 				console.log(`Request failed: ${message}\n`);
+			} finally {
+				clearPendingTaskCheckContext(session);
+				session.currentUserText = undefined;
+				session.currentTurnContext = undefined;
+				await refreshAgentIfPromptDirty(session);
 			}
 		}
 

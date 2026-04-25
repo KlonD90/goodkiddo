@@ -5,12 +5,10 @@ import type {
 	FileData,
 	FileDownloadResponse,
 	FileInfo,
-	FilesystemMiddlewareOptions,
 	FileUploadResponse,
 	GrepMatch,
 	WriteResult,
 } from "deepagents";
-import { createFilesystemMiddleware } from "deepagents";
 import { fileDataToString, formatReadResponse } from "../utils/filesystem";
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -30,10 +28,6 @@ export interface SqliteStateBackendOptions {
 	dialect: "sqlite" | "postgres";
 	namespace?: string;
 }
-
-export interface SqliteFilesystemMiddlewareOptions
-	extends Omit<FilesystemMiddlewareOptions, "backend">,
-		SqliteStateBackendOptions {}
 
 export function normalizePath(input: string, kind: "file" | "dir"): string {
 	const raw = (input || "/").trim().replaceAll("\\", "/");
@@ -189,9 +183,7 @@ export class SqliteStateBackend implements BackendProtocol {
 		return rows[0] ?? null;
 	}
 
-	private async listRowsInDirectory(
-		dirPath: string,
-	): Promise<SqliteFileRow[]> {
+	private async listRowsInDirectory(dirPath: string): Promise<SqliteFileRow[]> {
 		await this._ready;
 		const normalizedDir = normalizePath(dirPath, "dir");
 		const db = this.database;
@@ -381,9 +373,7 @@ export class SqliteStateBackend implements BackendProtocol {
 
 		return (await this.listAllRows())
 			.filter((row) => row.path.startsWith(normalizedDir))
-			.filter((row) =>
-				glob.match(relativeToDirectory(normalizedDir, row.path)),
-			)
+			.filter((row) => glob.match(relativeToDirectory(normalizedDir, row.path)))
 			.sort((left, right) => right.modified_at.localeCompare(left.modified_at))
 			.map((row) => ({
 				path: row.path,
@@ -449,15 +439,4 @@ export class SqliteStateBackend implements BackendProtocol {
 			}),
 		);
 	}
-}
-
-export function createSqliteFilesystemMiddleware(
-	options: SqliteFilesystemMiddlewareOptions,
-) {
-	const { db, dialect, namespace, ...middlewareOptions } = options;
-
-	return createFilesystemMiddleware({
-		...middlewareOptions,
-		backend: new SqliteStateBackend({ db, dialect, namespace }),
-	});
 }

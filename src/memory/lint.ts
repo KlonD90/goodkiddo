@@ -1,4 +1,6 @@
 import type { BackendProtocol, FileInfo } from "deepagents";
+import { currentActuel } from "./actuel_archive";
+import { readOrEmpty } from "./fs";
 import { readIndexFile } from "./index_manager";
 import {
 	LINT_OVER_BUDGET_RATIO,
@@ -8,7 +10,13 @@ import {
 	NOTES_DIR,
 	SKILLS_INDEX_PATH,
 	SKILLS_ROOT,
+	USER_PROFILE_PATH,
 } from "./layout";
+
+// Matches the seeded placeholder from bootstrap.ts. Anything else — even a
+// single fact — means the profile has been populated and we stop nudging.
+const USER_PROFILE_PLACEHOLDER =
+	"_No profile yet. Populate as you learn about the user._";
 
 // Pure-function health check over the memory subtrees. Findings surface to the
 // agent via the `## Memory maintenance` block appended to the system prompt by
@@ -21,6 +29,7 @@ export type LintFindings = {
 	orphans: string[]; // files present on disk but not in the index
 	duplicates: string[]; // slugs appearing more than once in an index
 	overBudget: { memoryChars: number; skillsChars: number } | null;
+	userProfileEmpty: boolean; // USER.md still holds the bootstrap placeholder
 };
 
 export function isEmpty(findings: LintFindings): boolean {
@@ -28,7 +37,8 @@ export function isEmpty(findings: LintFindings): boolean {
 		findings.staleNotes.length === 0 &&
 		findings.orphans.length === 0 &&
 		findings.duplicates.length === 0 &&
-		findings.overBudget === null
+		findings.overBudget === null &&
+		!findings.userProfileEmpty
 	);
 }
 
@@ -107,7 +117,13 @@ export async function runLint(
 			? { memoryChars, skillsChars: 0 }
 			: null;
 
-	return { staleNotes, orphans, duplicates, overBudget };
+	const userProfile = await readOrEmpty(backend, USER_PROFILE_PATH);
+	const userProfileActuel = currentActuel(userProfile);
+	const userProfileEmpty =
+		userProfileActuel.length === 0 ||
+		userProfileActuel === USER_PROFILE_PLACEHOLDER;
+
+	return { staleNotes, orphans, duplicates, overBudget, userProfileEmpty };
 }
 
 async function backendCharCount(
@@ -151,6 +167,11 @@ export function formatMaintenanceBlock(findings: LintFindings): string {
 	if (findings.overBudget) {
 		lines.push(
 			`- Indexes exceed budget (${findings.overBudget.memoryChars} chars vs ${MEMORY_PROMPT_CHAR_CAP} cap) — compact via rotate_actuel or consolidate notes.`,
+		);
+	}
+	if (findings.userProfileEmpty) {
+		lines.push(
+			'- USER.md is empty. Before doing other work this turn, ask the user about their role, primary goal, and working-style preferences, then save what you learned with `memory_write` (target: "user"). One short set of questions — don\'t interrogate.',
 		);
 	}
 	return lines.join("\n");

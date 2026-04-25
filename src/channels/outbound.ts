@@ -10,4 +10,5 @@ export interface OutboundSendFileArgs {
 
 export interface OutboundChannel {
 	sendFile(args: OutboundSendFileArgs): Promise<OutboundSendResult>;
+	sendStatus(callerId: string, message: string): Promise<void>;
 }

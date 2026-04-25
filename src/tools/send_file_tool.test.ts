@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
-import { createDb, detectDialect } from "../db";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
 	OutboundSendResult,
 } from "../channels/outbound";
+import { createDb, detectDialect } from "../db";
 import { createSendFileTool, SEND_FILE_MAX_BYTES } from "./send_file_tool";
 
 function createBackend(namespace: string) {
@@ -22,6 +22,8 @@ class RecordingOutbound implements OutboundChannel {
 		this.calls.push(args);
 		return this.result;
 	}
+
+	async sendStatus(_callerId: string, _message: string): Promise<void> {}
 }
 
 const CALLER_ID = "telegram:12345";

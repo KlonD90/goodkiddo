@@ -1,0 +1,26 @@
+---
+- name: Ensure PostgreSQL service is enabled
+  ansible.builtin.service:
+    name: postgresql
+    state: started
+    enabled: true
+  when: bot_manage_postgres
+
+- name: Ensure PostgreSQL role exists
+  community.postgresql.postgresql_user:
+    name: "{{ bot_postgres_user }}"
+    password: "{{ bot_postgres_password }}"
+    role_attr_flags: LOGIN
+    login_db: postgres
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+  when: bot_manage_postgres
+
+- name: Ensure PostgreSQL database exists
+  community.postgresql.postgresql_db:
+    name: "{{ bot_postgres_db }}"
+    owner: "{{ bot_postgres_user }}"
+    login_db: postgres
+    login_unix_socket: /var/run/postgresql
+  become_user: postgres
+  when: bot_manage_postgres

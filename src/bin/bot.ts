@@ -1,26 +1,31 @@
 import { runAppChannel } from "../channels";
 import { maskSecret, resolveConfig } from "../config";
 import { createDb, detectDialect } from "../db";
+import { createLogger } from "../logger";
 import { startWebServer } from "../server/http";
+
+const log = createLogger("startup");
 
 const config = await resolveConfig();
 const db = createDb(config.databaseUrl);
 const dialect = detectDialect(config.databaseUrl);
 
-console.log("APP_ENTRYPOINT:", config.appEntrypoint);
-console.log("AI_TYPE:", config.aiType);
-console.log("AI_MODEL_NAME:", config.aiModelName);
-console.log("AI_API_KEY:", maskSecret(config.aiApiKey));
-console.log("AI_BASE_URL:", config.aiBaseUrl);
+log.info("config loaded", {
+	appEntrypoint: config.appEntrypoint,
+	aiType: config.aiType,
+	aiModelName: config.aiModelName,
+	aiApiKey: maskSecret(config.aiApiKey),
+	aiBaseUrl: config.aiBaseUrl,
+});
 
 if (config.appEntrypoint === "telegram") {
-	console.log("TELEGRAM_BOT_TOKEN:", maskSecret(config.telegramBotToken));
-	console.log(
-		"TELEGRAM_BOT_ALLOWED_CHAT_ID:",
-		config.telegramAllowedChatId === ""
-			? "<any>"
-			: config.telegramAllowedChatId,
-	);
+	log.info("telegram config", {
+		telegramBotToken: maskSecret(config.telegramBotToken),
+		telegramAllowedChatId:
+			config.telegramAllowedChatId === ""
+				? "<any>"
+				: config.telegramAllowedChatId,
+	});
 }
 
 const webServer = await startWebServer(config, { db, dialect });

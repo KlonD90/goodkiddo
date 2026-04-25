@@ -1,7 +1,10 @@
 import type { AppConfig } from "../config";
+import { createLogger } from "../logger";
 import { AccessStore } from "./access_store";
 import { buildFrontendBundle } from "./frontend_build";
 import { createWebHandler } from "./routes";
+
+const log = createLogger("http");
 
 type BunServer = ReturnType<typeof Bun.serve>;
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -36,6 +39,7 @@ export async function startWebServer(
 	});
 
 	const server = Bun.serve({
+		hostname: config.webHost,
 		port: config.webPort,
 		async fetch(request) {
 			try {
@@ -53,13 +57,17 @@ export async function startWebServer(
 
 	const sweepTimer = setInterval(() => {
 		access.sweepExpired().catch((error) => {
-			console.warn("AccessStore sweep failed:", error);
+			log.warn("AccessStore sweep failed", {
+				error: error instanceof Error ? error.message : String(error),
+			});
 		});
 	}, SWEEP_INTERVAL_MS);
 
-	console.log(
-		`Web explorer listening on port ${config.webPort} (public base: ${config.webPublicBaseUrl}).`,
-	);
+	log.info("web explorer listening", {
+		host: config.webHost,
+		port: config.webPort,
+		publicBaseUrl: config.webPublicBaseUrl,
+	});
 
 	return {
 		access,
