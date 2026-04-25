@@ -706,87 +706,63 @@ describe("maybeHandleSessionCommand — /identity", () => {
 		if (result.handled) expect(result.reply).toContain("not configured");
 	});
 
-	test("/identity lists current identity and available presets", async () => {
+	test("/identity lists all presets with commands and marks current", async () => {
 		const session = createStubSession("t-ident-1");
 		const { ctx, close } = await createIdentityCtx(session);
 		try {
 			const result = await maybeHandleSessionCommand("/identity", ctx);
 			expect(result.handled).toBe(true);
 			if (result.handled) {
+				// Shows current
+				expect(result.reply).toContain("Current:");
+				// Lists all three presets
+				expect(result.reply).toContain("do_it_doggo");
+				expect(result.reply).toContain("business_doggo");
 				expect(result.reply).toContain("good_kiddo");
-				expect(result.reply).toContain("do_it_doggo");
-				expect(result.reply).toContain("business_doggo");
+				// Each has a copy-paste command
+				expect(result.reply).toContain("/identity do_it_doggo");
+				expect(result.reply).toContain("/identity business_doggo");
+				expect(result.reply).toContain("/identity good_kiddo");
 			}
 		} finally {
 			await close();
 		}
 	});
 
-	test("/identity list shows all preset slugs", async () => {
+	test("/identity marks the active preset with a checkmark", async () => {
 		const session = createStubSession("t-ident-2");
-		const { ctx, close } = await createIdentityCtx(session);
-		try {
-			const result = await maybeHandleSessionCommand("/identity list", ctx);
-			expect(result.handled).toBe(true);
-			if (result.handled) {
-				expect(result.reply).toContain("do_it_doggo");
-				expect(result.reply).toContain("business_doggo");
-			}
-		} finally {
-			await close();
-		}
-	});
-
-	test("/identity current shows default when no preference set", async () => {
-		const session = createStubSession("t-ident-3");
-		const { ctx, close } = await createIdentityCtx(session);
-		try {
-			const result = await maybeHandleSessionCommand("/identity current", ctx);
-			expect(result.handled).toBe(true);
-			if (result.handled) {
-				expect(result.reply).toContain(DEFAULT_IDENTITY_ID);
-				expect(result.reply).toContain("server default");
-			}
-		} finally {
-			await close();
-		}
-	});
-
-	test("/identity current reflects stored identity", async () => {
-		const session = createStubSession("t-ident-4");
 		session.selectedIdentityId = "do_it_doggo";
 		const { ctx, close } = await createIdentityCtx(session);
 		try {
-			const result = await maybeHandleSessionCommand("/identity current", ctx);
+			const result = await maybeHandleSessionCommand("/identity", ctx);
 			expect(result.handled).toBe(true);
 			if (result.handled) {
+				expect(result.reply).toContain("✓");
 				expect(result.reply).toContain("do_it_doggo");
-				expect(result.reply).toContain("your preference");
 			}
 		} finally {
 			await close();
 		}
 	});
 
-	test("/identity use switches to known preset and rotates thread", async () => {
-		const session = createStubSession("t-ident-5", [
+	test("/identity <preset> switches to known preset and rotates thread", async () => {
+		const session = createStubSession("t-ident-3", [
 			{ role: "user", content: "hello" },
 		]);
 		const originalThread = session.threadId;
 		const { ctx, close } = await createIdentityCtx(session);
 		try {
 			const result = await maybeHandleSessionCommand(
-				"/identity use do_it_doggo",
+				"/identity do_it_doggo",
 				ctx,
 			);
 			expect(result.handled).toBe(true);
 			if (result.handled) {
-				expect(result.reply).toContain("do_it_doggo");
+				expect(result.reply).toContain("Do-It Doggo");
 				expect(result.reply).toContain("fresh context");
 			}
 			expect(session.selectedIdentityId).toBe("do_it_doggo");
 			expect(session.threadId).not.toBe(originalThread);
-			// Verify persisted in store
 			const user = await ctx.identity!.store.getUserById("telegram:1");
 			expect(user?.identityId).toBe("do_it_doggo");
 		} finally {
@@ -794,46 +770,43 @@ describe("maybeHandleSessionCommand — /identity", () => {
 		}
 	});
 
-	test("/identity use returns no-op when preset is already active", async () => {
-		const session = createStubSession("t-ident-6");
+	test("/identity <preset> is a no-op when preset is already active", async () => {
+		const session = createStubSession("t-ident-4");
 		session.selectedIdentityId = "do_it_doggo";
 		const { ctx, close } = await createIdentityCtx(session);
 		try {
 			const result = await maybeHandleSessionCommand(
-				"/identity use do_it_doggo",
+				"/identity do_it_doggo",
 				ctx,
 			);
 			expect(result.handled).toBe(true);
 			if (result.handled) expect(result.reply).toContain("Already using");
-			// Thread must not have rotated
-			expect(session.threadId).toBe("t-ident-6");
+			expect(session.threadId).toBe("t-ident-4");
 		} finally {
 			await close();
 		}
 	});
 
-	test("/identity use unknown preset returns error with available slugs", async () => {
-		const session = createStubSession("t-ident-7");
+	test("/identity <unknown> returns error and lists identities with commands", async () => {
+		const session = createStubSession("t-ident-5");
 		const { ctx, close } = await createIdentityCtx(session);
 		try {
-			const result = await maybeHandleSessionCommand(
-				"/identity use nope",
-				ctx,
-			);
+			const result = await maybeHandleSessionCommand("/identity nope", ctx);
 			expect(result.handled).toBe(true);
 			if (result.handled) {
-				expect(result.reply).toContain("Unknown preset");
-				expect(result.reply).toContain("good_kiddo");
+				expect(result.reply).toContain("Unknown identity");
+				// Falls through to the list so user can pick a valid one
+				expect(result.reply).toContain("/identity good_kiddo");
+				expect(result.reply).toContain("/identity do_it_doggo");
 			}
-			// Identity must not have changed
 			expect(session.selectedIdentityId).toBeUndefined();
 		} finally {
 			await close();
 		}
 	});
 
-	test("/identity reset clears preference and rotates thread", async () => {
-		const session = createStubSession("t-ident-8", [
+	test("/identity good_kiddo switches from a non-default preset back to default", async () => {
+		const session = createStubSession("t-ident-6", [
 			{ role: "user", content: "hello" },
 		]);
 		session.selectedIdentityId = "do_it_doggo";
@@ -842,59 +815,14 @@ describe("maybeHandleSessionCommand — /identity", () => {
 			await store.setUserIdentity("telegram:1", "do_it_doggo");
 		});
 		try {
-			const result = await maybeHandleSessionCommand("/identity reset", ctx);
-			expect(result.handled).toBe(true);
-			if (result.handled) {
-				expect(result.reply).toContain("reset to default");
-				expect(result.reply).toContain(DEFAULT_IDENTITY_ID);
-			}
-			expect(session.selectedIdentityId).toBeNull();
-			expect(session.threadId).not.toBe(originalThread);
-			const user = await ctx.identity!.store.getUserById("telegram:1");
-			expect(user?.identityId).toBeNull();
-		} finally {
-			await close();
-		}
-	});
-
-	test("/identity reset is a no-op when already on default", async () => {
-		const session = createStubSession("t-ident-9");
-		const { ctx, close } = await createIdentityCtx(session);
-		try {
-			const result = await maybeHandleSessionCommand("/identity reset", ctx);
-			expect(result.handled).toBe(true);
-			if (result.handled) expect(result.reply).toContain("Already using the default");
-			expect(session.threadId).toBe("t-ident-9");
-		} finally {
-			await close();
-		}
-	});
-
-	test("/identity unknown-subcommand returns usage hint", async () => {
-		const session = createStubSession("t-ident-10");
-		const { ctx, close } = await createIdentityCtx(session);
-		try {
 			const result = await maybeHandleSessionCommand(
-				"/identity foobar",
+				"/identity good_kiddo",
 				ctx,
 			);
 			expect(result.handled).toBe(true);
-			if (result.handled) {
-				expect(result.reply).toContain("Unknown subcommand");
-				expect(result.reply).toContain("/identity use");
-			}
-		} finally {
-			await close();
-		}
-	});
-
-	test("/identity use without name returns usage hint", async () => {
-		const session = createStubSession("t-ident-11");
-		const { ctx, close } = await createIdentityCtx(session);
-		try {
-			const result = await maybeHandleSessionCommand("/identity use", ctx);
-			expect(result.handled).toBe(true);
-			if (result.handled) expect(result.reply).toContain("Missing preset name");
+			if (result.handled) expect(result.reply).toContain("Good Kiddo");
+			expect(session.selectedIdentityId).toBe("good_kiddo");
+			expect(session.threadId).not.toBe(originalThread);
 		} finally {
 			await close();
 		}

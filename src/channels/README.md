@@ -56,11 +56,8 @@ Authorized users can switch the agent's behavior preset with `/identity`. The se
 
 | Command | Effect |
 |---|---|
-| `/identity` | Show current preset and list of available presets |
-| `/identity list` | List all preset slugs, labels, and descriptions |
-| `/identity current` | Show active preset and whether it came from user preference or server default |
-| `/identity use <preset>` | Persist preference, rotate thread with summary, rebuild agent |
-| `/identity reset` | Clear preference, return to default, rotate thread with summary, rebuild agent |
+| `/identity` | Show current preset and list of all identities, each with its switch command |
+| `/identity <preset>` | Switch to that preset — e.g. `/identity do_it_doggo` |
 
 **Prompt boundary behavior:** switching or resetting identity creates a forced-checkpoint summary of the current thread (if the thread has enough content), rotates to a fresh thread seeded with that summary, and rebuilds the agent. This prevents old and new identity instructions from silently mixing inside one thread. The user sees a confirmation reply explaining that a fresh context was started.
 
