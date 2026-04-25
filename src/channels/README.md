@@ -313,13 +313,40 @@ Spreadsheet handling:
 - corrupt or invalid files reply with `Failed to read spreadsheet: <reason>`
 - empty spreadsheets (no data rows) reply with `This spreadsheet appears to be empty.`
 - oversized spreadsheets reply with `Spreadsheet is too large (max 10 MB).`
-- non-spreadsheet documents are silently ignored (no error reply)
+- non-spreadsheet documents are passed to subsequent capabilities (text file, then unsupported fallback)
 
 Relevant spreadsheet files:
 
 - `src/channels/telegram.ts`
 - `src/channels/telegram.test.ts`
 - `src/capabilities/spreadsheet/README.md`
+
+## Telegram Text File Documents
+
+Text files and source code files sent as Telegram documents are read as UTF-8 and injected into the agent's turn wrapped in `[File: <filename>]` / `[/File: <filename>]` tags.
+
+Supported by MIME type (any `text/*` prefix, plus `application/json`, `application/javascript`, `application/typescript`, `application/xml`, `application/x-yaml`, and related types) and by extension when MIME is generic (`application/octet-stream` or absent):
+
+| Category | Extensions |
+|---|---|
+| Plain text / docs | txt, md, markdown, rst, log |
+| JavaScript / TypeScript | js, mjs, cjs, ts, mts, cts, jsx, tsx |
+| Data | json, jsonc, json5, yaml, yml, toml, ini, cfg, conf, sql, graphql, gql |
+| Markup / styles | xml, html, htm, svg, css, scss, sass, less |
+| Shell | sh, bash, zsh, fish |
+| Other languages | py, rb, php, java, go, rs, c, cpp, h, hpp, cs, swift, kt, kts |
+| Config / infra | env, gitignore, dockerignore, Dockerfile, Makefile, lock |
+
+Limits and behavior:
+- capped at 512 KB; larger files reply with `Text file is too large (max 512 KB)…`
+- non-UTF-8 bytes reply with `This file does not appear to be valid UTF-8 text.`
+- caption text becomes `commandText` so `/new_thread` and other commands still work from the caption
+- the `[File: …]` tag format is intentionally stable so agent instructions can parse it
+
+Relevant files:
+
+- `src/capabilities/text/capability.ts`
+- `src/capabilities/text/capability.test.ts`
 
 ## Tool Activity Status
 

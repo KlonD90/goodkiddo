@@ -13,6 +13,7 @@ import {
 	createSpreadsheetCapability,
 	type SpreadsheetCapabilityOptions,
 } from "./spreadsheet/capability";
+import { createTextFileCapability } from "./text/capability";
 import type {
 	CapabilityInput,
 	CapabilityResult,
@@ -149,6 +150,8 @@ function userFacingAttachmentType(capabilityName: string): string {
 			return "spreadsheet";
 		case "voice":
 			return "voice message";
+		case "text_file":
+			return "text file";
 		default:
 			return capabilityName;
 	}
@@ -165,6 +168,8 @@ export function createCapabilityRegistry(
 	if (pdf) capabilities.push(pdf);
 	const sheet = createSpreadsheetCapability(config, options.spreadsheet);
 	if (sheet) capabilities.push(sheet);
+	// text_file is last — it's a broad catch-all for text/* and code extensions
+	capabilities.push(createTextFileCapability());
 	if (options.extra) capabilities.push(...options.extra);
 	return new CapabilityRegistry(capabilities);
 }
