@@ -253,4 +253,55 @@ describe("PermissionsStore", () => {
 		expect(users[0].tier).toBe("free");
 		expect(users[1].tier).toBe("paid");
 	});
+
+	test("new user has null identityId", async () => {
+		const user = await store.upsertUser({
+			entrypoint: "telegram",
+			externalId: "40",
+		});
+		expect(user.identityId).toBeNull();
+	});
+
+	test("setUserIdentity persists the selected identity", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "41" });
+		await store.setUserIdentity("telegram:41", "do_it_doggo");
+		const user = await store.getUserById("telegram:41");
+		expect(user?.identityId).toBe("do_it_doggo");
+	});
+
+	test("clearUserIdentity resets identityId to null", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "42" });
+		await store.setUserIdentity("telegram:42", "business_doggo");
+		await store.clearUserIdentity("telegram:42");
+		const user = await store.getUserById("telegram:42");
+		expect(user?.identityId).toBeNull();
+	});
+
+	test("upsertUser does not clear an existing identity preference", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "43" });
+		await store.setUserIdentity("telegram:43", "do_it_doggo");
+		// Re-upsert (e.g. user reconnects) should not wipe identity
+		await store.upsertUser({
+			entrypoint: "telegram",
+			externalId: "43",
+			displayName: "UpdatedName",
+		});
+		const user = await store.getUserById("telegram:43");
+		expect(user?.identityId).toBe("do_it_doggo");
+	});
+
+	test("getUser returns identityId via entrypoint+externalId lookup", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "44" });
+		await store.setUserIdentity("telegram:44", "good_kiddo");
+		const user = await store.getUser("telegram", "44");
+		expect(user?.identityId).toBe("good_kiddo");
+	});
+
+	test("setUserIdentity can be overwritten with a different preset", async () => {
+		await store.upsertUser({ entrypoint: "telegram", externalId: "45" });
+		await store.setUserIdentity("telegram:45", "do_it_doggo");
+		await store.setUserIdentity("telegram:45", "business_doggo");
+		const user = await store.getUserById("telegram:45");
+		expect(user?.identityId).toBe("business_doggo");
+	});
 });

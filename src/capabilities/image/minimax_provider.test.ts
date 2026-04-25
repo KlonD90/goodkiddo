@@ -1,15 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync, readFileSync } from "node:fs";
-import { createMinimaxImageUnderstanding, type McpToolClient } from "./minimax_provider";
+import {
+	createMinimaxImageUnderstanding,
+	type McpToolClient,
+} from "./minimax_provider";
 
 function createFakeClient(
-	respond: (args: { prompt: string; image_url: string }) => unknown,
+	respond: (args: { prompt: string; image_source: string }) => unknown,
 ): {
 	client: McpToolClient;
-	calls: Array<{ prompt: string; image_url: string }>;
+	calls: Array<{ prompt: string; image_source: string }>;
 	closed: () => boolean;
 } {
-	const calls: Array<{ prompt: string; image_url: string }> = [];
+	const calls: Array<{ prompt: string; image_source: string }> = [];
 	let closed = false;
 
 	const client: McpToolClient = {
@@ -27,9 +30,9 @@ function createFakeClient(
 
 describe("createMinimaxImageUnderstanding", () => {
 	test("writes bytes to a temp file, invokes the MCP tool, returns normalized text", async () => {
-		const fake = createFakeClient(({ image_url }) => {
-			expect(existsSync(image_url)).toBe(true);
-			const written = readFileSync(image_url);
+		const fake = createFakeClient(({ image_source }) => {
+			expect(existsSync(image_source)).toBe(true);
+			const written = readFileSync(image_source);
 			expect(Array.from(written)).toEqual([0xff, 0xd8, 0x10]);
 			return "A red apple on a white background.";
 		});
@@ -49,9 +52,9 @@ describe("createMinimaxImageUnderstanding", () => {
 		expect(result.text).toBe("A red apple on a white background.");
 		expect(fake.calls).toHaveLength(1);
 		expect(fake.calls[0].prompt).toBe("what is this?");
-		expect(fake.calls[0].image_url.endsWith(".jpg")).toBe(true);
+		expect(fake.calls[0].image_source.endsWith(".jpg")).toBe(true);
 		// Temp dir cleaned up after the call.
-		expect(existsSync(fake.calls[0].image_url)).toBe(false);
+		expect(existsSync(fake.calls[0].image_source)).toBe(false);
 
 		await provider.close();
 		expect(fake.closed()).toBe(true);

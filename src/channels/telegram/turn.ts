@@ -303,6 +303,10 @@ export async function handleTelegramControlInput(
 						callerId: caller.id,
 					}
 				: undefined,
+			identity: {
+				store,
+				callerId: caller.id,
+			},
 		});
 		if (sessionCommand.handled) {
 			await sendTelegramMessage(bot, chatId, sessionCommand.reply);

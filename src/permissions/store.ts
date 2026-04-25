@@ -22,6 +22,7 @@ type UserRow = {
 	tier: string;
 	status: string;
 	created_at: number;
+	identity_id: string | null;
 };
 
 type RuleRow = {
@@ -47,6 +48,7 @@ function rowToUser(row: UserRow): UserRecord {
 		tier: row.tier as UserTier,
 		status: row.status as UserStatus,
 		createdAt: row.created_at,
+		identityId: row.identity_id ?? null,
 	};
 }
 
@@ -86,6 +88,7 @@ export class PermissionsStore {
         tier TEXT NOT NULL DEFAULT 'paid',
         status TEXT NOT NULL DEFAULT 'active',
         created_at INTEGER NOT NULL,
+        identity_id TEXT,
         UNIQUE(entrypoint, external_id)
       )
     `;
@@ -129,7 +132,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
       FROM harness_users WHERE entrypoint = ${entrypoint} AND external_id = ${externalId}
     `;
 		return rows[0] ? rowToUser(rows[0]) : null;
@@ -139,7 +142,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
       FROM harness_users WHERE id = ${userId}
     `;
 		return rows[0] ? rowToUser(rows[0]) : null;
@@ -149,7 +152,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
       FROM harness_users ORDER BY created_at ASC
     `;
 		return rows.map(rowToUser);
@@ -322,6 +325,18 @@ export class PermissionsStore {
 			externalId: caller.externalId,
 			displayName: caller.displayName ?? null,
 		});
+	}
+
+	async setUserIdentity(userId: string, identityId: string): Promise<void> {
+		await this._ready;
+		const db = this.database;
+		await db`UPDATE harness_users SET identity_id = ${identityId} WHERE id = ${userId}`;
+	}
+
+	async clearUserIdentity(userId: string): Promise<void> {
+		await this._ready;
+		const db = this.database;
+		await db`UPDATE harness_users SET identity_id = NULL WHERE id = ${userId}`;
 	}
 
 	close(): void {

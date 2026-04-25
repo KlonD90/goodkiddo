@@ -6,10 +6,18 @@ import {
 	shouldCompactByMinimumContent,
 } from "../checkpoints/compaction_trigger";
 import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
+import {
+	DEFAULT_IDENTITY_ID,
+	listPresets,
+	resolveIdentityPrompt,
+	resolvePreset,
+	normalizeId,
+} from "../identities/registry";
 import { compactionStatusMessage } from "../i18n/locale";
 import { deserializeCheckpointSummary } from "../memory/checkpoint_compaction";
 import { readThreadMessages, rotateThread } from "../memory/rotate_thread";
 import { extractRecentTurns } from "../memory/runtime_context";
+import type { PermissionsStore } from "../permissions/store";
 import type { AccessStore, ScopeKind } from "../server/access_store";
 import type { TaskRecord } from "../tasks/store";
 import { buildShareUrl } from "../tools/share_tools";
@@ -37,6 +45,11 @@ export type CompactionCommandContext = {
 	store: ForcedCheckpointStore;
 };
 
+export type IdentityCommandContext = {
+	store: PermissionsStore;
+	callerId: string;
+};
+
 export type SessionCommandContext = {
 	session: ChannelAgentSession;
 	model: BaseChatModel;
@@ -46,6 +59,8 @@ export type SessionCommandContext = {
 	webShare?: WebShareCommandContext;
 	/** When provided, forced checkpoints are created at defined session boundaries. */
 	compaction?: CompactionCommandContext;
+	/** When provided, /identity commands are enabled. */
+	identity?: IdentityCommandContext;
 };
 
 export const NEW_THREAD_ACTIVE_TASK_LIMIT = 8;
@@ -282,5 +297,181 @@ export async function maybeHandleSessionCommand(
 		return { handled: true, reply: await handleRevokeFs(context.webShare) };
 	}
 
+	if (command === "identity") {
+		if (!context.identity) {
+			return {
+				handled: true,
+				reply: "Identity selection is not configured for this session.",
+			};
+		}
+		const args = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1).trim();
+		const reply = await handleIdentityCommand(args, context);
+		return { handled: true, reply };
+	}
+
 	return { handled: false };
+}
+
+// ---------------------------------------------------------------------------
+// /identity command helpers
+// ---------------------------------------------------------------------------
+
+function formatPresetList(): string {
+	const presets = listPresets();
+	const lines = presets.map((p) => `• *${p.id}* — ${p.label}: ${p.description}`);
+	return lines.join("\n");
+}
+
+async function handleIdentityCommand(
+	args: string,
+	context: SessionCommandContext,
+): Promise<string> {
+	const { session, identity } = context;
+	if (!identity) {
+		return "Identity selection is not configured for this session.";
+	}
+
+	const sub = args.split(/\s+/, 1)[0]?.toLowerCase() ?? "";
+	const rest = args.slice(sub.length).trim();
+
+	// /identity  or  /identity list
+	if (sub === "" || sub === "list") {
+		const currentId = session.selectedIdentityId ?? DEFAULT_IDENTITY_ID;
+		const { preset: current } = resolveIdentityPrompt(currentId);
+		return [
+			`Current identity: *${current.id}* — ${current.label}`,
+			"",
+			"Available presets:",
+			formatPresetList(),
+			"",
+			"Use `/identity use <preset>` to switch, `/identity reset` to return to default.",
+		].join("\n");
+	}
+
+	// /identity current
+	if (sub === "current") {
+		const storedId = session.selectedIdentityId ?? null;
+		const { preset, wasFallback } = resolveIdentityPrompt(storedId);
+		const source =
+			storedId === null
+				? "server default"
+				: wasFallback
+					? `stored as "${storedId}" (stale — falling back to default)`
+					: "your preference";
+		return `Active identity: *${preset.id}* — ${preset.label} (${source}).`;
+	}
+
+	// /identity use <preset>
+	if (sub === "use") {
+		if (!rest) {
+			return `Missing preset name. Usage: \`/identity use <preset>\`\n\nAvailable:\n${formatPresetList()}`;
+		}
+		const targetPreset = resolvePreset(rest);
+		if (!targetPreset) {
+			const normalizedRest = normalizeId(rest);
+			return [
+				`Unknown preset "${normalizedRest}". Available presets:`,
+				formatPresetList(),
+			].join("\n");
+		}
+
+		const currentId = session.selectedIdentityId ?? DEFAULT_IDENTITY_ID;
+		if (normalizeId(currentId) === targetPreset.id) {
+			return `Already using *${targetPreset.id}* — ${targetPreset.label}. No change.`;
+		}
+
+		// Persist preference
+		await identity.store.setUserIdentity(identity.callerId, targetPreset.id);
+		session.selectedIdentityId = targetPreset.id;
+
+		// Rotate thread with summary seed
+		await rotateIdentityThread(context);
+
+		return [
+			`Identity switched to *${targetPreset.id}* — ${targetPreset.label}.`,
+			"",
+			"Started a fresh context for this preset. Previous conversation summarized and saved.",
+		].join("\n");
+	}
+
+	// /identity reset
+	if (sub === "reset") {
+		const storedId = session.selectedIdentityId ?? null;
+		const defaultPreset = resolveIdentityPrompt(null).preset;
+
+		if (storedId === null || storedId === DEFAULT_IDENTITY_ID) {
+			return `Already using the default identity (*${defaultPreset.id}* — ${defaultPreset.label}). No change.`;
+		}
+
+		await identity.store.clearUserIdentity(identity.callerId);
+		session.selectedIdentityId = null;
+
+		await rotateIdentityThread(context);
+
+		return [
+			`Identity reset to default: *${defaultPreset.id}* — ${defaultPreset.label}.`,
+			"",
+			"Started a fresh context. Previous conversation summarized and saved.",
+		].join("\n");
+	}
+
+	return [
+		`Unknown subcommand "${sub}". Supported forms:`,
+		"  `/identity` — show current and available presets",
+		"  `/identity list` — list all presets",
+		"  `/identity current` — show active preset and source",
+		"  `/identity use <preset>` — switch to a preset",
+		"  `/identity reset` — return to the server default",
+	].join("\n");
+}
+
+/**
+ * Create a forced checkpoint summary (if compaction context is present and
+ * there is enough content), rotate to a fresh thread seeded with that summary,
+ * then rebuild the agent with the newly selected identity.
+ */
+async function rotateIdentityThread(
+	context: SessionCommandContext,
+): Promise<void> {
+	const { session, model, backend, mintThreadId } = context;
+
+	let pendingSeed: ChannelAgentSession["pendingCompactionSeed"] | undefined;
+
+	if (context.compaction) {
+		const messages = await readThreadMessages(session.agent, session.threadId);
+		const compactionMessages = buildSessionRuntimeMessages(session, messages);
+		const compactionCtx: CompactionContext = {
+			caller: context.compaction.caller,
+			threadId: session.threadId,
+			messages: compactionMessages,
+			model,
+			store: context.compaction.store,
+		};
+
+		if (
+			shouldCompactByMinimumContent(compactionMessages) &&
+			session.statusEmitter
+		) {
+			try {
+				await session.statusEmitter.emit(
+					context.compaction.caller,
+					compactionStatusMessage(session.locale),
+				);
+			} catch {
+				// best-effort
+			}
+		}
+
+		const checkpoint = await runCompaction(compactionCtx, "identity_change");
+		if (checkpoint) {
+			const recentTurns = extractRecentTurns(messages, 2);
+			const summaryObj = deserializeCheckpointSummary(checkpoint.summaryPayload);
+			pendingSeed = { summary: summaryObj, recentTurns };
+		}
+	}
+
+	await rotateThread({ session, model, backend, mintThreadId });
+	session.pendingCompactionSeed = pendingSeed;
+
+	await session.refreshAgent();
 }
