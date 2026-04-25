@@ -309,6 +309,7 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			const document = ctx.message.document;
+			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			log.info("document message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
@@ -330,6 +331,7 @@ export const telegramChannel: AppChannel = {
 						mimeType: document.mime_type,
 						filename: document.file_name,
 						byteSize: document.file_size,
+						caption,
 					},
 					download: downloadTelegramFile(() => ctx.getFile()),
 					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
