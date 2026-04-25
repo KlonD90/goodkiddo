@@ -65,6 +65,7 @@ export function buildTelegramPhotoContent(
 	options?: {
 		caption?: string | null;
 		filePath?: string;
+		contextPrefix?: string;
 	},
 ): Array<
 	| { type: "text"; text: string }
@@ -72,13 +73,14 @@ export function buildTelegramPhotoContent(
 > {
 	const caption =
 		typeof options?.caption === "string" ? options.caption.trim() : "";
+	const baseText =
+		caption === "" ? "User attached an image without a caption." : caption;
+	const text = options?.contextPrefix
+		? `${options.contextPrefix}\n\n${baseText}`
+		: baseText;
 
 	return [
-		{
-			type: "text",
-			text:
-				caption === "" ? "User attached an image without a caption." : caption,
-		},
+		{ type: "text", text },
 		{
 			type: "image",
 			mimeType: detectTelegramImageMimeType(options?.filePath),
@@ -94,6 +96,7 @@ export async function buildTelegramPhotoUserInput(
 	options?: {
 		caption?: string | null;
 		filePath?: string;
+		contextPrefix?: string;
 	},
 ): Promise<TelegramUserInput> {
 	if (!config.enableImageUnderstanding || config.minimaxApiKey === "") {
@@ -106,7 +109,10 @@ export async function buildTelegramPhotoUserInput(
 		extension: extractIncomingExtension(options?.filePath),
 	});
 
-	return buildIncomingImagePromptText(vfsPath, options?.caption);
+	const promptText = buildIncomingImagePromptText(vfsPath, options?.caption);
+	return options?.contextPrefix
+		? `${options.contextPrefix}\n\n${promptText}`
+		: promptText;
 }
 
 export async function fetchTelegramFileBytes(
@@ -147,6 +153,8 @@ export async function processTelegramFile(
 		metadata: FileMetadata;
 		download: () => Promise<Uint8Array>;
 		currentMessageDate?: Date;
+		/** Optional context block (reply/forward) prepended to the capability output. */
+		contextPrefix?: string;
 	},
 	helpers: ProcessTelegramFileHelpers = {},
 ): Promise<void> {
@@ -159,12 +167,24 @@ export async function processTelegramFile(
 		return;
 	}
 
+	const rawContent = result.value.content as TelegramUserInput;
+	const content: TelegramUserInput =
+		params.contextPrefix
+			? prependContextPrefix(rawContent, params.contextPrefix)
+			: rawContent;
+
+	// For forwarded files, suppress command text so slash commands in captions
+	// are not executed — they are source material only.
+	const commandText = params.contextPrefix
+		? ""
+		: (result.value.commandText ?? "");
+
 	await queueTurn(
 		session,
 		bot,
 		chatId,
-		result.value.commandText ?? "",
-		result.value.content as TelegramUserInput,
+		commandText,
+		content,
 		caller,
 		store,
 		webShare,
@@ -179,6 +199,23 @@ export async function processTelegramFile(
 				},
 		params.currentMessageDate,
 	);
+}
+
+function prependContextPrefix(
+	content: TelegramUserInput,
+	prefix: string,
+): TelegramUserInput {
+	if (typeof content === "string") {
+		return `${prefix}\n\n${content}`;
+	}
+	// Array content — prepend to the first text block, or insert one
+	const firstText = content.find((b) => b.type === "text");
+	if (firstText && firstText.type === "text") {
+		return content.map((b) =>
+			b === firstText ? { ...b, text: `${prefix}\n\n${b.text}` } : b,
+		);
+	}
+	return [{ type: "text", text: prefix }, ...content];
 }
 
 // We need to import handleTelegramQueuedTurn from turn.ts but that creates a circular dependency.

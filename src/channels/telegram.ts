@@ -65,6 +65,18 @@ export {
 	startTelegramTypingLoop,
 } from "./telegram/outbound";
 
+// Re-export context
+export {
+	extractTelegramMessageContext,
+	renderTelegramContextBlock,
+} from "./telegram/context";
+export type {
+	TelegramMessageContext,
+	TelegramMessageLike,
+	TelegramReplyContext,
+	TelegramForwardContext,
+} from "./telegram/context";
+
 // Re-export files
 export {
 	buildTelegramPhotoContent,

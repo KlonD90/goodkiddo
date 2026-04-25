@@ -13,6 +13,10 @@ import { createStatusEmitter } from "../../tools/status_emitter";
 import { fileDataToString } from "../../utils/filesystem";
 import type { AppChannel, ChannelRunOptions } from "../types";
 import {
+	extractTelegramMessageContext,
+	renderTelegramContextBlock,
+} from "./context";
+import {
 	buildTelegramPhotoUserInput,
 	fetchTelegramFileBytes,
 	processTelegramFile,
@@ -185,29 +189,52 @@ export const telegramChannel: AppChannel = {
 
 		bot.on("message:text", async (ctx) => {
 			const text = normalizeTelegramCommandText(ctx.message.text);
-			if (text === "") return;
+			const msgCtx = extractTelegramMessageContext(ctx.message);
+			const contextBlock = renderTelegramContextBlock(msgCtx);
+			const isForwarded = msgCtx.forward !== undefined;
+
+			// Skip empty non-forwarded messages (existing behavior)
+			if (text === "" && !isForwarded) return;
+
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
-			if (
-				await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text)
-			) {
+
+			// /start is always direct — never from a forwarded message
+			if (!isForwarded && await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text)) {
 				return;
 			}
+
 			log.info("text message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
 				length: text.length,
+				isForwarded,
+				hasReplyContext: msgCtx.reply !== undefined,
 			});
+
+			// commandText drives session/permission command detection — only from
+			// direct (non-forwarded) user text so forwarded slash commands never fire.
+			const commandText = isForwarded ? "" : text;
+
+			// Agent-visible content: forwarded text lives inside the context block;
+			// replied-to content is a preamble before the user's current text.
+			const agentContent = isForwarded
+				? contextBlock
+				: contextBlock
+					? `${contextBlock}\n\n${text}`
+					: text;
+
 			await handleTelegramQueuedTurn(
 				resolved.session,
 				bot,
 				resolved.chatIdString,
-				text,
-				text,
+				commandText,
+				agentContent,
 				resolved.caller,
 				store,
 				webShare,
-				undefined,
+				// currentUserText for task-check: direct text only, never forwarded content
+				isForwarded ? undefined : text,
 				undefined,
 				dateFromTelegramMessage(ctx.message.date),
 			);
@@ -217,14 +244,22 @@ export const telegramChannel: AppChannel = {
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
+			const msgCtx = extractTelegramMessageContext(ctx.message);
+			const contextBlock = renderTelegramContextBlock(msgCtx);
+			const isForwarded = msgCtx.forward !== undefined;
+
 			log.info("photo message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
 				hasCaption: caption !== "",
+				isForwarded,
+				hasReplyContext: msgCtx.reply !== undefined,
 			});
 
 			try {
+				// Command detection runs only on direct (non-forwarded) caption text
 				if (
+					!isForwarded &&
 					await handleTelegramControlInput(
 						resolved.session,
 						bot,
@@ -250,6 +285,7 @@ export const telegramChannel: AppChannel = {
 					{
 						caption,
 						filePath: downloaded.filePath,
+						contextPrefix: contextBlock || undefined,
 					},
 				);
 
@@ -288,10 +324,14 @@ export const telegramChannel: AppChannel = {
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
+			const msgCtx = extractTelegramMessageContext(ctx.message);
+			const contextBlock = renderTelegramContextBlock(msgCtx);
+
 			log.info("voice message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
 				byteSize: ctx.message.voice.file_size,
+				hasReplyContext: msgCtx.reply !== undefined,
 			});
 
 			await processTelegramFile(
@@ -312,6 +352,7 @@ export const telegramChannel: AppChannel = {
 					},
 					download: downloadTelegramFile(() => ctx.getFile()),
 					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
+					contextPrefix: contextBlock || undefined,
 				},
 			);
 		});
@@ -321,12 +362,16 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			const document = ctx.message.document;
+			const msgCtx = extractTelegramMessageContext(ctx.message);
+			const contextBlock = renderTelegramContextBlock(msgCtx);
+
 			log.info("document message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
 				filename: document.file_name,
 				mimeType: document.mime_type,
 				byteSize: document.file_size,
+				hasReplyContext: msgCtx.reply !== undefined,
 			});
 			await processTelegramFile(
 				config,
@@ -345,6 +390,7 @@ export const telegramChannel: AppChannel = {
 					},
 					download: downloadTelegramFile(() => ctx.getFile()),
 					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
+					contextPrefix: contextBlock || undefined,
 				},
 			);
 		});
