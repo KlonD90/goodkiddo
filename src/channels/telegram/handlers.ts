@@ -15,6 +15,7 @@ import type { AppChannel, ChannelRunOptions } from "../types";
 import {
 	buildTelegramPhotoUserInput,
 	fetchTelegramFileBytes,
+	isImageMimeType,
 	processTelegramFile,
 } from "./files";
 import { sendTelegramMessage, TelegramOutboundChannel } from "./outbound";
@@ -321,6 +322,7 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			const document = ctx.message.document;
+			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			log.info("document message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
@@ -328,25 +330,124 @@ export const telegramChannel: AppChannel = {
 				mimeType: document.mime_type,
 				byteSize: document.file_size,
 			});
-			await processTelegramFile(
-				config,
-				capabilityRegistry,
-				resolved.session,
-				bot,
-				resolved.chatIdString,
-				resolved.caller,
-				store,
-				webShare,
-				{
-					metadata: {
-						mimeType: document.mime_type,
-						filename: document.file_name,
-						byteSize: document.file_size,
+
+			log.info("document: checking mime type", {
+				chatId: resolved.chatIdString,
+				mimeType: document.mime_type,
+			});
+
+			log.debug("document mime check", {
+				chatId: resolved.chatIdString,
+				filename: document.file_name,
+				mimeType: document.mime_type,
+				isImage: isImageMimeType(document.mime_type),
+			});
+
+			if (isImageMimeType(document.mime_type)) {
+				log.info("document is image, using photo path", {
+					chatId: resolved.chatIdString,
+					filename: document.file_name,
+					mimeType: document.mime_type,
+				});
+				try {
+					if (
+						await handleTelegramControlInput(
+							resolved.session,
+							bot,
+							resolved.chatIdString,
+							caption,
+							resolved.caller,
+							store,
+							webShare,
+						)
+					) {
+						return;
+					}
+
+					const file = await ctx.getFile();
+					const downloaded = await fetchTelegramFileBytes(
+						file,
+						config.telegramBotToken,
+					);
+					log.debug("photo path: downloaded file", {
+						chatId: resolved.chatIdString,
+						filePath: downloaded.filePath,
+						dataLength: downloaded.data.length,
+					});
+					const content = await buildTelegramPhotoUserInput(
+						config,
+						resolved.session.workspace,
+						downloaded.data,
+						{
+							caption,
+							filePath: downloaded.filePath,
+						},
+					);
+					log.debug("photo path: built content", {
+						chatId: resolved.chatIdString,
+						contentType: typeof content,
+						isArray: Array.isArray(content),
+					});
+
+					await handleTelegramQueuedTurn(
+						resolved.session,
+						bot,
+						resolved.chatIdString,
+						"",
+						content,
+						resolved.caller,
+						store,
+						webShare,
+						undefined,
+						undefined,
+						dateFromTelegramMessage(ctx.message.date),
+					);
+				} catch (error) {
+					const message =
+						error instanceof Error
+							? error.message
+							: "Unknown Telegram document handling error";
+					log.error("document handler failed", {
+						chatId: resolved.chatIdString,
+						callerId: resolved.caller.id,
+						error: message,
+					});
+					await sendTelegramMessage(
+						bot,
+						resolved.chatIdString,
+						`Request failed: ${message}`,
+					);
+				}
+			} else {
+				log.info("document is not image, using capability registry", {
+					chatId: resolved.chatIdString,
+					filename: document.file_name,
+					mimeType: document.mime_type,
+				});
+				log.info("document: calling processTelegramFile", {
+					chatId: resolved.chatIdString,
+				});
+				await processTelegramFile(
+					config,
+					capabilityRegistry,
+					resolved.session,
+					bot,
+					resolved.chatIdString,
+					resolved.caller,
+					store,
+					webShare,
+					{
+						metadata: {
+							mimeType: document.mime_type,
+							filename: document.file_name,
+							byteSize: document.file_size,
+							caption,
+						},
+						download: downloadTelegramFile(() => ctx.getFile()),
+						currentMessageDate: dateFromTelegramMessage(ctx.message.date),
 					},
-					download: downloadTelegramFile(() => ctx.getFile()),
-					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
-				},
-			);
+				);
+			}
 		});
 
 		bot.catch(async (error) => {
