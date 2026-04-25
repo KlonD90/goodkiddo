@@ -50,6 +50,7 @@ export const UserRecordSchema = z.object({
 	tier: UserTierSchema,
 	status: UserStatusSchema,
 	createdAt: z.number().int(),
+	identityId: z.string().nullable().optional(),
 });
 export type UserRecord = z.infer<typeof UserRecordSchema>;
 

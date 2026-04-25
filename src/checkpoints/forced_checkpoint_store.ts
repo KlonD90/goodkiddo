@@ -15,6 +15,7 @@ export type SourceBoundary =
 	| "message_limit"
 	| "oversized_attachment"
 	| "session_resume"
+	| "identity_change"
 	| "explicit";
 
 export type ForcedCheckpoint = {

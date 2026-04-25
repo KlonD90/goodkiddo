@@ -6,7 +6,7 @@ Channel runtime adapters for the CLI and Telegram entrypoints.
 - `cli.ts` — interactive local channel
 - `telegram.ts` — multi-tenant Telegram channel
 - `shared.ts` — shared agent-session helpers, including the persistent checkpointer wiring
-- `session_commands.ts` — channel-agnostic session commands (`/new_thread` summarizes and rotates the thread and surfaces task state)
+- `session_commands.ts` — channel-agnostic session commands (`/new_thread` summarizes and rotates the thread and surfaces task state; `/identity` switches agent behavior presets)
 
 ## Shared Session State
 
@@ -47,6 +47,28 @@ Runtime-only current-message metadata is ignored when reading stored thread hist
 When an attachment only fits after compaction, Telegram can emit an ephemeral status line before the forced checkpoint runs so the user sees why older context is being summarized. That notice is skipped when the prior context is empty or too small to summarize. It uses the same status-emitter path as tool activity, so it never enters stored history or runtime context.
 
 When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
+
+## Identity Selection
+
+Authorized users can switch the agent's behavior preset with `/identity`. The selected preset changes the system-prompt identity section while memory rules, task state, and tool wiring remain unchanged.
+
+**Commands:**
+
+| Command | Effect |
+|---|---|
+| `/identity` | Show current preset and list of available presets |
+| `/identity list` | List all preset slugs, labels, and descriptions |
+| `/identity current` | Show active preset and whether it came from user preference or server default |
+| `/identity use <preset>` | Persist preference, rotate thread with summary, rebuild agent |
+| `/identity reset` | Clear preference, return to default, rotate thread with summary, rebuild agent |
+
+**Prompt boundary behavior:** switching or resetting identity creates a forced-checkpoint summary of the current thread (if the thread has enough content), rotates to a fresh thread seeded with that summary, and rebuilds the agent. This prevents old and new identity instructions from silently mixing inside one thread. The user sees a confirmation reply explaining that a fresh context was started.
+
+Identity command messages are not stored as ordinary user conversation turns.
+
+**Storage:** the selected preset id is stored as `identity_id` on the `harness_users` row. `NULL` means server default (`good_kiddo`). Stale ids that no longer exist in the registry fall back to the default at runtime without blocking startup.
+
+**Preset registry:** see [`src/identities/README.md`](../identities/README.md) for how to add a new preset.
 
 ## Large Attachment Handling
 
