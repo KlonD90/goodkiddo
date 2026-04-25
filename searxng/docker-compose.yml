@@ -1,8 +1,6 @@
 # Read the documentation before using the `docker-compose.yml` file:
 # https://docs.searxng.org/admin/installation-docker.html
 
-name: searxng
-
 services:
   core:
     container_name: searxng-core
