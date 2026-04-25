@@ -480,21 +480,37 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			displayName: "Chat 123",
 		});
 
-		expect(await getTelegramCaller(store, "123")).toEqual({
+		const caller = await getTelegramCaller(store, "123");
+		expect(caller).toEqual({
 			id: "telegram:123",
 			entrypoint: "telegram",
 			externalId: "123",
 			displayName: "Chat 123",
 		});
+		const user = await store.getUser("telegram", "123");
+		expect(user?.tier).toBe("paid");
 		await db.close();
 	});
 
-	test("getTelegramCaller returns null for unknown or suspended users", async () => {
+	test("getTelegramCaller auto-creates free user for unknown telegram chat", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		store = new PermissionsStore({ db, dialect: "sqlite" });
-		expect(await getTelegramCaller(store, "123")).toBeNull();
-		expect(await store.listUsers()).toEqual([]);
+		const caller = await getTelegramCaller(store, "123");
+		expect(caller).toEqual({
+			id: "telegram:123",
+			entrypoint: "telegram",
+			externalId: "123",
+		});
+		const user = await store.getUser("telegram", "123");
+		expect(user).not.toBeNull();
+		expect(user?.tier).toBe("free");
+		expect(user?.status).toBe("active");
+		await db.close();
+	});
 
+	test("getTelegramCaller returns null for suspended users", async () => {
+		const db = new Bun.SQL("sqlite://:memory:");
+		store = new PermissionsStore({ db, dialect: "sqlite" });
 		const user = await store.upsertUser({
 			entrypoint: "telegram",
 			externalId: "123",

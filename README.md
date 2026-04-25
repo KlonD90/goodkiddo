@@ -52,13 +52,13 @@ checkpoint context. The web UI binds to `WEB_HOST=127.0.0.1` by default; set
 
 If config is missing, the app starts an interactive setup wizard.
 
-Telegram users must be provisioned before they can use the bot. Add a chat with:
+New Telegram chats are automatically provisioned as free-tier users on first message. Admins can upgrade users to paid with:
 
 ```bash
 bun src/bin/admin.ts add-user telegram <chat-id> "Display name"
 ```
 
-Unknown or suspended Telegram users receive the configured blocked-user message.
+Suspended Telegram users receive the configured blocked-user message.
 
 ## Production
 

@@ -32,6 +32,7 @@ describe("cli channel", () => {
 			entrypoint: "cli",
 			externalId: "tester",
 			displayName: "Tester",
+			tier: "paid",
 			status: "active",
 			createdAt: expect.any(Number),
 		});

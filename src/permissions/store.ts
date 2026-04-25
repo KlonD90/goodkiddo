@@ -9,6 +9,7 @@ import {
 	type ToolRule,
 	type UserRecord,
 	type UserStatus,
+	type UserTier,
 } from "./types";
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -18,6 +19,7 @@ type UserRow = {
 	entrypoint: string;
 	external_id: string;
 	display_name: string | null;
+	tier: string;
 	status: string;
 	created_at: number;
 };
@@ -42,6 +44,7 @@ function rowToUser(row: UserRow): UserRecord {
 		entrypoint: row.entrypoint as Entrypoint,
 		externalId: row.external_id,
 		displayName: row.display_name,
+		tier: row.tier as UserTier,
 		status: row.status as UserStatus,
 		createdAt: row.created_at,
 	};
@@ -80,6 +83,7 @@ export class PermissionsStore {
         entrypoint TEXT NOT NULL,
         external_id TEXT NOT NULL,
         display_name TEXT,
+        tier TEXT NOT NULL DEFAULT 'paid',
         status TEXT NOT NULL DEFAULT 'active',
         created_at INTEGER NOT NULL,
         UNIQUE(entrypoint, external_id)
@@ -125,7 +129,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
       FROM harness_users WHERE entrypoint = ${entrypoint} AND external_id = ${externalId}
     `;
 		return rows[0] ? rowToUser(rows[0]) : null;
@@ -135,7 +139,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
       FROM harness_users WHERE id = ${userId}
     `;
 		return rows[0] ? rowToUser(rows[0]) : null;
@@ -145,7 +149,7 @@ export class PermissionsStore {
 		await this._ready;
 		const db = this.database;
 		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, status, created_at
+      SELECT id, entrypoint, external_id, display_name, tier, status, created_at
       FROM harness_users ORDER BY created_at ASC
     `;
 		return rows.map(rowToUser);
@@ -168,6 +172,69 @@ export class PermissionsStore {
     `;
 		const user = await this.getUserById(id);
 		if (!user) throw new Error(`Failed to upsert user ${id}`);
+		return user;
+	}
+
+	async createUserFree(params: {
+		entrypoint: Entrypoint;
+		externalId: string;
+		displayName?: string | null;
+	}): Promise<UserRecord> {
+		await this._ready;
+		const id = callerId(params.entrypoint, params.externalId);
+		const now = Date.now();
+		const displayName = params.displayName ?? null;
+		const db = this.database;
+		await db`
+      INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
+      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'free', 'active', ${now})
+      ON CONFLICT(id) DO NOTHING
+    `;
+		const user = await this.getUserById(id);
+		if (!user) {
+			await db`
+        INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
+        VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'free', 'active', ${now})
+      `;
+			const user2 = await this.getUserById(id);
+			if (!user2) throw new Error(`Failed to create free user ${id}`);
+			return user2;
+		}
+		return user;
+	}
+
+	async upgradeToPaid(userId: string): Promise<UserRecord> {
+		await this._ready;
+		const db = this.database;
+		await db`UPDATE harness_users SET tier = 'paid' WHERE id = ${userId}`;
+		const user = await this.getUserById(userId);
+		if (!user) throw new Error(`Failed to upgrade user ${userId}`);
+		return user;
+	}
+
+	async upsertUserPaid(params: {
+		entrypoint: Entrypoint;
+		externalId: string;
+		displayName?: string | null;
+	}): Promise<UserRecord> {
+		await this._ready;
+		const id = callerId(params.entrypoint, params.externalId);
+		const now = Date.now();
+		const displayName = params.displayName ?? null;
+		const db = this.database;
+		const existing = await this.getUser(params.entrypoint, params.externalId);
+		if (existing) {
+			await db`UPDATE harness_users SET display_name = COALESCE(${displayName}, display_name), tier = 'paid', status = 'active' WHERE id = ${id}`;
+			const user = await this.getUserById(id);
+			if (!user) throw new Error(`Failed to upgrade user ${id}`);
+			return user;
+		}
+		await db`
+      INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
+      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'paid', 'active', ${now})
+    `;
+		const user = await this.getUserById(id);
+		if (!user) throw new Error(`Failed to create paid user ${id}`);
 		return user;
 	}
 
@@ -250,7 +317,7 @@ export class PermissionsStore {
 	async ensureUser(caller: Caller): Promise<UserRecord> {
 		const existing = await this.getUser(caller.entrypoint, caller.externalId);
 		if (existing) return existing;
-		return this.upsertUser({
+		return this.createUserFree({
 			entrypoint: caller.entrypoint,
 			externalId: caller.externalId,
 			displayName: caller.displayName ?? null,

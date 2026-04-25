@@ -29,12 +29,13 @@ async function main(): Promise<void> {
 				process.exit(1);
 			}
 			const entrypoint = EntrypointSchema.parse(entrypointRaw);
-			const user = await store.upsertUser({
+			const user = await store.upsertUserPaid({
 				entrypoint,
 				externalId,
 				displayName: displayNameParts.join(" ") || null,
 			});
-			console.log(`Created ${user.id}`);
+			const action = user.tier === "paid" ? "Created" : "Upgraded";
+			console.log(`${action} ${user.id} (tier=${user.tier})`);
 			break;
 		}
 		case "list-users": {
@@ -45,7 +46,7 @@ async function main(): Promise<void> {
 			}
 			for (const user of users) {
 				console.log(
-					`${user.id}\t${user.status}\t${user.displayName ?? "-"}\tcreated=${new Date(user.createdAt).toISOString()}`,
+					`${user.id}\t${user.tier}\t${user.status}\t${user.displayName ?? "-"}\tcreated=${new Date(user.createdAt).toISOString()}`,
 				);
 			}
 			break;

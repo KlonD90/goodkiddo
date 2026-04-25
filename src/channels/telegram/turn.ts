@@ -156,12 +156,26 @@ export async function getTelegramCaller(
 	chatId: string,
 ): Promise<Caller | null> {
 	const user = await store.getUser("telegram", chatId);
-	if (!user || user.status === "suspended") return null;
-	return {
-		id: user.id,
+	if (user) {
+		if (user.status === "suspended") return null;
+		return {
+			id: user.id,
+			entrypoint: "telegram",
+			externalId: user.externalId,
+			displayName: user.displayName ?? undefined,
+		};
+	}
+	await store.createUserFree({
 		entrypoint: "telegram",
-		externalId: user.externalId,
-		displayName: user.displayName ?? undefined,
+		externalId: chatId,
+	});
+	const newUser = await store.getUser("telegram", chatId);
+	if (!newUser) return null;
+	return {
+		id: newUser.id,
+		entrypoint: "telegram",
+		externalId: newUser.externalId,
+		displayName: newUser.displayName ?? undefined,
 	};
 }
 

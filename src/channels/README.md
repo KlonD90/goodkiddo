@@ -144,6 +144,24 @@ The stream chunker tracks:
 
 This avoids broken continuation chunks where later table rows appear without their headers.
 
+## Telegram Free-Tier Auto-Provisioning
+
+New Telegram chats that message the bot are automatically created as free-tier users without admin pre-provisioning.
+
+Behavior:
+- First message from an unknown Telegram chat creates an active user with `tier=free` in `harness_users`
+- The first message continues through the normal session flow after provisioning
+- Existing suspended users remain denied and are never recreated or reactivated
+- Free-tier users have no functional restrictions in this iteration (same capabilities as paid)
+- `admin add-user telegram <chatId>` creates a new user as paid or upgrades an existing free user to paid
+- `admin list-users` displays each user's tier
+
+Relevant files:
+- `src/channels/telegram/turn.ts` — `getTelegramCaller` auto-provisions missing users
+- `src/channels/telegram/handlers.ts` — `resolveContext` uses `getTelegramCaller`
+- `src/bin/admin.ts` — admin CLI `add-user` and `list-users` commands
+- `src/permissions/store.ts` — `createUserFree`, `upsertUserPaid`, `upgradeToPaid` methods
+
 ## Telegram How-To
 
 Relevant files:
