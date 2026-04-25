@@ -39,6 +39,7 @@ export async function startWebServer(
 	});
 
 	const server = Bun.serve({
+		hostname: config.webHost,
 		port: config.webPort,
 		async fetch(request) {
 			try {
@@ -63,6 +64,7 @@ export async function startWebServer(
 	}, SWEEP_INTERVAL_MS);
 
 	log.info("web explorer listening", {
+		host: config.webHost,
 		port: config.webPort,
 		publicBaseUrl: config.webPublicBaseUrl,
 	});

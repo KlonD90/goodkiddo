@@ -125,6 +125,38 @@ describe("memory_write", () => {
 		expect(indexAfter).toBe(indexBefore);
 	});
 
+	test("target: 'user' notifies prompt-injected memory mutation callback", async () => {
+		const backend = createBackend("mw-user-callback");
+		await ensureMemoryBootstrapped(backend);
+		const mutations: string[] = [];
+		const tool = createMemoryWriteTool(backend, (kind) => {
+			mutations.push(kind);
+		});
+
+		await callTool(tool, {
+			target: "user",
+			content: "Timezone: Asia/Bangkok.",
+		});
+
+		expect(mutations).toEqual(["user"]);
+	});
+
+	test("target: 'notes' notifies prompt-injected memory mutation callback", async () => {
+		const backend = createBackend("mw-notes-callback");
+		await ensureMemoryBootstrapped(backend);
+		const mutations: string[] = [];
+		const tool = createMemoryWriteTool(backend, (kind) => {
+			mutations.push(kind);
+		});
+
+		await callTool(tool, {
+			topic: "project",
+			content: "Stable fact.",
+		});
+
+		expect(mutations).toEqual(["notes"]);
+	});
+
 	test("target: 'user' with rotate_actuel archives previous profile", async () => {
 		const backend = createBackend("mw-user-rotate");
 		await ensureMemoryBootstrapped(backend);
@@ -191,6 +223,22 @@ describe("skill_write", () => {
 		expect(index).toContain(
 			"- [deploy-rollback](/skills/deploy-rollback.md): revert + redeploy",
 		);
+	});
+
+	test("notifies prompt-injected memory mutation callback", async () => {
+		const backend = createBackend("sw-callback");
+		await ensureMemoryBootstrapped(backend);
+		const mutations: string[] = [];
+		const tool = createSkillWriteTool(backend, (kind) => {
+			mutations.push(kind);
+		});
+
+		await callTool(tool, {
+			name: "deploy rollback",
+			content: "1. revert commit\n2. redeploy",
+		});
+
+		expect(mutations).toEqual(["skills"]);
 	});
 });
 

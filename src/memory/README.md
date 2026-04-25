@@ -51,7 +51,11 @@ Key invariant: stored history grows indefinitely; model context stays bounded.
 - first message after session resume
 - message or token budget threshold exceeded
 
-Each checkpoint captures: current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts. The snapshot is a JSON payload persisted in the `forced_checkpoints` table.
+Compaction is skipped when the source conversation is empty or below the 20,000-character minimum meaningful-content threshold. Skipped compaction creates no `forced_checkpoints` row and injects no checkpoint appendix; boundary behavior such as `/new_thread` rotation and task reconciliation still proceeds.
+
+Runtime-only current-message metadata is filtered out before compaction and thread summaries are built, so timestamp/timezone guidance stored in checkpoint state does not make an otherwise tiny conversation eligible for restart compaction.
+
+Each checkpoint captures: current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts. Durable user facts such as timezone or scheduling preferences belong in `/memory/USER.md`, not checkpoint payloads. The snapshot is a JSON payload persisted in the `forced_checkpoints` table.
 
 **Checkpoint summary generation** (`checkpoint_compaction.ts`) prompts the model to produce the structured `CheckpointSummary` JSON. The resulting snapshot is serialized and stored in `ForcedCheckpointStore`.
 
@@ -60,6 +64,8 @@ Each checkpoint captures: current goal, decisions, constraints, unfinished work,
 1. Latest checkpoint summary (serialized as structured JSON data)
 2. Last 2 user-initiated turns (not last 2 messages — turns include all interleaved assistant/tool messages)
 
-That appendix is injected through the rebuilt system prompt for the next turn only, so the persisted thread history still contains just the actual new user/assistant exchange. The prompt block explicitly labels checkpoint strings as untrusted historical data rather than behavioral instructions.
+That appendix is injected through each rebuilt system prompt until another compaction or explicit non-compacted rotation replaces it, so the persisted thread history still contains just the actual new user/assistant exchanges. The prompt block explicitly labels checkpoint strings as untrusted historical data rather than behavioral instructions. Later compactions summarize the active checkpoint appendix together with the new thread's messages so context is not dropped across repeated rotations.
+
+Writes to prompt-injected memory files (`USER.md`, `MEMORY.md`, and `SKILLS.md`) mark the channel session prompt as dirty. Channel cleanup refreshes the agent after the turn, preserving the thread id and checkpoint state while rebuilding the system prompt from the latest memory snapshot.
 
 When no checkpoint exists yet, the builder falls back to replaying full stored history. `RuntimeContext.hasCompaction` indicates which path was taken.

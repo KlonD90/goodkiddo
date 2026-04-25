@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
+import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import { createDb, detectDialect } from "../db";
 import type { SupportedLocale } from "../i18n/locale";
 import { createExecutionToolset } from "./factory";
@@ -17,6 +18,11 @@ class FakeStatusEmitter implements StatusEmitter {
 }
 
 const createFakeEmitter = (): StatusEmitter => new FakeStatusEmitter();
+
+type InvokableTool = {
+	name: string;
+	invoke: (input: unknown) => Promise<string>;
+};
 
 function createTestWorkspace(namespace: string) {
 	const db = createDb("sqlite://:memory:");
@@ -69,6 +75,54 @@ describe("createExecutionToolset enableToolStatus flag", () => {
 		});
 
 		expect(tools.length).toBeGreaterThan(0);
+		await db.close();
+	});
+
+	test("omits understand_image tool when no image-understanding provider is supplied", async () => {
+		const { workspace, db } = createTestWorkspace("factory-image-off");
+		const tools = await createExecutionToolset({ workspace });
+		expect(tools.find((tool) => tool.name === "understand_image")).toBeUndefined();
+		await db.close();
+	});
+
+	test("includes understand_image tool when an image-understanding provider is supplied", async () => {
+		const { workspace, db } = createTestWorkspace("factory-image-on");
+		const provider: ImageUnderstandingProvider = {
+			async understand() {
+				return { text: "stub" };
+			},
+			async close() {},
+		};
+
+		const tools = await createExecutionToolset({
+			workspace,
+			imageUnderstandingProvider: provider,
+		});
+
+		expect(tools.find((tool) => tool.name === "understand_image")).toBeDefined();
+		await db.close();
+	});
+
+	test("passes memory mutation callbacks into memory tools", async () => {
+		const { workspace, db } = createTestWorkspace("factory-memory-callback");
+		const mutations: string[] = [];
+		const tools = await createExecutionToolset({
+			workspace,
+			onMemoryMutation: (kind) => {
+				mutations.push(kind);
+			},
+		});
+		const memoryWrite = tools.find((tool) => tool.name === "memory_write") as
+			| InvokableTool
+			| undefined;
+		if (!memoryWrite) throw new Error("Expected memory_write tool");
+
+		await memoryWrite.invoke({
+			target: "user",
+			content: "Timezone: Asia/Bangkok.",
+		});
+
+		expect(mutations).toEqual(["user"]);
 		await db.close();
 	});
 });

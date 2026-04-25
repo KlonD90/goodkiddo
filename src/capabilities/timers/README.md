@@ -78,7 +78,10 @@ the user's timezone. If a wall-clock or recurring timer is missing a timezone,
 the agent asks for it and saves it to `USER.md` before creating the timer. The
 current Telegram message timestamp is prepended to the user turn as message
 metadata so relative requests can be converted without changing the cacheable
-system prompt.
+system prompt. `USER.md` remains the canonical source for durable user facts
+like timezone; successful profile writes mark the agent prompt for rebuild
+before the next turn, and compaction refreshes the rebuilt prompt with active
+checkpoint context.
 
 ### Cheat Sheet
 

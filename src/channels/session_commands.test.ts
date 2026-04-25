@@ -16,6 +16,7 @@ import {
 import type { ChannelAgentSession } from "./shared";
 
 const tempDirs: string[] = [];
+const MEANINGFUL_CONTENT = "meaningful session command context ".repeat(900);
 
 afterEach(() => {
 	while (tempDirs.length > 0) {
@@ -263,8 +264,8 @@ describe("maybeHandleSessionCommand — /new_thread with compaction", () => {
 	test("creates a forced checkpoint with new_thread boundary", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("thread-10", [
-			{ role: "user", content: "Deploy the service" },
-			{ role: "assistant", content: "Deploying now..." },
+			{ role: "user", content: `Deploy the service. ${MEANINGFUL_CONTENT}` },
+			{ role: "assistant", content: `Deploying now. ${MEANINGFUL_CONTENT}` },
 		]);
 		const model = createStubModel();
 		const backend = session.workspace;
@@ -296,7 +297,7 @@ describe("maybeHandleSessionCommand — /new_thread with compaction", () => {
 	test("checkpoint is for the old thread id, not the new one", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("old-thread", [
-			{ role: "user", content: "hi" },
+			{ role: "user", content: MEANINGFUL_CONTENT },
 		]);
 		const model = createStubModel();
 		const backend = session.workspace;
@@ -338,6 +339,78 @@ describe("maybeHandleSessionCommand — /new_thread with compaction", () => {
 		const result = await maybeHandleSessionCommand("/new_thread", ctx);
 		expect(result.handled).toBe(true);
 		expect(session.threadId).toBe("t-after");
+		expect(await store.readLatest("carol", "t-before")).toBeNull();
+		await close();
+	});
+
+	test("does not create a checkpoint or seed for short trivial content", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("tiny-before", [
+			{ role: "user", content: "hi" },
+		]);
+		const model = createStubModel();
+
+		await maybeHandleSessionCommand("/new_thread", {
+			session,
+			model,
+			backend: session.workspace,
+			mintThreadId: () => "tiny-after",
+			compaction: { caller: "tiny-user", store },
+		});
+
+		expect(session.threadId).toBe("tiny-after");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(await store.readLatest("tiny-user", "tiny-before")).toBeNull();
+		await close();
+	});
+
+	test("compacts the active checkpoint seed when rotating an already compacted thread", async () => {
+		const { store, close } = createTempStore();
+		const session = createStubSession("thread-with-seed", [
+			{ role: "user", content: `new work ${MEANINGFUL_CONTENT}` },
+			{ role: "assistant", content: `ack ${MEANINGFUL_CONTENT}` },
+		]);
+		session.pendingCompactionSeed = {
+			summary: {
+				current_goal: "Set a recurring reminder",
+				decisions: [],
+				constraints: [],
+				unfinished_work: [],
+				pending_approvals: [],
+				important_artifacts: [],
+			},
+			recentTurns: [],
+		};
+		const seenCompactionInputs: string[] = [];
+		const model = {
+			async invoke(messages: Array<{ role: string; content: string }>) {
+				const systemPrompt = messages[0]?.content ?? "";
+				if (systemPrompt.includes("compacted into a checkpoint")) {
+					seenCompactionInputs.push(messages[1]?.content ?? "");
+					return {
+						content: JSON.stringify({
+							current_goal: "test goal",
+							decisions: [],
+							constraints: [],
+							unfinished_work: [],
+							pending_approvals: [],
+							important_artifacts: [],
+						}),
+					};
+				}
+				return { content: "- archived" };
+			},
+		} as unknown as BaseChatModel;
+
+		await maybeHandleSessionCommand("/new_thread", {
+			session,
+			model,
+			backend: session.workspace,
+			mintThreadId: () => "thread-after-seed",
+			compaction: { caller: "seeded-user", store },
+		});
+
+		expect(seenCompactionInputs[0]).toContain("Compacted Conversation Context");
 		await close();
 	});
 });
@@ -349,7 +422,7 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 	test("sets pendingCompactionSeed on the session after /new_thread with compaction", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("thread-seed-test", [
-			{ role: "user", content: "step 1" },
+			{ role: "user", content: `step 1 ${MEANINGFUL_CONTENT}` },
 			{ role: "assistant", content: "done 1" },
 			{ role: "user", content: "step 2" },
 			{ role: "assistant", content: "done 2" },
@@ -379,7 +452,7 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 	test("seed summary contains the generated checkpoint content", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("thread-content-check", [
-			{ role: "user", content: "build the feature" },
+			{ role: "user", content: `build the feature ${MEANINGFUL_CONTENT}` },
 			{ role: "assistant", content: "building..." },
 		]);
 		const model = createStubModel();
@@ -446,7 +519,7 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 		const { store, close } = createTempStore();
 		// 3 full turns = 6 messages; last 2 turns = 4 messages
 		const session = createStubSession("thread-long", [
-			{ role: "user", content: "early" },
+			{ role: "user", content: `early ${MEANINGFUL_CONTENT}` },
 			{ role: "assistant", content: "early-reply" },
 			{ role: "user", content: "middle" },
 			{ role: "assistant", content: "middle-reply" },
@@ -479,7 +552,7 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 	test("thread is rotated AND seed is set in the same /new_thread call", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("thread-rotate-and-seed", [
-			{ role: "user", content: "work item" },
+			{ role: "user", content: `work item ${MEANINGFUL_CONTENT}` },
 			{ role: "assistant", content: "in progress" },
 		]);
 		const model = createStubModel();
@@ -504,7 +577,7 @@ describe("maybeHandleSessionCommand — pending compaction seed", () => {
 	test("does not leave a pending seed behind when rotation fails after checkpoint creation", async () => {
 		const { store, close } = createTempStore();
 		const session = createStubSession("thread-rotation-failure", [
-			{ role: "user", content: "work item" },
+			{ role: "user", content: `work item ${MEANINGFUL_CONTENT}` },
 			{ role: "assistant", content: "still open" },
 		]);
 		const model = {

@@ -20,6 +20,7 @@ type AgentWithState = {
 };
 
 const CHECKPOINT_SYSTEM_HEADER = "[Conversation Checkpoint]";
+const CURRENT_MESSAGE_METADATA_HEADER = "[Current message metadata]";
 
 function isSyntheticCheckpointSystemMessage(
 	role: ThreadMessage["role"],
@@ -29,6 +30,10 @@ function isSyntheticCheckpointSystemMessage(
 		role === "system" &&
 		content.trimStart().startsWith(CHECKPOINT_SYSTEM_HEADER)
 	);
+}
+
+function isSyntheticCurrentMessageMetadata(content: string): boolean {
+	return content.trimStart().startsWith(CURRENT_MESSAGE_METADATA_HEADER);
 }
 
 function toThreadMessage(raw: unknown): ThreadMessage | null {
@@ -43,6 +48,7 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 			if (content.trim().length === 0) return null;
 			const role = obj.role as ThreadMessage["role"];
 			if (isSyntheticCheckpointSystemMessage(role, content)) return null;
+			if (isSyntheticCurrentMessageMetadata(content)) return null;
 			return {
 				role,
 				content,
@@ -77,6 +83,7 @@ function toThreadMessage(raw: unknown): ThreadMessage | null {
 	const content = extractContentText(obj.content);
 	if (content.trim().length === 0) return null;
 	if (isSyntheticCheckpointSystemMessage(role, content)) return null;
+	if (isSyntheticCurrentMessageMetadata(content)) return null;
 	return {
 		role,
 		content,

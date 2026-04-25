@@ -3,6 +3,7 @@ import type { BackendProtocol } from "deepagents";
 import {
 	type CompactionContext,
 	runCompaction,
+	shouldCompactByMinimumContent,
 } from "../checkpoints/compaction_trigger";
 import type { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { compactionStatusMessage } from "../i18n/locale";
@@ -13,7 +14,10 @@ import type { AccessStore, ScopeKind } from "../server/access_store";
 import type { TaskRecord } from "../tasks/store";
 import { buildShareUrl } from "../tools/share_tools";
 import { compactInline } from "../utils/text";
-import type { ChannelAgentSession } from "./shared";
+import {
+	buildSessionRuntimeMessages,
+	type ChannelAgentSession,
+} from "./shared";
 
 // Channel-agnostic session-control commands — separate concern from permission
 // commands in src/permissions/commands.ts.
@@ -163,14 +167,21 @@ export async function maybeHandleSessionCommand(
 				context.session.agent,
 				context.session.threadId,
 			);
+			const compactionMessages = buildSessionRuntimeMessages(
+				context.session,
+				messages,
+			);
 			const compactionCtx: CompactionContext = {
 				caller: context.compaction.caller,
 				threadId: context.session.threadId,
-				messages,
+				messages: compactionMessages,
 				model: context.model,
 				store: context.compaction.store,
 			};
-			if (context.session.statusEmitter) {
+			if (
+				shouldCompactByMinimumContent(compactionMessages) &&
+				context.session.statusEmitter
+			) {
 				try {
 					await context.session.statusEmitter.emit(
 						context.compaction.caller,
@@ -182,16 +193,18 @@ export async function maybeHandleSessionCommand(
 			}
 			const checkpoint = await runCompaction(compactionCtx, "new_thread");
 
-			// Seed the first turn in the new thread with the checkpoint context
-			// so the model has operational continuity without replaying full history.
-			const recentTurns = extractRecentTurns(messages, 2);
-			const summaryObj = deserializeCheckpointSummary(
-				checkpoint.summaryPayload,
-			);
-			pendingSeed = {
-				summary: summaryObj,
-				recentTurns,
-			};
+			if (checkpoint) {
+				// Seed the first turn in the new thread with the checkpoint context
+				// so the model has operational continuity without replaying full history.
+				const recentTurns = extractRecentTurns(messages, 2);
+				const summaryObj = deserializeCheckpointSummary(
+					checkpoint.summaryPayload,
+				);
+				pendingSeed = {
+					summary: summaryObj,
+					recentTurns,
+				};
+			}
 		}
 
 		const { summary, newThreadId } = await rotateThread({
@@ -201,7 +214,7 @@ export async function maybeHandleSessionCommand(
 			mintThreadId: context.mintThreadId,
 		});
 		context.session.pendingCompactionSeed = pendingSeed;
-		if (pendingSeed) {
+		if (context.compaction || pendingSeed) {
 			context.session.pendingTaskCheck = true;
 		}
 

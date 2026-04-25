@@ -115,7 +115,7 @@ function tryParseSummary(raw: string): CheckpointSummary | null {
 const RETRY_SYSTEM = [
 	"Your previous response was not valid JSON matching the required schema.",
 	"Respond now with ONLY the JSON object. No code fences, no prose, no preamble.",
-	'Required keys: "current_goal" (string), "decisions", "constraints", "unfinished_work", "pending_approvals", "important_artifacts" (each a string array).',
+	'Required keys: "current_goal" (string), "decisions", "constraints", "unfinished_work", "pending_approvals", "important_artifacts" (each non-goal key is a string array).',
 ].join("\n");
 
 export async function generateCheckpointSummary(

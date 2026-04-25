@@ -24,6 +24,7 @@ import {
 	maybeResumeCompactAndSeed,
 	maybeRunPendingTaskCheck,
 	recoverPendingSeedForEmptyThread,
+	refreshAgentIfPromptDirty,
 	seedFromCheckpoint,
 } from "./shared";
 
@@ -32,6 +33,7 @@ import {
 // ---------------------------------------------------------------------------
 
 const tempDirs: string[] = [];
+const MEANINGFUL_CONTENT = "meaningful shared compaction context ".repeat(900);
 
 afterEach(() => {
 	while (tempDirs.length > 0) {
@@ -80,6 +82,7 @@ const TEST_CONFIG: AppConfig = {
 	enableExecute: false,
 	enablePdfDocuments: true,
 	enableSpreadsheets: true,
+	enableImageUnderstanding: false,
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
 	defaultStatusLocale: "en",
@@ -87,6 +90,9 @@ const TEST_CONFIG: AppConfig = {
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
 	transcriptionBaseUrl: "",
+	minimaxApiKey: "",
+	minimaxApiHost: "https://api.minimax.io",
+	webHost: "127.0.0.1",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
@@ -563,6 +569,38 @@ describe("buildInvokeMessages — with pending seed", () => {
 	});
 });
 
+describe("refreshAgentIfPromptDirty", () => {
+	test("refreshes the agent once when prompt-injected memory changed", async () => {
+		let refreshes = 0;
+		const session = stubSession({
+			promptNeedsRefresh: true,
+			refreshAgent: async () => {
+				refreshes++;
+			},
+		});
+
+		await refreshAgentIfPromptDirty(session);
+		await refreshAgentIfPromptDirty(session);
+
+		expect(refreshes).toBe(1);
+		expect(session.promptNeedsRefresh).toBe(false);
+	});
+
+	test("does nothing when the prompt is clean", async () => {
+		let refreshes = 0;
+		const session = stubSession({
+			promptNeedsRefresh: false,
+			refreshAgent: async () => {
+				refreshes++;
+			},
+		});
+
+		await refreshAgentIfPromptDirty(session);
+
+		expect(refreshes).toBe(0);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // seedFromCheckpoint
 // ---------------------------------------------------------------------------
@@ -748,6 +786,35 @@ describe("maybeAutoCompactAndSeed — threshold not exceeded", () => {
 });
 
 describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
+	test("returns false when thresholds are exceeded but prior content is trivial", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			model: {
+				async invoke() {
+					throw new Error("should not compact trivial content");
+				},
+			} as unknown as BaseChatModel,
+			compactionConfig: {
+				caller: "tiny-user",
+				store,
+				thresholds: { messageLimit: 1, tokenBudget: 1 },
+			},
+		});
+
+		const result = await maybeAutoCompactAndSeed(
+			session,
+			makeMessages(["x", "y"]),
+			"next",
+			() => "unused",
+		);
+
+		expect(result).toBe(false);
+		expect(session.threadId).toBe("test-thread");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(await store.readLatest("tiny-user", "test-thread")).toBeNull();
+		await close();
+	});
+
 	test("returns true, rotates thread, and sets pending seed", async () => {
 		const { store, close } = createTempStore();
 		let minted = "";
@@ -765,7 +832,10 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 				thresholds: { messageLimit: 2, tokenBudget: 1_000_000 },
 			},
 		});
-		const messages = makeMessages(["q1", "a1"]); // exactly 2 messages → hits messageLimit:2
+		const messages = makeMessages([
+			`q1 ${MEANINGFUL_CONTENT}`,
+			`a1 ${MEANINGFUL_CONTENT}`,
+		]); // exactly 2 messages → hits messageLimit:2
 
 		const result = await maybeAutoCompactAndSeed(
 			session,
@@ -809,7 +879,10 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 				thresholds: { messageLimit: 2, tokenBudget: 1_000_000 },
 			},
 		});
-		const messages = makeMessages(["q1", "a1"]); // triggers at 2
+		const messages = makeMessages([
+			`q1 ${MEANINGFUL_CONTENT}`,
+			`a1 ${MEANINGFUL_CONTENT}`,
+		]); // triggers at 2
 
 		await maybeAutoCompactAndSeed(
 			session,
@@ -848,7 +921,10 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 				thresholds: { messageLimit: 3, tokenBudget: 1_000_000 },
 			},
 		});
-		const messages = makeMessages(["q1", "a1"]);
+		const messages = makeMessages([
+			`q1 ${MEANINGFUL_CONTENT}`,
+			`a1 ${MEANINGFUL_CONTENT}`,
+		]);
 
 		const result = await maybeAutoCompactAndSeed(
 			session,
@@ -882,7 +958,7 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 
 		const result = await maybeAutoCompactAndSeed(
 			session,
-			[],
+			[{ role: "user", content: MEANINGFUL_CONTENT }],
 			[
 				{ type: "text", text: "please inspect this" },
 				{ type: "image", mimeType: "image/png", data: new Uint8Array([1, 2]) },
@@ -893,6 +969,52 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 		expect(result).toBe(true);
 		const checkpoint = await store.readLatest("user-6", "test-thread");
 		expect(checkpoint?.sourceBoundary).toBe("token_limit");
+		await close();
+	});
+
+	test("summarizes the active checkpoint seed when compacting an already compacted thread", async () => {
+		const { store, close } = createTempStore();
+		const seen: Array<{ role: string; content: string }> = [];
+		const model = {
+			async invoke(messages: Array<{ role: string; content: string }>) {
+				seen.push(...messages);
+				return {
+					content: JSON.stringify({
+						...SAMPLE_SUMMARY,
+						current_goal: "Continue from compacted context",
+					}),
+				};
+			},
+		} as unknown as BaseChatModel;
+
+		const session = stubSession({
+			model,
+			pendingCompactionSeed: {
+				summary: SAMPLE_SUMMARY,
+				recentTurns: [],
+			},
+			compactionConfig: {
+				caller: "user-with-seed",
+				store,
+				thresholds: { messageLimit: 1, tokenBudget: 1_000_000 },
+			},
+		});
+
+		const result = await maybeAutoCompactAndSeed(
+			session,
+			makeMessages([
+				`new work ${MEANINGFUL_CONTENT}`,
+				`ack ${MEANINGFUL_CONTENT}`,
+			]),
+			"continue",
+			() => "new-thread-with-seed",
+		);
+
+		expect(result).toBe(true);
+		expect(seen[1]?.content).toContain("Compacted Conversation Context");
+		expect(session.pendingCompactionSeed?.summary.current_goal).toBe(
+			"Continue from compacted context",
+		);
 		await close();
 	});
 
@@ -917,7 +1039,10 @@ describe("maybeAutoCompactAndSeed — threshold exceeded", () => {
 		await expect(
 			maybeAutoCompactAndSeed(
 				session,
-				makeMessages(["q1", "a1"]),
+				makeMessages([
+					`q1 ${MEANINGFUL_CONTENT}`,
+					`a1 ${MEANINGFUL_CONTENT}`,
+				]),
 				"next",
 				() => "rotated-thread",
 			),
@@ -939,7 +1064,10 @@ describe("maybeResumeCompactAndSeed", () => {
 				return { content: JSON.stringify(SAMPLE_SUMMARY) };
 			},
 		} as unknown as BaseChatModel;
-		const messages = makeMessages(["q1", "a1"], ["q2", "a2"]);
+		const messages = makeMessages(
+			[`q1 ${MEANINGFUL_CONTENT}`, `a1 ${MEANINGFUL_CONTENT}`],
+			["q2", "a2"],
+		);
 		const session = stubSession({
 			model,
 			needsResumeCompaction: true,
@@ -988,6 +1116,30 @@ describe("maybeResumeCompactAndSeed", () => {
 		await close();
 	});
 
+	test("clears resume-compaction state for trivial stored history", async () => {
+		const { store, close } = createTempStore();
+		const session = stubSession({
+			needsResumeCompaction: true,
+			compactionConfig: {
+				caller: "resume-tiny-user",
+				store,
+			},
+		});
+
+		const result = await maybeResumeCompactAndSeed(
+			session,
+			makeMessages(["hi", "ok"]),
+			() => "unused",
+		);
+
+		expect(result).toBe(false);
+		expect(session.threadId).toBe("test-thread");
+		expect(session.pendingCompactionSeed).toBeUndefined();
+		expect(session.needsResumeCompaction).toBe(false);
+		expect(await store.readLatest("resume-tiny-user", "test-thread")).toBeNull();
+		await close();
+	});
+
 	test("preserves resume-compaction state when checkpoint creation fails", async () => {
 		const { store, close } = createTempStore();
 		const session = stubSession({
@@ -1006,7 +1158,10 @@ describe("maybeResumeCompactAndSeed", () => {
 		await expect(
 			maybeResumeCompactAndSeed(
 				session,
-				makeMessages(["q1", "a1"]),
+				makeMessages([
+					`q1 ${MEANINGFUL_CONTENT}`,
+					`a1 ${MEANINGFUL_CONTENT}`,
+				]),
 				() => "unused",
 			),
 		).rejects.toThrow("LLM unavailable");
@@ -1037,7 +1192,10 @@ describe("maybeResumeCompactAndSeed", () => {
 		await expect(
 			maybeResumeCompactAndSeed(
 				session,
-				makeMessages(["q1", "a1"]),
+				makeMessages([
+					`q1 ${MEANINGFUL_CONTENT}`,
+					`a1 ${MEANINGFUL_CONTENT}`,
+				]),
 				() => "rotated-thread",
 			),
 		).rejects.toThrow(

@@ -124,9 +124,80 @@ describe("rotateThread", () => {
 			mintThreadId: () => "thread-next",
 		});
 
-		expect(seen[1]?.content).toContain("USER: Continue with the fix");
-		expect(seen[1]?.content).toContain("ASSISTANT: Working on it.");
+		expect(seen[1]?.content).toContain(
+			'<turn role="user">Continue with the fix</turn>',
+		);
+		expect(seen[1]?.content).toContain(
+			'<turn role="assistant">Working on it.</turn>',
+		);
 		expect(seen[1]?.content).not.toContain("[Conversation Checkpoint]");
+	});
+
+	test("ignores synthetic current-message metadata when reading thread history", async () => {
+		const agent = {
+			async getState() {
+				return {
+					values: {
+						messages: [
+							{
+								role: "user",
+								content:
+									"[Current message metadata]\n- Current message time in UTC: 2026-04-25T00:00:00.000Z\n- Time source: Telegram message timestamp\n- For duration-only one-time reminders, compute the UTC target instant.\n[/Current message metadata]",
+							},
+							{ role: "user", content: "hi" },
+							{ role: "assistant", content: "hello" },
+						],
+					},
+				};
+			},
+		};
+
+		const messages = await readThreadMessages(agent as never, "thread-meta");
+
+		expect(messages).toEqual([
+			{ role: "user", content: "hi", estimatedTokens: 1 },
+			{ role: "assistant", content: "hello", estimatedTokens: 2 },
+		]);
+	});
+
+	test("does not summarize synthetic current-message metadata when rotating", async () => {
+		const backend = createBackend("rotate-ignores-current-metadata");
+		const { model, seen } = createStubModel("- summarized");
+		const session = {
+			threadId: "thread-with-metadata",
+			agent: {
+				async getState() {
+					return {
+						values: {
+							messages: [
+								{
+									role: "user",
+									content:
+										"[Current message metadata]\n- Current message time in UTC: 2026-04-25T00:00:00.000Z\n- Time source: Telegram message timestamp\n- For duration-only one-time reminders, compute the UTC target instant.\n[/Current message metadata]",
+								},
+								{ role: "user", content: "Continue with the fix" },
+								{ role: "assistant", content: "Working on it." },
+							],
+						},
+					};
+				},
+			},
+			workspace: backend,
+			model,
+			refreshAgent: async () => undefined,
+		} as unknown as ChannelAgentSession;
+
+		await rotateThread({
+			session,
+			model,
+			backend,
+			mintThreadId: () => "thread-next",
+		});
+
+		expect(seen[1]?.content).toContain(
+			'<turn role="user">Continue with the fix</turn>',
+		);
+		expect(seen[1]?.content).not.toContain("[Current message metadata]");
 	});
 
 	test("propagates thread-state read failures instead of treating them as empty history", async () => {

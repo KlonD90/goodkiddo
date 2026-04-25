@@ -23,11 +23,14 @@ const CONFIG_KEYS = [
 	"DEFAULT_STATUS_LOCALE",
 	"ENABLE_EXECUTE",
 	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
+	"ENABLE_IMAGE_UNDERSTANDING",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
 	"MAX_CONTEXT_WINDOW_TOKENS",
+	"MINIMAX_API_HOST",
+	"MINIMAX_API_KEY",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
@@ -37,6 +40,7 @@ const CONFIG_KEYS = [
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
+	"WEB_HOST",
 	"WEB_PORT",
 	"WEB_PUBLIC_BASE_URL",
 ] as const;
@@ -124,6 +128,7 @@ describe("config", () => {
 					enableExecute: true,
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
+					enableImageUnderstanding: false,
 					enableToolStatus: true,
 					enableAttachmentCompactionNotice: true,
 					defaultStatusLocale: "en",
@@ -131,6 +136,9 @@ describe("config", () => {
 					transcriptionProvider: "openrouter",
 					transcriptionApiKey: "voice-key",
 					transcriptionBaseUrl: "https://voice.example/v1",
+					minimaxApiKey: "",
+					minimaxApiHost: "https://api.minimax.io",
+					webHost: "127.0.0.1",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
@@ -248,6 +256,134 @@ describe("config", () => {
 			() => {
 				const config = readConfigFromEnv();
 				expect(config.enableSpreadsheets).toBe(false);
+			},
+		);
+	});
+
+	test("defaults enableImageUnderstanding to false when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableImageUnderstanding).toBe(false);
+				expect(config.minimaxApiKey).toBe("");
+				expect(config.minimaxApiHost).toBe("https://api.minimax.io");
+			},
+		);
+	});
+
+	test("reports missing MINIMAX_API_KEY when ENABLE_IMAGE_UNDERSTANDING=true", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_IMAGE_UNDERSTANDING: "true",
+				USING_MODE: "single",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "MINIMAX_API_KEY",
+					reason:
+						"MINIMAX_API_KEY is required when ENABLE_IMAGE_UNDERSTANDING=true.",
+				});
+			},
+		);
+	});
+
+	test("accepts MINIMAX_API_KEY and custom host when image understanding is enabled", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_IMAGE_UNDERSTANDING: "true",
+				MINIMAX_API_KEY: "minimax-secret",
+				MINIMAX_API_HOST: "https://custom.minimax.test",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableImageUnderstanding).toBe(true);
+				expect(config.minimaxApiKey).toBe("minimax-secret");
+				expect(config.minimaxApiHost).toBe("https://custom.minimax.test");
+				expect(findConfigIssues(config)).toEqual([]);
+			},
+		);
+	});
+
+	test("does not require MINIMAX_API_KEY when ENABLE_IMAGE_UNDERSTANDING is not set", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const issues = findConfigIssues(readConfigFromEnv());
+				expect(
+					issues.some((issue) => issue.field === "MINIMAX_API_KEY"),
+				).toBe(false);
+			},
+		);
+	});
+
+	test("round-trips image understanding env values from a persisted env file", async () => {
+		await withEnv({}, async () => {
+			const envFilePath = makeTempEnvPath();
+			writeFileSync(
+				envFilePath,
+				[
+					'AI_API_KEY="persisted-key"',
+					'AI_MODEL_NAME="persisted-model"',
+					'AI_TYPE="anthropic"',
+					'APP_ENTRYPOINT="cli"',
+					'ENABLE_IMAGE_UNDERSTANDING="true"',
+					'MINIMAX_API_KEY="persisted-minimax"',
+					'MINIMAX_API_HOST="https://custom.minimax.test"',
+					'USING_MODE="single"',
+				].join("\n"),
+				"utf8",
+			);
+
+			const config = await resolveConfig({ envFilePath });
+
+			expect(config.enableImageUnderstanding).toBe(true);
+			expect(config.minimaxApiKey).toBe("persisted-minimax");
+			expect(config.minimaxApiHost).toBe("https://custom.minimax.test");
+		});
+	});
+
+	test("persists image understanding settings when the wizard fills missing values", async () => {
+		await withEnv(
+			{
+				ENABLE_IMAGE_UNDERSTANDING: "true",
+				MINIMAX_API_KEY: "minimax-secret",
+				MINIMAX_API_HOST: "https://custom.minimax.test",
+			},
+			async () => {
+				const envFilePath = makeTempEnvPath();
+				const textAnswers = ["gpt-4.1-mini", "", "wizard-key"];
+
+				await resolveConfig({
+					promptUser: () => textAnswers.shift(),
+					selectValue: async (_title, _description, options) =>
+						pickOptionValue(options, 0),
+					envFilePath,
+				});
+
+				const persisted = readFileSync(envFilePath, "utf8");
+				expect(persisted).toContain('ENABLE_IMAGE_UNDERSTANDING="true"');
+				expect(persisted).toContain('MINIMAX_API_KEY="minimax-secret"');
+				expect(persisted).toContain(
+					'MINIMAX_API_HOST="https://custom.minimax.test"',
+				);
 			},
 		);
 	});
@@ -398,6 +534,20 @@ describe("config", () => {
 		);
 	});
 
+	test("allows empty AI_API_KEY when AI_BASE_URL points to a custom endpoint", async () => {
+		await withEnv(
+			{
+				AI_BASE_URL: "http://127.0.0.1:11434/v1",
+				AI_MODEL_NAME: "local-model",
+				AI_TYPE: "openai",
+				USING_MODE: "single",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toEqual([]);
+			},
+		);
+	});
+
 	test("informs about missing transcription key when Telegram voice cannot reuse AI_API_KEY", async () => {
 		await withEnv(
 			{
@@ -427,7 +577,27 @@ describe("config", () => {
 				"AI_API_KEY",
 				"USING_MODE",
 			]);
+			expect(issues.find((issue) => issue.field === "AI_API_KEY")?.reason).toBe(
+				"AI_API_KEY is required unless AI_BASE_URL points to a local/custom endpoint.",
+			);
 		});
+	});
+
+	test("requires AI_API_KEY for openrouter even with a custom endpoint", async () => {
+		await withEnv(
+			{
+				AI_BASE_URL: "http://router.local/v1",
+				AI_MODEL_NAME: "router-model",
+				AI_TYPE: "openrouter",
+				USING_MODE: "single",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "AI_API_KEY",
+					reason: "AI_API_KEY is required for AI_TYPE=openrouter.",
+				});
+			},
+		);
 	});
 
 	test("ignores legacy STATE_DB_PATH and uses DATABASE_URL only", () => {
@@ -472,8 +642,8 @@ describe("config", () => {
 			async () => {
 				const textAnswers = [
 					"gpt-4.1-mini",
-					"wizard-key",
 					"https://openai.example",
+					"wizard-key",
 				];
 
 				const config = await resolveConfig({
@@ -502,6 +672,7 @@ describe("config", () => {
 					enableExecute: true,
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
+					enableImageUnderstanding: false,
 					enableToolStatus: true,
 					enableAttachmentCompactionNotice: true,
 					defaultStatusLocale: "en",
@@ -509,6 +680,9 @@ describe("config", () => {
 					transcriptionProvider: "openai",
 					transcriptionApiKey: "wizard-key",
 					transcriptionBaseUrl: "",
+					minimaxApiKey: "",
+					minimaxApiHost: "https://api.minimax.io",
+					webHost: "127.0.0.1",
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
@@ -521,8 +695,8 @@ describe("config", () => {
 		await withEnv({}, async () => {
 			const textAnswers = [
 				"gpt-4.1",
-				"selector-key",
 				"",
+				"selector-key",
 				"telegram-token",
 				"-1001234567890",
 			];
@@ -565,6 +739,7 @@ describe("config", () => {
 				enableExecute: true,
 				enablePdfDocuments: true,
 				enableSpreadsheets: true,
+				enableImageUnderstanding: false,
 				enableToolStatus: true,
 				enableAttachmentCompactionNotice: true,
 				defaultStatusLocale: "en",
@@ -572,6 +747,9 @@ describe("config", () => {
 				transcriptionProvider: "openai",
 				transcriptionApiKey: "selector-key",
 				transcriptionBaseUrl: "",
+				minimaxApiKey: "",
+				minimaxApiHost: "https://api.minimax.io",
+				webHost: "127.0.0.1",
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",
 				timezone: "UTC",
@@ -587,7 +765,7 @@ describe("config", () => {
 	test("persists wizard answers into the env file", async () => {
 		await withEnv({}, async () => {
 			const envFilePath = makeTempEnvPath();
-			const textAnswers = ["gpt-4.1-mini", "wizard-key", ""];
+			const textAnswers = ["gpt-4.1-mini", "", "wizard-key"];
 
 			await resolveConfig({
 				promptUser: () => textAnswers.shift(),
@@ -641,7 +819,7 @@ describe("config", () => {
 	test("reuses persisted env values without prompting again", async () => {
 		await withEnv({}, async () => {
 			const envFilePath = makeTempEnvPath();
-			const initialAnswers = ["gpt-4.1-mini", "wizard-key", ""];
+			const initialAnswers = ["gpt-4.1-mini", "", "wizard-key"];
 
 			writeFileSync(envFilePath, 'CUSTOM_FLAG="keep-me"\n', "utf8");
 
@@ -681,6 +859,31 @@ describe("config", () => {
 				'CUSTOM_FLAG="keep-me"',
 			);
 		});
+	});
+
+	test("wizard allows empty AI_API_KEY for a local custom endpoint", async () => {
+		await withEnv(
+			{
+				AI_TYPE: "openai",
+			},
+			async () => {
+				const textAnswers = [
+					"local-model",
+					"http://127.0.0.1:11434/v1",
+					"",
+				];
+
+				const config = await resolveConfig({
+					promptUser: () => textAnswers.shift(),
+					selectValue: async (_title, _description, options) =>
+						pickOptionValue(options, 0),
+					envFilePath: makeTempEnvPath(),
+				});
+
+				expect(config.aiBaseUrl).toBe("http://127.0.0.1:11434/v1");
+				expect(config.aiApiKey).toBe("");
+			},
+		);
 	});
 
 	test("does not write persisted values back into process.env", async () => {

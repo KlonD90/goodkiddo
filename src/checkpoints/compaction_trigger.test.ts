@@ -7,12 +7,15 @@ import { createDb } from "../db";
 import type { ThreadMessage } from "../memory/summarize";
 import type { CompactionContext } from "./compaction_trigger";
 import {
+	countMeaningfulCompactionChars,
+	DEFAULT_MIN_COMPACTION_CONTENT_CHARS,
 	DEFAULT_MESSAGE_LIMIT,
 	DEFAULT_TOKEN_BUDGET,
 	estimateTokens,
 	maybeCompactByThresholds,
 	runCompaction,
 	shouldCompactByMessageLimit,
+	shouldCompactByMinimumContent,
 	shouldCompactByTokenBudget,
 	triggerOnOversizedAttachment,
 	triggerOnSessionResume,
@@ -54,6 +57,8 @@ function makeMessages(count: number, contentPerMessage = "x"): ThreadMessage[] {
 		content: contentPerMessage,
 	}));
 }
+
+const MEANINGFUL_CONTENT = "meaningful context ".repeat(1_400);
 
 // ---------------------------------------------------------------------------
 // estimateTokens
@@ -118,6 +123,46 @@ describe("shouldCompactByTokenBudget", () => {
 	});
 });
 
+describe("shouldCompactByMinimumContent", () => {
+	test("returns false for empty messages", () => {
+		expect(shouldCompactByMinimumContent([])).toBe(false);
+		expect(countMeaningfulCompactionChars([])).toBe(0);
+	});
+
+	test("returns false for whitespace-only messages", () => {
+		const messages = makeMessages(3, "   \n\t ");
+		expect(shouldCompactByMinimumContent(messages)).toBe(false);
+		expect(countMeaningfulCompactionChars(messages)).toBe(0);
+	});
+
+	test("returns false below the minimum character threshold", () => {
+		expect(
+			shouldCompactByMinimumContent([
+				{ role: "user", content: "short" },
+			]),
+		).toBe(false);
+	});
+
+	test("returns true at the minimum character threshold", () => {
+		expect(
+			shouldCompactByMinimumContent([
+				{
+					role: "user",
+					content: "x".repeat(DEFAULT_MIN_COMPACTION_CONTENT_CHARS),
+				},
+			]),
+		).toBe(true);
+	});
+
+	test("returns true above the minimum character threshold", () => {
+		expect(
+			shouldCompactByMinimumContent([
+				{ role: "user", content: MEANINGFUL_CONTENT },
+			]),
+		).toBe(true);
+	});
+});
+
 // ---------------------------------------------------------------------------
 // runCompaction
 // ---------------------------------------------------------------------------
@@ -135,12 +180,14 @@ describe("runCompaction", () => {
 		const ctx: CompactionContext = {
 			caller: "user-1",
 			threadId: "thread-a",
-			messages: makeMessages(3, "hello"),
+			messages: makeMessages(3, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
 
 		const record = await runCompaction(ctx, "new_thread");
+		expect(record).not.toBeNull();
+		if (!record) throw new Error("Expected checkpoint record");
 		expect(record.caller).toBe("user-1");
 		expect(record.threadId).toBe("thread-a");
 		expect(record.sourceBoundary).toBe("new_thread");
@@ -166,13 +213,33 @@ describe("runCompaction", () => {
 		const ctx: CompactionContext = {
 			caller: "user-2",
 			threadId: "thread-b",
-			messages: makeMessages(2),
+			messages: makeMessages(2, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
 
 		const record = await runCompaction(ctx, "token_limit");
-		expect(record.sourceBoundary).toBe("token_limit");
+		expect(record?.sourceBoundary).toBe("token_limit");
+		await close();
+	});
+
+	test("returns null and creates no checkpoint for trivial content", async () => {
+		const { store, close } = createTempStore();
+		const model = createStubModel({
+			current_goal: "should not be called",
+		});
+		const ctx: CompactionContext = {
+			caller: "user-trivial",
+			threadId: "thread-trivial",
+			messages: makeMessages(10, "x"),
+			model,
+			store,
+		};
+
+		const record = await runCompaction(ctx, "new_thread");
+
+		expect(record).toBeNull();
+		expect(await store.readLatest("user-trivial", "thread-trivial")).toBeNull();
 		await close();
 	});
 });
@@ -209,7 +276,7 @@ describe("maybeCompactByThresholds", () => {
 		const ctx: CompactionContext = {
 			caller: "user-4",
 			threadId: "thread-d",
-			messages: makeMessages(10, "x"),
+			messages: makeMessages(10, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
@@ -229,7 +296,7 @@ describe("maybeCompactByThresholds", () => {
 		const ctx: CompactionContext = {
 			caller: "user-4b",
 			threadId: "thread-d2",
-			messages: makeMessages(2, "x"),
+			messages: makeMessages(2, MEANINGFUL_CONTENT),
 			pendingMessage: { role: "user", content: "incoming" },
 			model,
 			store,
@@ -250,7 +317,7 @@ describe("maybeCompactByThresholds", () => {
 		const ctx: CompactionContext = {
 			caller: "user-5",
 			threadId: "thread-e",
-			messages: makeMessages(5, "xxxx"),
+			messages: makeMessages(5, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
@@ -270,7 +337,7 @@ describe("maybeCompactByThresholds", () => {
 		const ctx: CompactionContext = {
 			caller: "user-6",
 			threadId: "thread-f",
-			messages: makeMessages(10, "xxxx"), // exceeds both limits below
+			messages: makeMessages(10, MEANINGFUL_CONTENT), // exceeds both limits below
 			model,
 			store,
 		};
@@ -290,7 +357,7 @@ describe("maybeCompactByThresholds", () => {
 		const ctx: CompactionContext = {
 			caller: "user-7",
 			threadId: "thread-g",
-			messages: makeMessages(DEFAULT_MESSAGE_LIMIT, "x"),
+			messages: makeMessages(DEFAULT_MESSAGE_LIMIT, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
@@ -304,9 +371,8 @@ describe("maybeCompactByThresholds", () => {
 		const { store, close } = createTempStore();
 		const model = createStubModel({ current_goal: "large" });
 		// Produce messages with enough chars to exceed DEFAULT_TOKEN_BUDGET
-		// DEFAULT_TOKEN_BUDGET=40000 tokens → 160000 chars
-		// Use 1 message with 160000 chars (simulating a huge context)
-		const bigContent = "x".repeat(160_000);
+		// with the same rough 1 token ≈ 4 chars estimate used in production.
+		const bigContent = "x".repeat(DEFAULT_TOKEN_BUDGET * 4);
 		const ctx: CompactionContext = {
 			caller: "user-8",
 			threadId: "thread-h",
@@ -322,6 +388,27 @@ describe("maybeCompactByThresholds", () => {
 		expect(result?.sourceBoundary).toBe("token_limit");
 		await close();
 	});
+
+	test("does not compact when thresholds are exceeded but prior content is trivial", async () => {
+		const { store, close } = createTempStore();
+		const model = createStubModel({ current_goal: "trivial" });
+		const ctx: CompactionContext = {
+			caller: "user-tiny",
+			threadId: "thread-tiny",
+			messages: makeMessages(10, "x"),
+			model,
+			store,
+		};
+
+		const result = await maybeCompactByThresholds(ctx, {
+			messageLimit: 2,
+			tokenBudget: 1,
+		});
+
+		expect(result).toBeNull();
+		expect(await store.readLatest("user-tiny", "thread-tiny")).toBeNull();
+		await close();
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -334,18 +421,18 @@ describe("triggerOnSessionResume", () => {
 		const ctx: CompactionContext = {
 			caller: "user-9",
 			threadId: "thread-i",
-			messages: makeMessages(2, "hello"),
+			messages: makeMessages(2, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
 
 		const record = await triggerOnSessionResume(ctx);
-		expect(record.sourceBoundary).toBe("session_resume");
-		expect(record.caller).toBe("user-9");
-		expect(record.threadId).toBe("thread-i");
+		expect(record?.sourceBoundary).toBe("session_resume");
+		expect(record?.caller).toBe("user-9");
+		expect(record?.threadId).toBe("thread-i");
 
 		const latest = await store.readLatest("user-9", "thread-i");
-		expect(latest?.id).toBe(record.id);
+		expect(latest?.id).toBe(record?.id);
 		await close();
 	});
 });
@@ -357,16 +444,16 @@ describe("triggerOnOversizedAttachment", () => {
 		const ctx: CompactionContext = {
 			caller: "user-10",
 			threadId: "thread-j",
-			messages: makeMessages(2, "attachment context"),
+			messages: makeMessages(2, MEANINGFUL_CONTENT),
 			model,
 			store,
 		};
 
 		const record = await triggerOnOversizedAttachment(ctx);
-		expect(record.sourceBoundary).toBe("oversized_attachment");
+		expect(record?.sourceBoundary).toBe("oversized_attachment");
 
 		const latest = await store.readLatest("user-10", "thread-j");
-		expect(latest?.id).toBe(record.id);
+		expect(latest?.id).toBe(record?.id);
 		await close();
 	});
 });

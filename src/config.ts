@@ -33,12 +33,16 @@ export type AppConfig = {
 	enableVoiceMessages: boolean;
 	enablePdfDocuments: boolean;
 	enableSpreadsheets: boolean;
+	enableImageUnderstanding: boolean;
 	enableToolStatus: boolean;
 	enableAttachmentCompactionNotice: boolean;
 	defaultStatusLocale: string;
 	transcriptionProvider: TranscriptionProvider;
 	transcriptionApiKey: string;
 	transcriptionBaseUrl: string;
+	minimaxApiKey: string;
+	minimaxApiHost: string;
+	webHost: string;
 	webPort: number;
 	webPublicBaseUrl: string;
 	timezone: string;
@@ -53,15 +57,18 @@ const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
 const DEFAULT_DATABASE_URL = "sqlite://./state.db";
+const DEFAULT_WEB_HOST = "127.0.0.1";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
 const DEFAULT_ENABLE_VOICE_MESSAGES = true;
 const DEFAULT_ENABLE_PDF_DOCUMENTS = true;
 const DEFAULT_ENABLE_SPREADSHEETS = true;
+const DEFAULT_ENABLE_IMAGE_UNDERSTANDING = false;
 const DEFAULT_ENABLE_TOOL_STATUS = true;
 const DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE = true;
 const DEFAULT_STATUS_LOCALE = "en";
 const DEFAULT_TIMEZONE = "UTC";
+const DEFAULT_MINIMAX_API_HOST = "https://api.minimax.io";
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
 	"openai",
 	"openrouter",
@@ -78,12 +85,15 @@ type ConfigIssueField =
 	| "CONTEXT_RESERVE_RECENT_TURN_TOKENS"
 	| "CONTEXT_RESERVE_SUMMARY_TOKENS"
 	| "ENABLE_EXECUTE"
+	| "ENABLE_IMAGE_UNDERSTANDING"
 	| "ENABLE_PDF_DOCUMENTS"
 	| "ENABLE_SPREADSHEETS"
 	| "ENABLE_ATTACHMENT_COMPACTION_NOTICE"
 	| "ENABLE_TOOL_STATUS"
 	| "ENABLE_VOICE_MESSAGES"
 	| "MAX_CONTEXT_WINDOW_TOKENS"
+	| "MINIMAX_API_HOST"
+	| "MINIMAX_API_KEY"
 	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
 	| "DEFAULT_STATUS_LOCALE"
@@ -94,6 +104,7 @@ type ConfigIssueField =
 	| "TRANSCRIPTION_BASE_URL"
 	| "TRANSCRIPTION_PROVIDER"
 	| "USING_MODE"
+	| "WEB_HOST"
 	| "WEB_PORT"
 	| "WEB_PUBLIC_BASE_URL";
 
@@ -135,12 +146,15 @@ const PERSISTED_ENV_KEYS = [
 	"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
 	"CONTEXT_RESERVE_SUMMARY_TOKENS",
 	"ENABLE_EXECUTE",
+	"ENABLE_IMAGE_UNDERSTANDING",
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
 	"MAX_CONTEXT_WINDOW_TOKENS",
+	"MINIMAX_API_HOST",
+	"MINIMAX_API_KEY",
 	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"DEFAULT_STATUS_LOCALE",
@@ -151,6 +165,7 @@ const PERSISTED_ENV_KEYS = [
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
 	"USING_MODE",
+	"WEB_HOST",
 	"WEB_PORT",
 	"WEB_PUBLIC_BASE_URL",
 ] as const;
@@ -225,6 +240,11 @@ const defaultTranscriptionProviderForAiType = (
 	aiType: SupportedAiTypes | undefined,
 ): TranscriptionProvider => (aiType === "openrouter" ? "openrouter" : "openai");
 
+const isAiApiKeyRequired = (
+	aiType: SupportedAiTypes | undefined,
+	aiBaseUrl: string | undefined,
+): boolean => aiType === "openrouter" || (aiBaseUrl ?? "") === "";
+
 export const canReusePrimaryAiCredentialsForTranscription = (
 	aiType: SupportedAiTypes | undefined,
 	transcriptionProvider: TranscriptionProvider | undefined,
@@ -267,6 +287,20 @@ export const readConfigFromEnv = (
 		enableSpreadsheetsRaw === ""
 			? DEFAULT_ENABLE_SPREADSHEETS
 			: enableSpreadsheetsRaw !== "false";
+
+	const enableImageUnderstandingRaw = getEnv(
+		"ENABLE_IMAGE_UNDERSTANDING",
+		persistedValues,
+	);
+	const enableImageUnderstanding =
+		enableImageUnderstandingRaw === ""
+			? DEFAULT_ENABLE_IMAGE_UNDERSTANDING
+			: enableImageUnderstandingRaw === "true";
+
+	const minimaxApiKey = getEnv("MINIMAX_API_KEY", persistedValues);
+	const minimaxApiHostRaw = getEnv("MINIMAX_API_HOST", persistedValues);
+	const minimaxApiHost =
+		minimaxApiHostRaw === "" ? DEFAULT_MINIMAX_API_HOST : minimaxApiHostRaw;
 
 	const enableToolStatusRaw = getEnv("ENABLE_TOOL_STATUS", persistedValues);
 	const enableToolStatus =
@@ -321,6 +355,7 @@ export const readConfigFromEnv = (
 		persistedValues,
 	);
 
+	const webHostRaw = getEnv("WEB_HOST", persistedValues);
 	const webPortRaw = getEnv("WEB_PORT", persistedValues);
 	const webPort =
 		webPortRaw === "" ? DEFAULT_WEB_PORT : Number.parseInt(webPortRaw, 10);
@@ -374,12 +409,16 @@ export const readConfigFromEnv = (
 		enableVoiceMessages,
 		enablePdfDocuments,
 		enableSpreadsheets,
+		enableImageUnderstanding,
 		enableToolStatus,
 		enableAttachmentCompactionNotice,
 		defaultStatusLocale,
 		transcriptionProvider,
 		transcriptionApiKey,
 		transcriptionBaseUrl,
+		minimaxApiKey,
+		minimaxApiHost,
+		webHost: webHostRaw || DEFAULT_WEB_HOST,
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 		timezone: getEnv("TIMEZONE", persistedValues) || DEFAULT_TIMEZONE,
@@ -437,10 +476,16 @@ export const findConfigIssues = (
 		});
 	}
 
-	if (config.aiApiKey === undefined || config.aiApiKey === "") {
+	if (
+		isAiApiKeyRequired(config.aiType, config.aiBaseUrl) &&
+		(config.aiApiKey === undefined || config.aiApiKey === "")
+	) {
 		issues.push({
 			field: "AI_API_KEY",
-			reason: "AI_API_KEY is missing.",
+			reason:
+				config.aiType === "openrouter"
+					? "AI_API_KEY is required for AI_TYPE=openrouter."
+					: "AI_API_KEY is required unless AI_BASE_URL points to a local/custom endpoint.",
 		});
 	}
 
@@ -472,6 +517,27 @@ export const findConfigIssues = (
 			field: "TRANSCRIPTION_API_KEY",
 			reason:
 				"TRANSCRIPTION_API_KEY is not set. Voice transcription will use NoOpTranscriber (transcription capability unavailable).",
+		});
+	}
+
+	if (
+		config.enableImageUnderstanding === true &&
+		(config.minimaxApiKey === undefined || config.minimaxApiKey === "")
+	) {
+		issues.push({
+			field: "MINIMAX_API_KEY",
+			reason:
+				"MINIMAX_API_KEY is required when ENABLE_IMAGE_UNDERSTANDING=true.",
+		});
+	}
+
+	if (
+		config.webHost !== undefined &&
+		config.webHost.trim() === ""
+	) {
+		issues.push({
+			field: "WEB_HOST",
+			reason: "WEB_HOST must not be empty.",
 		});
 	}
 
@@ -770,25 +836,31 @@ Example: claude-3-5-sonnet or gpt-4.1> `,
 					(value) => (value === "" ? "AI_MODEL_NAME cannot be empty." : null),
 				);
 
-	const aiApiKey =
-		initialConfig.aiApiKey && initialConfig.aiApiKey !== ""
-			? initialConfig.aiApiKey
-			: promptRequiredValue(
-					promptUser,
-					`Step 4. Enter AI_API_KEY for ${aiType}.
-This is the credential used to call the selected model provider.> `,
-					(value) => (value === "" ? "AI_API_KEY cannot be empty." : null),
-				);
-
 	const aiBaseUrl =
 		initialConfig.aiBaseUrl && initialConfig.aiBaseUrl !== ""
 			? initialConfig.aiBaseUrl
 			: promptOptionalValue(
 					promptUser,
-					`Step 5. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
+					`Step 4. Enter AI_BASE_URL for ${aiType} if you use a custom endpoint.
 Press enter to use the provider default.> `,
 					"",
 				);
+	const aiApiKey =
+		initialConfig.aiApiKey && initialConfig.aiApiKey !== ""
+			? initialConfig.aiApiKey
+			: isAiApiKeyRequired(aiType, aiBaseUrl)
+				? promptRequiredValue(
+						promptUser,
+						`Step 5. Enter AI_API_KEY for ${aiType}.
+This is required for the selected provider settings.> `,
+						(value) => (value === "" ? "AI_API_KEY cannot be empty." : null),
+					)
+				: promptOptionalValue(
+						promptUser,
+						`Step 5. Enter AI_API_KEY for ${aiType} if your local/custom endpoint still expects one.
+Press enter to leave it empty.> `,
+						"",
+					);
 	const transcriptionProvider =
 		initialConfig.transcriptionProvider ??
 		defaultTranscriptionProviderForAiType(aiType);
@@ -891,6 +963,9 @@ Press enter to allow any chat the bot is added to.> `,
 			initialConfig.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
 		enableSpreadsheets:
 			initialConfig.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
+		enableImageUnderstanding:
+			initialConfig.enableImageUnderstanding ??
+			DEFAULT_ENABLE_IMAGE_UNDERSTANDING,
 		enableToolStatus:
 			initialConfig.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
 		enableAttachmentCompactionNotice:
@@ -901,6 +976,9 @@ Press enter to allow any chat the bot is added to.> `,
 		transcriptionProvider,
 		transcriptionApiKey,
 		transcriptionBaseUrl,
+		minimaxApiKey: initialConfig.minimaxApiKey ?? "",
+		minimaxApiHost: initialConfig.minimaxApiHost || DEFAULT_MINIMAX_API_HOST,
+		webHost: initialConfig.webHost || DEFAULT_WEB_HOST,
 		webPort: initialConfig.webPort ?? DEFAULT_WEB_PORT,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
@@ -941,6 +1019,10 @@ const formatPersistedEnvLine = (
 			)}`;
 		case "ENABLE_EXECUTE":
 			return `${key}=${escapeEnvValue(config.enableExecute ? "true" : "false")}`;
+		case "ENABLE_IMAGE_UNDERSTANDING":
+			return `${key}=${escapeEnvValue(
+				config.enableImageUnderstanding ? "true" : "false",
+			)}`;
 		case "ENABLE_PDF_DOCUMENTS":
 			return `${key}=${escapeEnvValue(
 				config.enablePdfDocuments ? "true" : "false",
@@ -965,6 +1047,10 @@ const formatPersistedEnvLine = (
 			)}`;
 		case "MAX_CONTEXT_WINDOW_TOKENS":
 			return `${key}=${escapeEnvValue(String(config.maxContextWindowTokens))}`;
+		case "MINIMAX_API_HOST":
+			return `${key}=${escapeEnvValue(config.minimaxApiHost)}`;
+		case "MINIMAX_API_KEY":
+			return `${key}=${escapeEnvValue(config.minimaxApiKey)}`;
 		case "PERMISSIONS_MODE":
 			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "DATABASE_URL":
@@ -983,6 +1069,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.transcriptionProvider)}`;
 		case "USING_MODE":
 			return `${key}=${escapeEnvValue(config.usingMode)}`;
+		case "WEB_HOST":
+			return `${key}=${escapeEnvValue(config.webHost)}`;
 		case "WEB_PORT":
 			return `${key}=${escapeEnvValue(String(config.webPort))}`;
 		case "WEB_PUBLIC_BASE_URL":
@@ -1122,6 +1210,8 @@ export const resolveConfig = async (
 				config.enablePdfDocuments ?? DEFAULT_ENABLE_PDF_DOCUMENTS,
 			enableSpreadsheets:
 				config.enableSpreadsheets ?? DEFAULT_ENABLE_SPREADSHEETS,
+			enableImageUnderstanding:
+				config.enableImageUnderstanding ?? DEFAULT_ENABLE_IMAGE_UNDERSTANDING,
 			enableToolStatus: config.enableToolStatus ?? DEFAULT_ENABLE_TOOL_STATUS,
 			enableAttachmentCompactionNotice:
 				config.enableAttachmentCompactionNotice ??
@@ -1132,6 +1222,9 @@ export const resolveConfig = async (
 				defaultTranscriptionProviderForAiType(config.aiType),
 			transcriptionApiKey: config.transcriptionApiKey ?? "",
 			transcriptionBaseUrl: config.transcriptionBaseUrl ?? "",
+			minimaxApiKey: config.minimaxApiKey ?? "",
+			minimaxApiHost: config.minimaxApiHost || DEFAULT_MINIMAX_API_HOST,
+			webHost: config.webHost || DEFAULT_WEB_HOST,
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 			timezone: config.timezone ?? DEFAULT_TIMEZONE,

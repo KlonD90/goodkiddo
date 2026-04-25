@@ -8,9 +8,11 @@ import {
 } from "../../capabilities/attachment_budget";
 import {
 	estimateSessionRuntimeTokens,
+	buildSessionRuntimeMessages,
 	compactSessionForOversizedAttachment,
 	extractTextFromContent,
 } from "../shared";
+import { shouldCompactByMinimumContent } from "../../checkpoints/compaction_trigger";
 import { formatTooLargeMessage } from "../../capabilities/registry";
 
 export function buildAttachmentBudgetConfig(
@@ -99,11 +101,17 @@ export async function applyTelegramAttachmentBudget(params: {
 		};
 	}
 
-	await maybeSendAttachmentCompactionNotice(
-		budget.enableCompactionNotice,
-		session,
-		budget.callerId,
-	);
+	if (
+		shouldCompactByMinimumContent(
+			buildSessionRuntimeMessages(session, currentMessages),
+		)
+	) {
+		await maybeSendAttachmentCompactionNotice(
+			budget.enableCompactionNotice,
+			session,
+			budget.callerId,
+		);
+	}
 	const refreshedMessages = await compactOversizedAttachment(
 		session,
 		currentMessages,

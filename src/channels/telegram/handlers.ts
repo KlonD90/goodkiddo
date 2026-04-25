@@ -7,7 +7,7 @@ import type { TelegramAgentSession } from "./types";
 import type { TimerRecord } from "../../capabilities/timers/store";
 import { TELEGRAM_COMMANDS } from "./types";
 import { TelegramOutboundChannel, sendTelegramMessage } from "./outbound";
-import { handleTelegramQueuedTurn, handleTelegramControlInput, getTelegramCaller, extractTelegramCommandName, formatUnknownTelegramCommandReply } from "./turn";
+import { handleTelegramQueuedTurn, handleTelegramControlInput, getTelegramCaller, extractTelegramCommandName, formatUnknownTelegramCommandReply, maybeHandleTelegramStartCommand } from "./turn";
 import { processTelegramFile, buildTelegramPhotoContent, fetchTelegramFileBytes } from "./files";
 import { ensureTelegramSession } from "./session";
 import { normalizeTelegramCommandText, dateFromTelegramMessage } from "./types";
@@ -177,6 +177,15 @@ export const telegramChannel: AppChannel = {
 			if (text === "") return;
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
+			if (
+				await maybeHandleTelegramStartCommand(
+					bot,
+					resolved.chatIdString,
+					text,
+				)
+			) {
+				return;
+			}
 			log.info("text message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,

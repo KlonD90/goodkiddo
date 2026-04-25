@@ -89,7 +89,9 @@ describe("generateCheckpointSummary", () => {
 		expect(seen).toHaveLength(2);
 		expect(seen[0]?.role).toBe("system");
 		expect(seen[1]?.role).toBe("user");
-		expect(seen[1]?.content).toContain("USER: Build a CSV export feature");
+		expect(seen[1]?.content).toContain(
+			'<turn role="user">Build a CSV export feature</turn>',
+		);
 	});
 
 	test("strips markdown code fences from model output", async () => {

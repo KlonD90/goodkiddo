@@ -1,5 +1,6 @@
 import { SearxngSearch } from "@langchain/community/tools/searxng_search";
 import type { WorkspaceBackend } from "../backends/types";
+import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import type { OutboundChannel } from "../channels/outbound";
 import type { ExecutionPolicy } from "../execution/manifest";
 import { ExecutionOrchestrator } from "../execution/orchestrator";
@@ -14,6 +15,7 @@ import {
 	createSessionRegistry,
 } from "./browser_tools";
 import { createExecuteWorkspaceTool } from "./execute_tools";
+import { createUnderstandImageTool } from "./image_understanding_tool";
 import {
 	createEditFileTool,
 	createGlobTool,
@@ -27,6 +29,7 @@ import {
 	createMemoryAppendLogTool,
 	createMemoryWriteTool,
 	createSkillWriteTool,
+	type MemoryMutationCallback,
 } from "./memory_tools";
 import { createSendFileTool } from "./send_file_tool";
 import { createGrantFsAccessTool } from "./share_tools";
@@ -58,6 +61,8 @@ export interface CreateExecutionToolsetOptions {
 	statusEmitter?: ReturnType<typeof createStatusEmitter>;
 	locale?: SupportedLocale;
 	enableToolStatus?: boolean;
+	onMemoryMutation?: MemoryMutationCallback;
+	imageUnderstandingProvider?: ImageUnderstandingProvider | null;
 }
 
 const UNGUARDED_TOOL_NAMES = new Set<string>(["send_file", "grant_fs_access"]);
@@ -135,8 +140,8 @@ export async function createExecutionToolset(
 		createEditFileTool(options.workspace),
 		createGlobTool(options.workspace),
 		createGrepTool(options.workspace),
-		createMemoryWriteTool(options.workspace),
-		createSkillWriteTool(options.workspace),
+		createMemoryWriteTool(options.workspace, options.onMemoryMutation),
+		createSkillWriteTool(options.workspace, options.onMemoryMutation),
 		createMemoryAppendLogTool(options.workspace),
 		...taskTools,
 		createBrowserSnapshotTool({ registry: browserRegistry }),
@@ -152,6 +157,14 @@ export async function createExecutionToolset(
 		...(executeTool ? [executeTool] : []),
 		...(sendFileTool ? [sendFileTool] : []),
 		...(shareTool ? [shareTool] : []),
+		...(options.imageUnderstandingProvider
+			? [
+					createUnderstandImageTool({
+						provider: options.imageUnderstandingProvider,
+						backend: options.workspace,
+					}),
+				]
+			: []),
 	];
 
 	if (!options.guard) return tools;

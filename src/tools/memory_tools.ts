@@ -72,6 +72,12 @@ type WriteContext = {
 	now: Date;
 };
 
+export type MemoryMutationKind = "notes" | "user" | "skills";
+
+export type MemoryMutationCallback = (
+	kind: MemoryMutationKind,
+) => void | Promise<void>;
+
 async function writeActuelFile(
 	backend: BackendProtocol,
 	targetPath: string,
@@ -142,7 +148,10 @@ async function performUserWrite(
 	});
 }
 
-export function createMemoryWriteTool(backend: BackendProtocol) {
+export function createMemoryWriteTool(
+	backend: BackendProtocol,
+	onMutation?: MemoryMutationCallback,
+) {
 	return tool(
 		async ({
 			topic,
@@ -166,6 +175,7 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 						effectiveMode,
 						new Date(),
 					);
+					await onMutation?.("user");
 					return `Saved to ${USER_PROFILE_PATH}.\n\n--- Updated USER.md ---\n${updated}`;
 				}
 				if (!topic || topic.trim().length === 0) {
@@ -182,6 +192,7 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 					hook: hook ?? "",
 					now: new Date(),
 				});
+				await onMutation?.("notes");
 				return `Saved to ${targetPath}.\n\n--- Updated MEMORY.md ---\n${updated}`;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
@@ -220,7 +231,10 @@ export function createMemoryWriteTool(backend: BackendProtocol) {
 	);
 }
 
-export function createSkillWriteTool(backend: BackendProtocol) {
+export function createSkillWriteTool(
+	backend: BackendProtocol,
+	onMutation?: MemoryMutationCallback,
+) {
 	return tool(
 		async ({
 			name,
@@ -245,6 +259,7 @@ export function createSkillWriteTool(backend: BackendProtocol) {
 					hook: hook ?? "",
 					now: new Date(),
 				});
+				await onMutation?.("skills");
 				return `Saved skill to ${targetPath}.\n\n--- Updated SKILLS.md ---\n${updated}`;
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);

@@ -1,0 +1,70 @@
+---
+# Tracked, non-secret defaults only.
+# Real environment values belong in:
+# - ops/ansible/group_vars/goodkiddo_prod/10-env.yml
+# - ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml
+
+bot_service_name: goodkiddo-bot
+bot_user: goodkiddo
+bot_group: goodkiddo
+bot_home: /home/goodkiddo
+bot_app_dir: /opt/goodkiddo/app
+bot_env_dir: /etc/goodkiddo
+bot_env_file: "{{ bot_env_dir }}/bot.env"
+bot_landing_dir: "{{ bot_app_dir }}/landing/dist"
+bot_nginx_site_name: goodkiddo
+bot_acme_webroot: /var/www/letsencrypt
+bot_searxng_service_name: goodkiddo-searxng
+bot_searxng_dir: "{{ bot_app_dir }}/searxng"
+bot_searxng_env_file: "{{ bot_searxng_dir }}/.env"
+bot_searxng_host: 127.0.0.1
+bot_searxng_port: 8080
+bot_searxng_bind_address: 0.0.0.0
+bot_searxng_api_base: "http://{{ bot_searxng_host }}:{{ bot_searxng_port }}"
+bot_agent_browser_package_spec: agent-browser
+bot_agent_browser_executable_path: /usr/bin/google-chrome-stable
+
+bot_repo_url: ""
+bot_repo_version: main
+bot_repo_update: false
+
+bot_pnpm_version: 10.4.1
+bun_version: 1.3.11
+bun_install_dir: /opt/bun
+bun_download_base: "https://github.com/oven-sh/bun/releases/download/bun-v{{ bun_version }}"
+
+bot_manage_postgres: true
+bot_postgres_host: 127.0.0.1
+bot_postgres_port: 5432
+bot_postgres_db: goodkiddo
+bot_postgres_user: goodkiddo
+bot_database_url: ""
+
+bot_app_domain: ""
+
+telegram_allowed_chat_id: ""
+blocked_user_message: Access not configured. Contact the admin.
+permissions_mode: enforce
+using_mode: single
+default_status_locale: en
+timezone: UTC
+
+web_port: 8083
+web_host: 127.0.0.1
+web_public_base_url: ""
+
+enable_execute: false
+enable_voice_messages: true
+enable_pdf_documents: true
+enable_spreadsheets: true
+enable_tool_status: true
+enable_attachment_compaction_notice: true
+
+max_context_window_tokens: 150000
+context_reserve_summary_tokens: 2000
+context_reserve_recent_turn_tokens: 2000
+context_reserve_next_turn_tokens: 2000
+
+transcription_provider: openai
+transcription_api_key: "{{ ai_api_key | default('') }}"
+transcription_base_url: "{{ ai_base_url | default('') }}"

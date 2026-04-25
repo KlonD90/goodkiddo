@@ -88,6 +88,9 @@ export {
 	handleTelegramQueuedTurn,
 	extractTelegramCommandName,
 	formatUnknownTelegramCommandReply,
+	isTelegramStartCommand,
+	maybeHandleTelegramStartCommand,
+	renderTelegramWelcomeMessage,
 	getTelegramCaller,
 } from "./telegram/turn";
 

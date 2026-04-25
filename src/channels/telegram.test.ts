@@ -22,10 +22,14 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
+	maybeHandleTelegramStartCommand,
 	mergeTelegramStreamText,
+	renderTelegramWelcomeMessage,
 	renderTelegramCaptionHtml,
 	renderTelegramHtml,
+	TELEGRAM_COMMANDS,
 	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
 	takeTelegramParagraphStreamChunks,
@@ -579,8 +583,74 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 	test("formatUnknownTelegramCommandReply lists supported commands", () => {
 		const reply = formatUnknownTelegramCommandReply("stale");
 		expect(reply).toContain("Unknown command: /stale");
+		expect(reply).toContain("/start");
 		expect(reply).toContain("/help");
 		expect(reply).toContain("/new_thread");
+	});
+
+	test("TELEGRAM_COMMANDS registers /start for the command menu", () => {
+		expect(TELEGRAM_COMMANDS).toContainEqual({
+			command: "start",
+			description: "Show how to start using the assistant",
+		});
+	});
+
+	test("renderTelegramWelcomeMessage explains how to start", () => {
+		const message = renderTelegramWelcomeMessage();
+
+		expect(message).toContain("normal request");
+		expect(message).toContain("supported files");
+		expect(message).toContain("/identity");
+		expect(message).toContain("/new_thread");
+	});
+
+	test("isTelegramStartCommand normalizes Telegram bot command variants", () => {
+		expect(isTelegramStartCommand("/start")).toBe(true);
+		expect(isTelegramStartCommand("/start@klondikbot")).toBe(true);
+		expect(isTelegramStartCommand("/start@klondikbot extra")).toBe(true);
+		expect(isTelegramStartCommand("/help")).toBe(false);
+		expect(isTelegramStartCommand("start")).toBe(false);
+	});
+
+	test("maybeHandleTelegramStartCommand sends welcome directly", async () => {
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+
+		const handled = await maybeHandleTelegramStartCommand(
+			mockBot,
+			"123",
+			"/start",
+		);
+
+		expect(handled).toBe(true);
+		expect(sentMessages).toHaveLength(1);
+		expect(sentMessages[0]?.chatId).toBe("123");
+		expect(sentMessages[0]?.text).toContain("normal request");
+	});
+
+	test("maybeHandleTelegramStartCommand ignores other text", async () => {
+		const mockBot = {
+			api: {
+				sendMessage: vi.fn(),
+			},
+		} as unknown as Bot;
+
+		const handled = await maybeHandleTelegramStartCommand(
+			mockBot,
+			"123",
+			"/help",
+		);
+
+		expect(handled).toBe(false);
+		expect(mockBot.api.sendMessage).not.toHaveBeenCalled();
 	});
 
 	test("callback payload parsing preserves prompt ids containing colons", () => {

@@ -1,6 +1,8 @@
 import { type BaseCheckpointSaver, MemorySaver } from "@langchain/langgraph";
 import { createAgent } from "langchain";
 import { SqliteStateBackend } from "./backends";
+import { createImageUnderstandingProvider } from "./capabilities/image/factory";
+import type { ImageUnderstandingProvider } from "./capabilities/image/types";
 import type { createTimerTools } from "./capabilities/timers/tools";
 import type { OutboundChannel } from "./channels/outbound";
 import type { AppConfig } from "./config";
@@ -17,6 +19,7 @@ import { createExecutionToolset } from "./tools";
 import type { WebShareOptions } from "./tools/factory";
 import type { GuardContext } from "./tools/guard";
 import { wrapToolWithGuard } from "./tools/guard";
+import type { MemoryMutationCallback } from "./tools/memory_tools";
 import type { StatusEmitter } from "./tools/status_emitter";
 
 type TimerTools = ReturnType<typeof createTimerTools>;
@@ -37,6 +40,8 @@ export interface CreateAppAgentOptions {
 	timerTools?: TimerTools;
 	statusEmitter?: StatusEmitter;
 	locale?: SupportedLocale;
+	onMemoryMutation?: MemoryMutationCallback;
+	imageUnderstandingProvider?: ImageUnderstandingProvider | null;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -86,6 +91,11 @@ export const createAppAgent = async (
 		locale: options.locale,
 	};
 
+	const imageUnderstandingProvider =
+		options.imageUnderstandingProvider !== undefined
+			? options.imageUnderstandingProvider
+			: createImageUnderstandingProvider(config);
+
 	const executionTools = await createExecutionToolset({
 		workspace,
 		backend: {
@@ -105,6 +115,8 @@ export const createAppAgent = async (
 		webShare: options.webShare,
 		statusEmitter: options.statusEmitter,
 		locale: options.locale,
+		onMemoryMutation: options.onMemoryMutation,
+		imageUnderstandingProvider,
 	});
 
 	const guardedTimerTools = options.timerTools

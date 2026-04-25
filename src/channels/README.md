@@ -32,17 +32,19 @@ After a forced checkpoint is created, channel sessions load compacted runtime co
 2. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
 3. Current user input
 
-Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by [`src/checkpoints/compaction_trigger.ts`](../checkpoints/compaction_trigger.ts). That trigger layer decides which boundary fired, calls [`src/memory/checkpoint_compaction.ts`](../memory/checkpoint_compaction.ts) to build the structured summary, persists it through `ForcedCheckpointStore`, and uses [`src/memory/runtime_context.ts`](../memory/runtime_context.ts) to render the runtime-only prompt context.
+Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by [`src/checkpoints/compaction_trigger.ts`](../checkpoints/compaction_trigger.ts). That trigger layer decides which boundary fired, skips empty or tiny histories below the 20,000-character minimum meaningful-content threshold, calls [`src/memory/checkpoint_compaction.ts`](../memory/checkpoint_compaction.ts) to build the structured summary, persists it through `ForcedCheckpointStore`, and uses [`src/memory/runtime_context.ts`](../memory/runtime_context.ts) to render the runtime-only prompt context.
 
 The checkpoint summary and retained turns are injected through the rebuilt system prompt for the next turn only. They are not re-persisted as ordinary chat messages in the new thread, so the stored thread history remains the raw exchange record.
 
-`/new_thread` continues to rotate the thread id and summarize to `log.md`, and also now triggers a forced checkpoint so the next session begins from a compact baseline rather than a cold start. The immediate `/new_thread` reply includes the previous-thread summary, the caller's current active tasks, and recently completed tasks from the last 7 days.
+`/new_thread` continues to rotate the thread id and summarize to `log.md`, and also triggers a forced checkpoint when the previous thread has enough meaningful content. Empty or very short threads rotate without creating a checkpoint or seed. The immediate `/new_thread` reply includes the previous-thread summary, the caller's current active tasks, and recently completed tasks from the last 7 days.
 
 The same boundary flow also runs task reconciliation once per session boundary. On the first substantive turn after session start or `/new_thread`, active SQL tasks are compared against the current user message. Exact single-task completion matches may be auto-completed; ambiguous matches are left unchanged; likely dismissals are converted into explicit confirmation prompts instead of automatic state changes.
 
 If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
 
-When an attachment only fits after compaction, Telegram can emit an ephemeral status line before the forced checkpoint runs so the user sees why older context is being summarized. That notice uses the same status-emitter path as tool activity, so it never enters stored history or runtime context.
+Runtime-only current-message metadata is ignored when reading stored thread history for compaction, summarization, and attachment budgets. This prevents a short Telegram exchange from looking meaningful enough to compact after a process restart just because the persisted turn includes timestamp/timezone guidance.
+
+When an attachment only fits after compaction, Telegram can emit an ephemeral status line before the forced checkpoint runs so the user sees why older context is being summarized. That notice is skipped when the prior context is empty or too small to summarize. It uses the same status-emitter path as tool activity, so it never enters stored history or runtime context.
 
 When no checkpoint exists for a thread, the channel falls back to replaying full history unchanged. The `RuntimeContext.hasCompaction` flag distinguishes these two paths.
 
@@ -53,7 +55,7 @@ All attachment capabilities share one runtime-context budget seam in [`src/capab
 Three outcomes are possible once a capability returns extracted text:
 
 - fits comfortably: inject the capability output unchanged
-- fits only after compaction: emit the optional status notice, create a forced checkpoint with `sourceBoundary = "oversized_attachment"`, rebuild runtime context, then inject
+- fits only after compaction: emit the optional status notice when there is meaningful prior context, create a forced checkpoint with `sourceBoundary = "oversized_attachment"`, rebuild runtime context, then inject
 - cannot fit at all: reject the attachment and reply with a single "too large for a single turn" message
 
 Configuration knobs:
@@ -148,6 +150,14 @@ Relevant files:
 
 - `src/channels/telegram.ts`
 - `src/channels/telegram.test.ts`
+
+Welcome command:
+
+- Telegram `/start` replies with a short static onboarding message
+- the reply tells users they can send normal requests, send supported files, use `/identity`, and use `/new_thread`
+- `/start` is handled directly after caller resolution
+- `/start` does not invoke the agent, enqueue a turn, mutate thread state, or enter stored conversation history
+- `/start@BotUsername` is normalized the same way as other Telegram slash commands
 
 Photo handling:
 
@@ -289,7 +299,11 @@ of asking for the user's timezone. If a wall-clock or recurring timer is
 missing a timezone, the agent asks for it and saves it to `USER.md` before
 creating the timer. The current Telegram message timestamp is prepended to the
 user turn as message metadata so relative requests can be converted without
-changing the cacheable system prompt. Recurring timers use `cronExpression`;
+changing the cacheable system prompt. If a compaction boundary is crossed around
+that exchange, the rebuilt prompt keeps active checkpoint context, while
+`USER.md` remains the canonical source for durable facts like timezone.
+Successful `USER.md` writes mark the prompt for rebuild before the next turn.
+Recurring timers use `cronExpression`;
 one-time reminders use `runAtUtc` and are disabled after the first successful
 send.
 

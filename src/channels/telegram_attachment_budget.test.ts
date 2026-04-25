@@ -28,12 +28,16 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 	enableVoiceMessages: true,
 	enablePdfDocuments: true,
 	enableSpreadsheets: true,
+	enableImageUnderstanding: false,
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
 	defaultStatusLocale: "en",
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
 	transcriptionBaseUrl: "",
+	minimaxApiKey: "",
+	minimaxApiHost: "https://api.minimax.io",
+	webHost: "127.0.0.1",
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
@@ -165,6 +169,8 @@ describe("processTelegramFile", () => {
 });
 
 describe("applyTelegramAttachmentBudget", () => {
+	const meaningfulContext = "meaningful attachment context ".repeat(900);
+
 	test("rejects attachments that cannot fit even in an empty turn", async () => {
 		const session = createProcessSession();
 		const compacted: string[] = [];
@@ -197,7 +203,7 @@ describe("applyTelegramAttachmentBudget", () => {
 		const currentMessages: ThreadMessage[] = [
 			{
 				role: "user",
-				content: "Earlier context",
+				content: meaningfulContext,
 				estimatedTokens: 3,
 			},
 		];
@@ -237,7 +243,7 @@ describe("applyTelegramAttachmentBudget", () => {
 			currentMessages: [
 				{
 					role: "user",
-					content: "Earlier context",
+					content: meaningfulContext,
 					estimatedTokens: 3,
 				},
 			],
@@ -248,6 +254,35 @@ describe("applyTelegramAttachmentBudget", () => {
 
 		expect(result).toEqual({ ok: true });
 		expect(emitter.calls).toEqual([]);
+	});
+
+	test("does not emit the compaction notice for trivial prior context", async () => {
+		const emitter = new FakeStatusEmitter();
+		const session = createProcessSession(emitter);
+		const compacted: string[] = [];
+
+		const result = await applyTelegramAttachmentBudget({
+			session,
+			budget: createBudget(),
+			content: "x".repeat(48),
+			currentMessages: [
+				{
+					role: "user",
+					content: "Earlier context",
+					estimatedTokens: 3,
+				},
+			],
+			alreadyCompacted: false,
+			mintThreadId: () => "telegram-123-next",
+			compactOversizedAttachment: async () => {
+				compacted.push("called");
+				return [];
+			},
+		});
+
+		expect(result).toEqual({ ok: true });
+		expect(emitter.calls).toEqual([]);
+		expect(compacted).toEqual(["called"]);
 	});
 
 	test("rejects instead of compacting twice when the turn was already compacted", async () => {
@@ -261,7 +296,7 @@ describe("applyTelegramAttachmentBudget", () => {
 			currentMessages: [
 				{
 					role: "user",
-					content: "Earlier context",
+					content: meaningfulContext,
 					estimatedTokens: 3,
 				},
 			],
@@ -312,7 +347,7 @@ describe("applyTelegramAttachmentBudget", () => {
 			currentMessages: [
 				{
 					role: "user",
-					content: "Earlier context",
+					content: meaningfulContext,
 					estimatedTokens: 3,
 				},
 			],

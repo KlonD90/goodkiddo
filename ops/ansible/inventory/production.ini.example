@@ -1,0 +1,2 @@
+[goodkiddo_prod]
+bot-01 ansible_host=203.0.113.10 ansible_user=ubuntu

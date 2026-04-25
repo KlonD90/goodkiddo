@@ -18,12 +18,12 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
-	clearPendingCompactionSeed,
 	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeRunPendingTaskCheck,
 	prepareSessionForIncomingTurn,
+	refreshAgentIfPromptDirty,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
 
@@ -234,10 +234,10 @@ export const cliChannel: AppChannel = {
 				process.stdout.write("\rAssistant: ");
 				console.log(`Request failed: ${message}\n`);
 			} finally {
-				clearPendingCompactionSeed(session);
 				clearPendingTaskCheckContext(session);
 				session.currentUserText = undefined;
 				session.currentTurnContext = undefined;
+				await refreshAgentIfPromptDirty(session);
 			}
 		}
 

@@ -7,6 +7,7 @@ import {
 	estimateTokens,
 	maybeCompactByThresholds,
 	previewThresholdBoundary,
+	shouldCompactByMinimumContent,
 	triggerOnOversizedAttachment,
 	triggerOnSessionResume,
 } from "../checkpoints/compaction_trigger";
@@ -21,6 +22,7 @@ import {
 } from "../memory/checkpoint_compaction";
 
 const log = createLogger("compaction.seed");
+
 import {
 	estimateContentTokens,
 	extractContentText,
@@ -76,7 +78,7 @@ export type ChannelAgentSession = {
 	currentTurnContext?: ChannelCurrentTurnContext;
 	refreshAgent: () => Promise<void>;
 	persistThreadId?: (threadId: string) => Promise<void>;
-	/** Set after compaction so the next agent turn is seeded with checkpoint context. */
+	/** Latest compacted context injected into rebuilt system prompts until replaced. */
 	pendingCompactionSeed?: PendingCompactionSeed;
 	/** True for the first substantive turn after session creation or /new_thread. */
 	pendingTaskCheck?: boolean;
@@ -92,6 +94,8 @@ export type ChannelAgentSession = {
 	statusEmitter?: StatusEmitter;
 	/** Resolved locale for status message rendering. */
 	locale?: SupportedLocale;
+	/** Set when memory files injected into the system prompt changed this turn. */
+	promptNeedsRefresh?: boolean;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -143,6 +147,9 @@ export async function createChannelAgentSession(
 			timerTools: options.timerTools,
 			statusEmitter: options.statusEmitter,
 			locale: session?.locale ?? options.locale,
+			onMemoryMutation: () => {
+				if (session) session.promptNeedsRefresh = true;
+			},
 		});
 	let bundle = await makeBundle();
 
@@ -225,7 +232,7 @@ export function seedFromCheckpoint(
 /**
  * Build the messages array to pass to agent.invoke() / agent.stream().
  *
- * Pending compaction context is injected through the rebuilt system prompt.
+ * Active compaction context is injected through the rebuilt system prompt.
  * Current-turn time is added as user-turn metadata so the system prompt stays
  * stable for provider-side prompt caching.
  */
@@ -254,6 +261,14 @@ export function clearPendingTaskCheckContext(
 	session: ChannelAgentSession,
 ): void {
 	session.pendingTaskCheckContext = undefined;
+}
+
+export async function refreshAgentIfPromptDirty(
+	session: ChannelAgentSession,
+): Promise<void> {
+	if (!session.promptNeedsRefresh) return;
+	session.promptNeedsRefresh = false;
+	await session.refreshAgent();
 }
 
 async function emitCompactionStatus(
@@ -299,14 +314,23 @@ export async function maybeResumeCompactAndSeed(
 	}
 
 	const { caller, store } = session.compactionConfig;
+	const compactionMessages = buildSessionRuntimeMessages(session, messages);
+	if (!shouldCompactByMinimumContent(compactionMessages)) {
+		session.needsResumeCompaction = false;
+		return false;
+	}
 	await emitCompactionStatus(session, caller);
 	const checkpoint = await triggerOnSessionResume({
 		caller,
 		threadId: session.threadId,
-		messages,
+		messages: compactionMessages,
 		model: session.model,
 		store,
 	});
+	if (!checkpoint) {
+		session.needsResumeCompaction = false;
+		return false;
+	}
 
 	await rotateSessionThread(session, mintThreadId());
 	const resumeSummary = deserializeCheckpointSummary(checkpoint.summaryPayload);
@@ -336,28 +360,35 @@ export async function compactSessionForOversizedAttachment(
 	}
 
 	const { caller, store } = session.compactionConfig;
-	await emitCompactionStatus(session, caller);
+	const compactionMessages = buildSessionRuntimeMessages(session, messages);
+	const shouldCreateCheckpoint =
+		shouldCompactByMinimumContent(compactionMessages);
+	if (shouldCreateCheckpoint) {
+		await emitCompactionStatus(session, caller);
+	}
 	const checkpoint = await triggerOnOversizedAttachment({
 		caller,
 		threadId: session.threadId,
-		messages,
+		messages: compactionMessages,
 		model: session.model,
 		store,
 	});
 
 	await rotateSessionThread(session, mintThreadId());
-	const attachSummary = deserializeCheckpointSummary(checkpoint.summaryPayload);
-	const attachRecent = extractRecentTurns(messages, 2);
-	session.pendingCompactionSeed = {
-		summary: attachSummary,
-		recentTurns: attachRecent,
-	};
-	log.info("seed set (oversized attachment)", {
-		newThreadId: session.threadId,
-		goal: attachSummary.current_goal,
-		decisions: attachSummary.decisions.length,
-		recentTurns: attachRecent.length,
-	});
+	if (checkpoint) {
+		const attachSummary = deserializeCheckpointSummary(checkpoint.summaryPayload);
+		const attachRecent = extractRecentTurns(messages, 2);
+		session.pendingCompactionSeed = {
+			summary: attachSummary,
+			recentTurns: attachRecent,
+		};
+		log.info("seed set (oversized attachment)", {
+			newThreadId: session.threadId,
+			goal: attachSummary.current_goal,
+			decisions: attachSummary.decisions.length,
+			recentTurns: attachRecent.length,
+		});
+	}
 	await session.refreshAgent();
 	return readThreadMessages(session.agent, session.threadId);
 }
@@ -376,10 +407,13 @@ export async function recoverPendingSeedForEmptyThread(
 		return false;
 	}
 	if (checkpoint.threadId === session.threadId) {
-		log.debug("stored checkpoint belongs to current thread, skipping recovery", {
-			caller,
-			threadId: session.threadId,
-		});
+		log.debug(
+			"stored checkpoint belongs to current thread, skipping recovery",
+			{
+				caller,
+				threadId: session.threadId,
+			},
+		);
 		return false;
 	}
 
@@ -417,8 +451,9 @@ export async function maybeAutoCompactAndSeed(
 	if (!session.compactionConfig) return false;
 	const { caller, store, thresholds } = session.compactionConfig;
 	const pendingText = extractTextFromContent(pendingUserContent);
+	const compactionMessages = buildSessionRuntimeMessages(session, messages);
 	const thresholdMessages = [
-		...messages,
+		...compactionMessages,
 		{
 			role: "user" as const,
 			content: pendingText === "" ? "[multimodal input]" : pendingText,
@@ -429,7 +464,13 @@ export async function maybeAutoCompactAndSeed(
 	// Only notify the user when compaction is actually about to fire, not on
 	// every turn. previewThresholdBoundary mirrors the decision inside
 	// maybeCompactByThresholds, so we can emit status without running the LLM.
-	if (previewThresholdBoundary(thresholdMessages, thresholds) !== null) {
+	if (
+		previewThresholdBoundary(thresholdMessages, thresholds) !== null &&
+		shouldCompactByMinimumContent(
+			compactionMessages,
+			thresholds?.minContentChars,
+		)
+	) {
 		await emitCompactionStatus(session, caller);
 	}
 
@@ -437,7 +478,7 @@ export async function maybeAutoCompactAndSeed(
 		{
 			caller,
 			threadId: session.threadId,
-			messages,
+			messages: compactionMessages,
 			pendingMessage: thresholdMessages[thresholdMessages.length - 1],
 			model: session.model,
 			store,

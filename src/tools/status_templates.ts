@@ -47,6 +47,7 @@ const ALLOWLISTED_ARGS: Record<string, readonly string[]> = {
 	task_list_active: ["limit"],
 	send_file: ["file_path", "caption"],
 	grant_fs_access: ["scope_path", "ttl_hours", "note"],
+	understand_image: ["prompt"],
 };
 
 type ToolTemplates = Record<string, string>;
@@ -74,6 +75,7 @@ const dictionaries: LocaleDictionary = {
 		task_list_active: "Listing active tasks",
 		send_file: "Sending file {file_path}",
 		grant_fs_access: "Creating share link for {scope_path}",
+		understand_image: "Analyzing image: {prompt}",
 	},
 	ru: {
 		ls: "Просмотр {path}",
@@ -95,6 +97,7 @@ const dictionaries: LocaleDictionary = {
 		task_list_active: "Список активных задач",
 		send_file: "Отправка файла {file_path}",
 		grant_fs_access: "Создание ссылки для {scope_path}",
+		understand_image: "Анализ изображения: {prompt}",
 	},
 	es: {
 		ls: "Listando {path}",
@@ -116,6 +119,7 @@ const dictionaries: LocaleDictionary = {
 		task_list_active: "Listando tareas activas",
 		send_file: "Enviando archivo {file_path}",
 		grant_fs_access: "Creando enlace para {scope_path}",
+		understand_image: "Analizando imagen: {prompt}",
 	},
 };
 

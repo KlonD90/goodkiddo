@@ -1,35 +1,42 @@
-import { Bot, InlineKeyboard } from "grammy";
+import { type Bot, InlineKeyboard } from "grammy";
 import { createLogger } from "../../logger";
-import type { Caller } from "../../permissions/types";
-import type { PermissionsStore } from "../../permissions/store";
-import type { ApprovalRequest, ApprovalOutcome } from "../../permissions/approval";
+import { readThreadMessages } from "../../memory/rotate_thread";
+import type {
+	ApprovalOutcome,
+	ApprovalRequest,
+} from "../../permissions/approval";
 import { persistAlwaysRule } from "../../permissions/approval";
-import type { ChannelRunOptions } from "../types";
-import type { TelegramAgentSession, TelegramUserInput, TelegramAttachmentBudget } from "./types";
+import { maybeHandleCommand } from "../../permissions/commands";
+import type { PermissionsStore } from "../../permissions/store";
+import type { Caller } from "../../permissions/types";
+import { maybeHandleSessionCommand } from "../session_commands";
 import {
-	APPROVAL_TIMEOUT_MS,
-	TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS,
-	TELEGRAM_COMMANDS,
-} from "./types";
+	clearPendingTaskCheckContext,
+	extractAgentReply,
+	extractTextFromContent,
+	refreshAgentIfPromptDirty,
+} from "../shared";
+import type { ChannelRunOptions } from "../types";
+import { applyTelegramAttachmentBudget } from "./attachment";
+import { escapeTelegramHtml } from "./markdown";
 import { sendTelegramMessage, startTelegramTypingLoop } from "./outbound";
 import {
-	takeTelegramParagraphStreamChunks,
-	takeTelegramOverflowStreamChunks,
-	takeTelegramStreamChunks,
 	mergeTelegramStreamText,
+	takeTelegramOverflowStreamChunks,
+	takeTelegramParagraphStreamChunks,
+	takeTelegramStreamChunks,
 } from "./streaming";
-import { escapeTelegramHtml } from "./markdown";
-import { applyTelegramAttachmentBudget } from "./attachment";
+import type {
+	TelegramAgentSession,
+	TelegramAttachmentBudget,
+	TelegramQueuedTurn,
+	TelegramUserInput,
+} from "./types";
 import {
-	extractTextFromContent,
-	extractAgentReply,
-	clearPendingCompactionSeed,
-	clearPendingTaskCheckContext,
-} from "../shared";
-import { maybeHandleSessionCommand } from "../session_commands";
-import { maybeHandleCommand } from "../../permissions/commands";
-import { readThreadMessages } from "../../memory/rotate_thread";
-import type { TelegramQueuedTurn } from "./types";
+	APPROVAL_TIMEOUT_MS,
+	TELEGRAM_COMMANDS,
+	TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS,
+} from "./types";
 
 const log = createLogger("telegram");
 
@@ -116,6 +123,32 @@ export function formatUnknownTelegramCommandReply(command: string): string {
 		({ command: knownCommand }) => `/${knownCommand}`,
 	).join(", ");
 	return `Unknown command: /${command}\nAvailable commands: ${knownCommands}`;
+}
+
+export function renderTelegramWelcomeMessage(): string {
+	return [
+		"Welcome. Send me a normal request in plain language and I will help from here.",
+		"",
+		"Useful ways to start:",
+		"- Ask for writing, research, planning, coding, or file help.",
+		"- Send supported files when you want me to read or work with them.",
+		"- Use /identity to choose how I should behave.",
+		"- Use /new_thread when you want a clean conversation.",
+	].join("\n");
+}
+
+export function isTelegramStartCommand(text: string): boolean {
+	return extractTelegramCommandName(text) === "start";
+}
+
+export async function maybeHandleTelegramStartCommand(
+	bot: Bot,
+	chatId: string,
+	text: string,
+): Promise<boolean> {
+	if (!isTelegramStartCommand(text)) return false;
+	await sendTelegramMessage(bot, chatId, renderTelegramWelcomeMessage());
+	return true;
 }
 
 export async function getTelegramCaller(
@@ -448,10 +481,10 @@ async function runAgentTurn(
 			`Request failed: ${escapeTelegramHtml(message)}`,
 		);
 	} finally {
-		clearPendingCompactionSeed(session);
 		clearPendingTaskCheckContext(session);
 		session.currentUserText = undefined;
 		session.currentTurnContext = undefined;
+		await refreshAgentIfPromptDirty(session);
 		stopTyping();
 	}
 }
@@ -521,7 +554,7 @@ export async function handleTelegramQueuedTurn(
 
 // Need to import these from shared
 import {
-	prepareSessionForIncomingTurn,
-	maybeRunPendingTaskCheck,
 	buildInvokeMessages,
+	maybeRunPendingTaskCheck,
+	prepareSessionForIncomingTurn,
 } from "../shared";

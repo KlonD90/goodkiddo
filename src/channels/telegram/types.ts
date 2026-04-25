@@ -38,6 +38,7 @@ export const TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS = [
 	/\s+/g,
 ] as const;
 export const TELEGRAM_COMMANDS = [
+	{ command: "start", description: "Show how to start using the assistant" },
 	{ command: "help", description: "Show available permission commands" },
 	{ command: "new_thread", description: "Start a fresh conversation thread" },
 	{ command: "open_fs", description: "Open your files in a web browser" },

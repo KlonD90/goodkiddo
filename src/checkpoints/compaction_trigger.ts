@@ -29,12 +29,15 @@ const log = createLogger("compaction");
 
 export const DEFAULT_MESSAGE_LIMIT = 50;
 export const DEFAULT_TOKEN_BUDGET = 150_000;
+export const DEFAULT_MIN_COMPACTION_CONTENT_CHARS = 20_000;
 
 export type CompactionThresholds = {
   /** Fire message_limit compaction when stored message count reaches this value. */
   messageLimit?: number;
   /** Fire token_limit compaction when estimated token count reaches this value. */
   tokenBudget?: number;
+  /** Skip compaction when prior meaningful text is below this character count. */
+  minContentChars?: number;
 };
 
 export type CompactionContext = {
@@ -56,6 +59,20 @@ export function estimateTokens(messages: ThreadMessage[]): number {
       sum + (msg.estimatedTokens ?? Math.ceil(msg.content.length / 4)),
     0,
   );
+}
+
+export function countMeaningfulCompactionChars(
+  messages: ThreadMessage[],
+): number {
+  return messages.reduce((sum, msg) => sum + msg.content.trim().length, 0);
+}
+
+export function shouldCompactByMinimumContent(
+  messages: ThreadMessage[],
+  minContentChars = DEFAULT_MIN_COMPACTION_CONTENT_CHARS,
+): boolean {
+  if (messages.length === 0) return false;
+  return countMeaningfulCompactionChars(messages) >= minContentChars;
 }
 
 /** Returns true when the message count has reached or exceeded the limit. */
@@ -86,6 +103,9 @@ export function previewThresholdBoundary(
 ): "message_limit" | "token_limit" | null {
   const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
   const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+  const minContentChars =
+    thresholds.minContentChars ?? DEFAULT_MIN_COMPACTION_CONTENT_CHARS;
+  if (!shouldCompactByMinimumContent(messages, minContentChars)) return null;
   if (shouldCompactByMessageLimit(messages, msgLimit)) return "message_limit";
   if (shouldCompactByTokenBudget(messages, tokenBudget)) return "token_limit";
   return null;
@@ -98,9 +118,22 @@ export function previewThresholdBoundary(
 export async function runCompaction(
   context: CompactionContext,
   sourceBoundary: SourceBoundary,
-): Promise<ForcedCheckpoint> {
+): Promise<ForcedCheckpoint | null> {
   const messageCount = context.messages.length;
   const estimatedTokens = estimateTokens(context.messages);
+  const meaningfulChars = countMeaningfulCompactionChars(context.messages);
+  if (!shouldCompactByMinimumContent(context.messages)) {
+    log.info("compaction skipped: trivial content", {
+      reason: sourceBoundary,
+      caller: context.caller,
+      threadId: context.threadId,
+      messageCount,
+      estimatedTokens,
+      meaningfulChars,
+      minContentChars: DEFAULT_MIN_COMPACTION_CONTENT_CHARS,
+    });
+    return null;
+  }
   log.info("compaction starting", {
     reason: sourceBoundary,
     caller: context.caller,
@@ -158,9 +191,15 @@ export async function maybeCompactByThresholds(
 ): Promise<ForcedCheckpoint | null> {
   const msgLimit = thresholds.messageLimit ?? DEFAULT_MESSAGE_LIMIT;
   const tokenBudget = thresholds.tokenBudget ?? DEFAULT_TOKEN_BUDGET;
+  const minContentChars =
+    thresholds.minContentChars ?? DEFAULT_MIN_COMPACTION_CONTENT_CHARS;
   const thresholdMessages = context.pendingMessage
     ? [...context.messages, context.pendingMessage]
     : context.messages;
+
+  if (!shouldCompactByMinimumContent(context.messages, minContentChars)) {
+    return null;
+  }
 
   if (shouldCompactByMessageLimit(thresholdMessages, msgLimit)) {
     return runCompaction(context, "message_limit");
@@ -184,12 +223,12 @@ export async function maybeCompactByThresholds(
  */
 export async function triggerOnSessionResume(
   context: CompactionContext,
-): Promise<ForcedCheckpoint> {
+): Promise<ForcedCheckpoint | null> {
   return runCompaction(context, "session_resume");
 }
 
 export async function triggerOnOversizedAttachment(
   context: CompactionContext,
-): Promise<ForcedCheckpoint> {
+): Promise<ForcedCheckpoint | null> {
   return runCompaction(context, "oversized_attachment");
 }

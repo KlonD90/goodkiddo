@@ -15,7 +15,13 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 
 ## Active plans
 
-None currently.
+| Feature | Execution |
+|---------|-----------|
+| [Telegram Identity Selection](feature-telegram-identity-selection.md) | [RALPHEX plan](../plans/telegram-identity-selection.md) |
+| [Telegram Welcome Message](feature-telegram-welcome-message.md) | [RALPHEX plan](../plans/telegram-welcome-message.md) |
+| [Telegram Free Tier Users](feature-telegram-free-tier-users.md) | [RALPHEX plan](../plans/telegram-free-tier-users.md) |
+| [Skip Trivial Compaction](feature-skip-trivial-compaction.md) | [RALPHEX plan](../plans/skip-trivial-compaction.md) |
+| [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
 
 ## Completed
 

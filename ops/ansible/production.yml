@@ -1,0 +1,46 @@
+---
+- name: Provision GoodKiddo production bot hosts
+  hosts: goodkiddo_prod
+  become: true
+  pre_tasks:
+    - name: Run preflight checks
+      ansible.builtin.include_tasks: tasks/preflight.yml
+
+  tasks:
+    - name: Install packages and runtimes
+      ansible.builtin.include_tasks: tasks/packages.yml
+
+    - name: Prepare application checkout and landing
+      ansible.builtin.include_tasks: tasks/app.yml
+
+    - name: Configure search stack
+      ansible.builtin.include_tasks: tasks/search_stack.yml
+
+    - name: Configure PostgreSQL
+      ansible.builtin.include_tasks: tasks/postgres.yml
+
+    - name: Configure bot service
+      ansible.builtin.include_tasks: tasks/bot_service.yml
+
+    - name: Configure nginx and certificates
+      ansible.builtin.include_tasks: tasks/nginx.yml
+
+  handlers:
+    - name: reload nginx
+      ansible.builtin.systemd_service:
+        name: nginx
+        state: reloaded
+
+    - name: reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: restart bot service
+      ansible.builtin.systemd_service:
+        name: "{{ bot_service_name }}"
+        state: restarted
+
+    - name: restart searxng stack
+      ansible.builtin.systemd_service:
+        name: "{{ bot_searxng_service_name }}"
+        state: restarted
