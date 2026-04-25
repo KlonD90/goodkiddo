@@ -1,25 +1,36 @@
 import { Bot } from "grammy";
-import { createLogger } from "../../logger";
-import type { AppConfig } from "../../config";
-import type { Caller } from "../../permissions/types";
-import type { AppChannel, ChannelRunOptions } from "../types";
-import type { TelegramAgentSession } from "./types";
+import { createCapabilityRegistry } from "../../capabilities/registry";
+import { startScheduler } from "../../capabilities/timers/scheduler";
 import type { TimerRecord } from "../../capabilities/timers/store";
-import { TELEGRAM_COMMANDS } from "./types";
-import { TelegramOutboundChannel, sendTelegramMessage } from "./outbound";
-import { handleTelegramQueuedTurn, handleTelegramControlInput, getTelegramCaller, extractTelegramCommandName, formatUnknownTelegramCommandReply, maybeHandleTelegramStartCommand } from "./turn";
-import { processTelegramFile, buildTelegramPhotoContent, fetchTelegramFileBytes } from "./files";
-import { ensureTelegramSession } from "./session";
-import { normalizeTelegramCommandText, dateFromTelegramMessage } from "./types";
+import { TimerStore } from "../../capabilities/timers/store";
+import { VOICE_MIME_TYPE } from "../../capabilities/voice/constants";
+import type { AppConfig } from "../../config";
 import { createDb, detectDialect } from "../../db/index";
 import { resolveLocale } from "../../i18n/locale";
+import { createLogger } from "../../logger";
+import type { Caller } from "../../permissions/types";
 import { createStatusEmitter } from "../../tools/status_emitter";
-import { createCapabilityRegistry } from "../../capabilities/registry";
-import { TimerStore } from "../../capabilities/timers/store";
 import { fileDataToString } from "../../utils/filesystem";
-import { startScheduler } from "../../capabilities/timers/scheduler";
-import { VOICE_MIME_TYPE } from "../../capabilities/voice/constants";
-
+import type { AppChannel, ChannelRunOptions } from "../types";
+import {
+	buildTelegramPhotoUserInput,
+	fetchTelegramFileBytes,
+	processTelegramFile,
+} from "./files";
+import { sendTelegramMessage, TelegramOutboundChannel } from "./outbound";
+import { ensureTelegramSession } from "./session";
+import {
+	getTelegramCaller,
+	handleTelegramControlInput,
+	handleTelegramQueuedTurn,
+	maybeHandleTelegramStartCommand,
+} from "./turn";
+import type { TelegramAgentSession } from "./types";
+import {
+	dateFromTelegramMessage,
+	normalizeTelegramCommandText,
+	TELEGRAM_COMMANDS,
+} from "./types";
 
 const log = createLogger("telegram");
 
@@ -178,11 +189,7 @@ export const telegramChannel: AppChannel = {
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
 			if (
-				await maybeHandleTelegramStartCommand(
-					bot,
-					resolved.chatIdString,
-					text,
-				)
+				await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text)
 			) {
 				return;
 			}
@@ -236,10 +243,15 @@ export const telegramChannel: AppChannel = {
 					file,
 					config.telegramBotToken,
 				);
-				const content = buildTelegramPhotoContent(downloaded.data, {
-					caption,
-					filePath: downloaded.filePath,
-				});
+				const content = await buildTelegramPhotoUserInput(
+					config,
+					resolved.session.workspace,
+					downloaded.data,
+					{
+						caption,
+						filePath: downloaded.filePath,
+					},
+				);
 
 				await handleTelegramQueuedTurn(
 					resolved.session,
@@ -486,5 +498,5 @@ export const telegramChannel: AppChannel = {
 	},
 };
 
-import { buildInvokeMessages, extractTextFromContent } from "../shared";
 import { PermissionsStore } from "../../permissions/store";
+import { buildInvokeMessages, extractTextFromContent } from "../shared";

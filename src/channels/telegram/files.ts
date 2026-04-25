@@ -1,19 +1,28 @@
 import { extname } from "node:path";
+import type { BackendProtocol } from "deepagents";
 import type { Bot } from "grammy";
+import { saveIncomingAttachment } from "../../capabilities/incoming/save_attachment";
 import type { CapabilityRegistry } from "../../capabilities/registry";
 import type { FileMetadata } from "../../capabilities/types";
 import type { AppConfig } from "../../config";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
 import type { ChannelRunOptions } from "../types";
+import { buildAttachmentBudgetConfig } from "./attachment";
+import { sendTelegramMessage } from "./outbound";
 import type {
+	ProcessTelegramFileHelpers,
 	TelegramAgentSession,
 	TelegramUserInput,
-	TelegramAttachmentBudget,
-	ProcessTelegramFileHelpers,
 } from "./types";
-import { sendTelegramMessage } from "./outbound";
-import { buildAttachmentBudgetConfig } from "./attachment";
+
+const INCOMING_IMAGE_EXTENSIONS = new Set([
+	"jpg",
+	"jpeg",
+	"png",
+	"webp",
+	"gif",
+]);
 
 function detectTelegramImageMimeType(filePath: string | undefined): string {
 	switch (extname(filePath ?? "").toLowerCase()) {
@@ -30,14 +39,39 @@ function detectTelegramImageMimeType(filePath: string | undefined): string {
 	}
 }
 
+export function extractIncomingExtension(filePath: string | undefined): string {
+	const extension = extname(filePath ?? "")
+		.slice(1)
+		.toLowerCase();
+	if (!INCOMING_IMAGE_EXTENSIONS.has(extension)) return "jpg";
+	return extension;
+}
+
+export function buildIncomingImagePromptText(
+	imagePath: string,
+	caption: string | null | undefined,
+): string {
+	const trimmedCaption = typeof caption === "string" ? caption.trim() : "";
+	const captionLine =
+		trimmedCaption === "" ? "" : `\nCaption: ${JSON.stringify(trimmedCaption)}`;
+
+	return `User attached an image saved at ${imagePath}.${captionLine}
+
+Use the understand_image tool with image_path set to ${imagePath}. Include the user's caption and conversation context in the prompt you send to the image model.`;
+}
+
 export function buildTelegramPhotoContent(
 	imageData: Uint8Array,
 	options?: {
 		caption?: string | null;
 		filePath?: string;
 	},
-): Array<{ type: "text"; text: string } | { type: "image"; mimeType: string; data: Uint8Array }> {
-	const caption = typeof options?.caption === "string" ? options.caption.trim() : "";
+): Array<
+	| { type: "text"; text: string }
+	| { type: "image"; mimeType: string; data: Uint8Array }
+> {
+	const caption =
+		typeof options?.caption === "string" ? options.caption.trim() : "";
 
 	return [
 		{
@@ -51,6 +85,28 @@ export function buildTelegramPhotoContent(
 			data: imageData,
 		},
 	];
+}
+
+export async function buildTelegramPhotoUserInput(
+	config: AppConfig,
+	workspace: BackendProtocol,
+	imageData: Uint8Array,
+	options?: {
+		caption?: string | null;
+		filePath?: string;
+	},
+): Promise<TelegramUserInput> {
+	if (!config.enableImageUnderstanding || config.minimaxApiKey === "") {
+		return buildTelegramPhotoContent(imageData, options);
+	}
+
+	const { vfsPath } = await saveIncomingAttachment({
+		backend: workspace,
+		bytes: imageData,
+		extension: extractIncomingExtension(options?.filePath),
+	});
+
+	return buildIncomingImagePromptText(vfsPath, options?.caption);
 }
 
 export async function fetchTelegramFileBytes(

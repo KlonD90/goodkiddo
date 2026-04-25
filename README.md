@@ -27,6 +27,11 @@ documented chat-completions audio input flow with the default
 `openai/gpt-4o-mini-transcribe` model. PDF document handling is enabled by
 default. Use `ENABLE_PDF_DOCUMENTS=false` to disable it. Spreadsheet
 handling is enabled by default. Use `ENABLE_SPREADSHEETS=false` to disable it.
+Telegram image understanding through MiniMax MCP is opt-in. Set
+`ENABLE_IMAGE_UNDERSTANDING=true` and `MINIMAX_API_KEY`; optionally override
+`MINIMAX_API_HOST` for the account region. The MCP server is launched with
+`uvx minimax-coding-plan-mcp -y`, so `uvx` must be installed and available on
+`PATH`.
 Large attachment handling uses `MAX_CONTEXT_WINDOW_TOKENS=150000`,
 `CONTEXT_RESERVE_SUMMARY_TOKENS=2000`,
 `CONTEXT_RESERVE_RECENT_TURN_TOKENS=2000`, and
