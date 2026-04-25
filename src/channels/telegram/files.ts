@@ -37,7 +37,9 @@ export const IMAGE_MIME_TYPES = new Set([
 export function isImageMimeType(mimeType: string | undefined): boolean {
 	if (!mimeType) return false;
 	const normalized = mimeType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-	return IMAGE_MIME_TYPES.has(normalized);
+	const result = IMAGE_MIME_TYPES.has(normalized);
+	console.log("[DEBUG isImageMimeType] mimeType=", mimeType, "normalized=", normalized, "result=", result);
+	return result;
 }
 
 function detectTelegramImageMimeType(filePath: string | undefined): string {
@@ -168,8 +170,11 @@ export async function processTelegramFile(
 ): Promise<void> {
 	const sendMessage = helpers.sendMessage ?? sendTelegramMessage;
 	const queueTurn = helpers.queueTurn ?? handleTelegramQueuedTurn;
+	console.log("[DEBUG processTelegramFile] metadata=", JSON.stringify(params.metadata));
 	const capability = registry.match(params.metadata);
+	console.log("[DEBUG processTelegramFile] matched capability=", capability?.name ?? "null");
 	const result = await registry.handle(params.metadata, params.download);
+	console.log("[DEBUG processTelegramFile] result.ok=", result.ok, "userMessage=", result.ok ? "N/A" : result.userMessage);
 	if (!result.ok) {
 		await sendMessage(bot, chatId, result.userMessage);
 		return;

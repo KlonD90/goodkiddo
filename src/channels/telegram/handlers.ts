@@ -331,7 +331,19 @@ export const telegramChannel: AppChannel = {
 				byteSize: document.file_size,
 			});
 
+			log.debug("document mime check", {
+				chatId: resolved.chatIdString,
+				filename: document.file_name,
+				mimeType: document.mime_type,
+				isImage: isImageMimeType(document.mime_type),
+			});
+
 			if (isImageMimeType(document.mime_type)) {
+				log.info("document is image, using photo path", {
+					chatId: resolved.chatIdString,
+					filename: document.file_name,
+					mimeType: document.mime_type,
+				});
 				try {
 					if (
 						await handleTelegramControlInput(
@@ -352,6 +364,11 @@ export const telegramChannel: AppChannel = {
 						file,
 						config.telegramBotToken,
 					);
+					log.debug("photo path: downloaded file", {
+						chatId: resolved.chatIdString,
+						filePath: downloaded.filePath,
+						dataLength: downloaded.data.length,
+					});
 					const content = await buildTelegramPhotoUserInput(
 						config,
 						resolved.session.workspace,
@@ -361,6 +378,11 @@ export const telegramChannel: AppChannel = {
 							filePath: downloaded.filePath,
 						},
 					);
+					log.debug("photo path: built content", {
+						chatId: resolved.chatIdString,
+						contentType: typeof content,
+						isArray: Array.isArray(content),
+					});
 
 					await handleTelegramQueuedTurn(
 						resolved.session,
@@ -392,6 +414,11 @@ export const telegramChannel: AppChannel = {
 					);
 				}
 			} else {
+				log.info("document is not image, using capability registry", {
+					chatId: resolved.chatIdString,
+					filename: document.file_name,
+					mimeType: document.mime_type,
+				});
 				await processTelegramFile(
 					config,
 					capabilityRegistry,
