@@ -1,11 +1,12 @@
 node_modules/
+.DS_Store
+*.log
 .env*
 .history
 .zed
 state.db*
 .claude
 .tmp
-permissions.log
 .ralphex/
 .pnpm-store/
 landing/dist/
