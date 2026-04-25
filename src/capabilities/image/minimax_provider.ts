@@ -4,8 +4,8 @@ import { join } from "node:path";
 import { MultiServerMCPClient } from "@langchain/mcp-adapters";
 import type {
 	ImageUnderstandInput,
-	ImageUnderstandOutput,
 	ImageUnderstandingProvider,
+	ImageUnderstandOutput,
 } from "./types";
 
 const TOOL_NAME = "understand_image";
@@ -14,7 +14,7 @@ const SERVER_NAME = "minimax";
 export interface McpToolClient {
 	invokeUnderstandImage(args: {
 		prompt: string;
-		image_url: string;
+		image_source: string;
 	}): Promise<unknown>;
 	close(): Promise<void>;
 }
@@ -48,9 +48,9 @@ async function defaultToolClientFactory(
 	if (!tool) {
 		await client.close();
 		throw new Error(
-			`MiniMax MCP did not expose ${TOOL_NAME}. Available tools: ${tools
-				.map((candidate) => candidate.name)
-				.join(", ") || "<none>"}`,
+			`MiniMax MCP did not expose ${TOOL_NAME}. Available tools: ${
+				tools.map((candidate) => candidate.name).join(", ") || "<none>"
+			}`,
 		);
 	}
 
@@ -104,7 +104,9 @@ export function createMinimaxImageUnderstanding(
 	};
 
 	return {
-		async understand(input: ImageUnderstandInput): Promise<ImageUnderstandOutput> {
+		async understand(
+			input: ImageUnderstandInput,
+		): Promise<ImageUnderstandOutput> {
 			const client = await ensureClient();
 			const dir = mkdtempSync(join(tmpdir(), "top-fedder-minimax-"));
 			const filePath = join(dir, `image.${input.extension}`);
@@ -112,7 +114,7 @@ export function createMinimaxImageUnderstanding(
 			try {
 				const response = await client.invokeUnderstandImage({
 					prompt: input.prompt,
-					image_url: filePath,
+					image_source: filePath,
 				});
 				return { text: normalizeMcpResponse(response) };
 			} finally {
