@@ -31,6 +31,14 @@
 - name: Flush handlers before certificate issuance
   ansible.builtin.meta: flush_handlers
 
+- name: Ensure Let's Encrypt deploy hook directory exists
+  ansible.builtin.file:
+    path: /etc/letsencrypt/renewal-hooks/deploy
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
 - name: Install nginx reload hook for certificate renewals
   ansible.builtin.copy:
     dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
