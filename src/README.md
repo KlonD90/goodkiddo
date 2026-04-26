@@ -9,6 +9,7 @@ Source root for the harness.
 - `app.ts` — caller-aware agent factory (per-user FS + permissions guard)
 - `config.ts` — env + wizard config resolver
 - `permissions/` — multi-tenant permissions (DB-backed, allow/ask/deny)
+- `server/` — HTTP routes and browser virtual filesystem explorer; text previews are transported as base64 bytes and decoded as UTF-8 in the frontend
 - `tools/` — LangChain tools (FS + sandbox execution)
 - `memory/` — per-caller memory wiki (notes, skills, log)
 - `tasks/` — SQL-backed active task storage, prompt snapshots, and boundary reconciliation helpers

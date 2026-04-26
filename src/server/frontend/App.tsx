@@ -36,6 +36,7 @@ import {
 	parentDir,
 	previewFile,
 } from "./api";
+import { decodeBase64Utf8 } from "./text";
 
 const EXT_TO_LANG: Record<string, string> = {
 	".js": "javascript",
@@ -292,7 +293,7 @@ function FilePreview({
 	const b64 = preview.content_base64 ?? "";
 
 	if (preview.mime === "text/markdown" || currentFile.endsWith(".md")) {
-		const text = atob(b64);
+		const text = decodeBase64Utf8(b64);
 		const html = md.render(text);
 		return (
 			<div
@@ -331,7 +332,7 @@ function FilePreview({
 	}
 
 	if (isCodeMime(preview.mime)) {
-		const text = atob(b64);
+		const text = decodeBase64Utf8(b64);
 		const language = detectLanguage(currentFile);
 		const highlighted = highlightCode(text, language);
 		return (
