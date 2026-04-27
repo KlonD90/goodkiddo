@@ -29,7 +29,9 @@ import {
 import type {
 	TelegramAgentSession,
 	TelegramAttachmentBudget,
+	TelegramImageContentBlock,
 	TelegramQueuedTurn,
+	TelegramTextContentBlock,
 	TelegramUserInput,
 } from "./types";
 import {
@@ -273,16 +275,8 @@ export async function handleTelegramControlInput(
 			return true;
 		}
 
-		if (
-			extractTelegramCommandName(commandText) !== null &&
-			(session.running || session.queue.length > 0)
-		) {
-			await sendTelegramMessage(
-				bot,
-				chatId,
-				"Wait for the current queued turn to finish before sending another Telegram command.",
-			);
-			return true;
+		if (session.running) {
+			return false;
 		}
 
 		const sessionCommand = await maybeHandleSessionCommand(commandText, {
@@ -507,6 +501,97 @@ async function runAgentTurn(
 	}
 }
 
+// --- Queue merge ---
+
+function mergeContent(
+	base: TelegramUserInput,
+	incoming: TelegramUserInput,
+): { success: true; merged: TelegramUserInput } | { success: false } {
+	const baseHasImage =
+		Array.isArray(base) && base.some((b) => b.type === "image");
+	const incomingHasImage =
+		Array.isArray(incoming) && incoming.some((i) => i.type === "image");
+
+	if (baseHasImage || incomingHasImage) {
+		return { success: false };
+	}
+
+	if (typeof base === "string" && typeof incoming === "string") {
+		return { success: true, merged: base + "\n" + incoming };
+	}
+
+	if (typeof base === "string" && Array.isArray(incoming)) {
+		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
+			{ type: "text", text: base },
+			...incoming,
+		];
+		return { success: true, merged: combined };
+	}
+
+	if (Array.isArray(base) && typeof incoming === "string") {
+		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
+			...base,
+			{ type: "text", text: incoming },
+		];
+		return { success: true, merged: combined };
+	}
+
+	if (Array.isArray(base) && Array.isArray(incoming)) {
+		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
+			...base,
+			...incoming,
+		];
+		return { success: true, merged: combined };
+	}
+
+	return { success: false };
+}
+
+function extractTextFromUserInput(content: TelegramUserInput): string {
+	if (typeof content === "string") return content;
+	return content
+		.filter((block): block is TelegramTextContentBlock => block.type === "text")
+		.map((block) => block.text)
+		.join("\n");
+}
+
+function tryMergeQueuedTurns(
+	base: TelegramQueuedTurn,
+	incoming: TelegramQueuedTurn,
+): { success: true; merged: TelegramQueuedTurn } | { success: false } {
+	const contentMerge = mergeContent(base.content, incoming.content);
+	if (!contentMerge.success) {
+		return { success: false };
+	}
+
+	const baseText = base.currentUserText ?? extractTextFromUserInput(base.content);
+	const incomingText =
+		incoming.currentUserText ?? extractTextFromUserInput(incoming.content);
+
+	return {
+		success: true,
+		merged: {
+			content: contentMerge.merged,
+			commandText: "",
+			currentUserText: baseText + (incomingText ? "\n" + incomingText : ""),
+			currentMessageDate: base.currentMessageDate ?? incoming.currentMessageDate,
+			attachmentBudget: base.attachmentBudget ?? incoming.attachmentBudget,
+		},
+	};
+}
+
+function isSessionCommandClearingQueue(commandText: string): boolean {
+	const trimmed = commandText.trim();
+	if (!trimmed.startsWith("/")) return false;
+	const firstSpace = trimmed.indexOf(" ");
+	const command = (firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace))
+		.slice(1)
+		.toLowerCase();
+	if (command === "new-thread" || command === "new_thread") return true;
+	if (command.startsWith("identity")) return true;
+	return false;
+}
+
 // --- Queue pump ---
 
 async function pumpQueue(
@@ -514,15 +599,22 @@ async function pumpQueue(
 	bot: Bot,
 	chatId: string,
 ): Promise<void> {
-	const next = session.queue.shift();
-	if (next === undefined) return;
-	if (session.running) {
-		session.queue.unshift(next);
-		return;
-	}
+	const current = session.queue.shift();
+	if (current === undefined) return;
+
 	session.running = true;
 	try {
-		await runAgentTurn(session, bot, chatId, next);
+		let accumulated = current;
+
+		while (session.queue.length > 0) {
+			const next = session.queue[0];
+			const mergeResult = tryMergeQueuedTurns(accumulated, next);
+			if (!mergeResult.success) break;
+			session.queue.shift();
+			accumulated = mergeResult.merged;
+		}
+
+		await runAgentTurn(session, bot, chatId, accumulated);
 	} finally {
 		session.running = false;
 		if (session.queue.length > 0) {
@@ -558,6 +650,10 @@ export async function handleTelegramQueuedTurn(
 		)
 	) {
 		return;
+	}
+
+	if (isSessionCommandClearingQueue(commandText)) {
+		session.queue = [];
 	}
 
 	session.queue.push({
