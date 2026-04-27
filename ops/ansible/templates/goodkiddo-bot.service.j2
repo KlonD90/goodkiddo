@@ -7,7 +7,7 @@ Wants=network-online.target
 Type=simple
 User={{ bot_user }}
 Group={{ bot_group }}
-WorkingDirectory={{ bot_app_dir }}
+WorkingDirectory={{ bot_app_dir }}/bot
 EnvironmentFile={{ bot_env_file }}
 Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/local/bin/bun src/bin/bot.ts

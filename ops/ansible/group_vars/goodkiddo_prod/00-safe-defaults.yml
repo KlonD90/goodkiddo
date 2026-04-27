@@ -28,10 +28,6 @@ bot_repo_url: ""
 bot_repo_version: main
 bot_repo_update: false
 
-bot_pnpm_version: 10.4.1
-nvm_version: v0.40.3
-nvm_dir: /opt/nvm
-node_version: 24.14.1
 bun_version: 1.3.11
 bun_install_dir: /opt/bun
 bun_download_base: "https://github.com/oven-sh/bun/releases/download/bun-v{{ bun_version }}"

@@ -1,0 +1,164 @@
+:root {
+	color-scheme: dark;
+}
+body {
+	margin: 0;
+}
+.fs-shell {
+	min-height: 100vh;
+}
+
+/* Breadcrumbs single-line + ellipsis */
+.fs-breadcrumbs {
+	min-width: 0;
+	flex-wrap: nowrap;
+	overflow: hidden;
+}
+.fs-breadcrumbs > * {
+	min-width: 0;
+}
+.fs-breadcrumb-item {
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	max-width: 100%;
+	cursor: pointer;
+}
+.fs-breadcrumb-item,
+.fs-breadcrumb-item * {
+	cursor: pointer;
+}
+.fs-breadcrumb-item:hover {
+	/* biome-ignore lint/complexity/noImportantStyles: override Mantine text color on nested breadcrumb labels */
+	color: var(--mantine-color-blue-4) !important;
+}
+
+/* Markdown styling */
+.fs-preview a {
+	color: var(--mantine-color-blue-4);
+}
+.fs-preview img {
+	max-width: 100%;
+	height: auto;
+	border-radius: 6px;
+}
+.fs-preview pre {
+	overflow: auto;
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+.fs-preview code {
+	font-family: "SF Mono", "Menlo", ui-monospace, monospace;
+}
+.fs-preview .markdown {
+	line-height: 1.6;
+}
+.fs-preview .markdown > *:first-child {
+	margin-top: 0;
+}
+.fs-preview .markdown > *:last-child {
+	margin-bottom: 0;
+}
+.fs-preview .markdown p {
+	margin: 0.5em 0;
+}
+.fs-preview .markdown h1,
+.fs-preview .markdown h2,
+.fs-preview .markdown h3,
+.fs-preview .markdown h4 {
+	margin-top: 0.7em;
+	margin-bottom: 0.4em;
+	position: relative;
+	scroll-margin-top: 80px;
+}
+.fs-preview .markdown h1 a.fs-anchor,
+.fs-preview .markdown h2 a.fs-anchor,
+.fs-preview .markdown h3 a.fs-anchor,
+.fs-preview .markdown h4 a.fs-anchor,
+.fs-preview .markdown h5 a.fs-anchor,
+.fs-preview .markdown h6 a.fs-anchor {
+	position: absolute;
+	left: -1.1em;
+	top: 0;
+	padding-right: 0.3em;
+	opacity: 0;
+	text-decoration: none;
+	color: var(--mantine-color-dimmed);
+	font-weight: normal;
+}
+.fs-preview .markdown h1:hover a.fs-anchor,
+.fs-preview .markdown h2:hover a.fs-anchor,
+.fs-preview .markdown h3:hover a.fs-anchor,
+.fs-preview .markdown h4:hover a.fs-anchor,
+.fs-preview .markdown h5:hover a.fs-anchor,
+.fs-preview .markdown h6:hover a.fs-anchor {
+	opacity: 1;
+}
+.fs-preview .markdown h1 a.fs-anchor:hover,
+.fs-preview .markdown h2 a.fs-anchor:hover,
+.fs-preview .markdown h3 a.fs-anchor:hover,
+.fs-preview .markdown h4 a.fs-anchor:hover,
+.fs-preview .markdown h5 a.fs-anchor:hover,
+.fs-preview .markdown h6 a.fs-anchor:hover {
+	color: var(--mantine-color-blue-4);
+}
+.fs-preview .markdown ul,
+.fs-preview .markdown ol {
+	padding-left: 1.6em;
+	margin: 0.5em 0;
+}
+.fs-preview .markdown li {
+	margin: 0.2em 0;
+}
+.fs-preview .markdown blockquote {
+	border-left: 3px solid var(--mantine-color-dark-3);
+	margin: 0.5em 0;
+	padding: 0.2em 0.9em;
+	color: var(--mantine-color-dimmed);
+}
+.fs-preview .markdown code:not(pre code) {
+	background: var(--mantine-color-dark-6);
+	padding: 1px 5px;
+	border-radius: 4px;
+	font-size: 0.9em;
+}
+.fs-preview .markdown pre {
+	background: var(--mantine-color-dark-8);
+	padding: 12px 14px;
+	border-radius: 6px;
+	margin: 0.5em 0;
+}
+.fs-preview .markdown table {
+	border-collapse: collapse;
+	margin: 0.6em 0;
+}
+.fs-preview .markdown th,
+.fs-preview .markdown td {
+	border: 1px solid var(--mantine-color-dark-4);
+	padding: 6px 10px;
+}
+.fs-preview .markdown hr {
+	border: none;
+	border-top: 1px solid var(--mantine-color-dark-4);
+	margin: 1em 0;
+}
+
+/* Code preview block */
+.fs-code-preview {
+	background: var(--mantine-color-dark-8);
+	border-radius: 6px;
+	overflow: auto;
+	margin: 0;
+}
+.fs-code-preview pre {
+	margin: 0;
+	padding: 14px 16px;
+	background: transparent;
+}
+.fs-code-preview code.hljs {
+	padding: 0;
+	background: transparent;
+	font-family: "SF Mono", "Menlo", ui-monospace, monospace;
+	font-size: 13px;
+	line-height: 1.55;
+}

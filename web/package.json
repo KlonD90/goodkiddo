@@ -1,0 +1,30 @@
+{
+  "name": "goodkiddo-web",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "bun build.ts",
+    "test": "bun test",
+    "check": "biome check src build.ts",
+    "format": "biome check --write src build.ts --unsafe",
+    "lint": "biome lint src build.ts",
+    "typecheck": "bunx --bun tsc --noEmit"
+  },
+  "dependencies": {
+    "@mantine/core": "^7.17.4",
+    "@mantine/hooks": "^7.17.4",
+    "@tabler/icons-react": "^3.34.0",
+    "highlight.js": "^11.10.0",
+    "markdown-it": "^14.1.1",
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.11",
+    "@types/bun": "^1.3.11",
+    "@types/markdown-it": "^14.1.2",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3"
+  }
+}

@@ -12,6 +12,10 @@ Security-aware AI agent harness built with TypeScript and Bun.
 
 Requirements: `bun`, `docker`, model API access.
 
+This repository uses Bun workspaces: `bot/` for the runtime, `web/` for the
+embedded authenticated bot browser UI, and `landing/` for the public marketing
+site. Run workspace commands from the repository root.
+
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
 endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
@@ -60,7 +64,7 @@ If config is missing, the app starts an interactive setup wizard.
 New Telegram chats are automatically provisioned as free-tier users on first message. Admins can upgrade users to paid with:
 
 ```bash
-bun src/bin/admin.ts add-user telegram <chat-id> "Display name"
+bun run admin add-user telegram <chat-id> "Display name"
 ```
 
 Suspended Telegram users receive the configured blocked-user message.
@@ -70,8 +74,8 @@ Suspended Telegram users receive the configured blocked-user message.
 Ubuntu production provisioning with PostgreSQL and a systemd bot service lives
 in [`ops/ansible/`](./ops/ansible/).
 
-That playbook installs Bun and `pnpm`, provisions a local PostgreSQL database
-and role, builds the landing as static files, configures nginx as the public
+That playbook installs Bun, provisions a local PostgreSQL database
+and role, builds the landing and embedded bot web UI as static files, configures nginx as the public
 entrypoint, issues Let's Encrypt certificates for the main and `app.`
 hostnames, installs the local browser/search stack (`google-chrome-stable`,
 `agent-browser`, SearXNG), and runs the bot as a systemd service bound to
@@ -85,10 +89,12 @@ Start with [`ops/README.md`](./ops/README.md).
 For release checks, run:
 
 ```bash
-pnpm check
-pnpm lint
-pnpm test
-pnpm exec tsc --noEmit
+bun run check
+bun run lint
+bun run test
+bun run typecheck
+bun run web:build
+bun run landing:build
 ```
 
 ## Plans
@@ -99,8 +105,9 @@ pnpm exec tsc --noEmit
 ## Read Next
 
 - [`ops/README.md`](./ops/README.md) for Ubuntu production provisioning with Ansible
-- [`src/README.md`](./src/README.md) for the code map
-- [`src/channels/README.md`](./src/channels/README.md) for the CLI and Telegram channels, including Telegram formatting and troubleshooting
-- [`src/bin/README.md`](./src/bin/README.md) for entrypoints
-- [`src/permissions/README.md`](./src/permissions/README.md) for the permission model
-- [`src/memory/README.md`](./src/memory/README.md) for the memory subsystem
+- [`bot/src/README.md`](./bot/src/README.md) for the code map
+- [`web/`](./web/) for the embedded authenticated bot browser UI workspace
+- [`bot/src/channels/README.md`](./bot/src/channels/README.md) for the CLI and Telegram channels, including Telegram formatting and troubleshooting
+- [`bot/src/bin/README.md`](./bot/src/bin/README.md) for entrypoints
+- [`bot/src/permissions/README.md`](./bot/src/permissions/README.md) for the permission model
+- [`bot/src/memory/README.md`](./bot/src/memory/README.md) for the memory subsystem

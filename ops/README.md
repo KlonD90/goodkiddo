@@ -4,7 +4,7 @@ Production provisioning for Ubuntu lives in [`ops/ansible/`](./ansible/).
 
 The playbook provisions:
 
-- Bun, NVM-managed Node.js/npm, and `pnpm`
+- Bun
 - Google Chrome Stable for browser automation
 - `agent-browser` as the browser CLI used by the runtime
 - `uv`/`uvx` for MiniMax MCP image understanding
@@ -15,8 +15,9 @@ The playbook provisions:
 - nginx as the only public entrypoint
 - Let's Encrypt certificates for the apex domain and `app.` subdomain
 - the `landing/` directory served by nginx after running its `bun build` script
+- the `web/` bot UI bundle consumed by the bot service after running `bun run web:build`
 - a managed environment file at `/etc/goodkiddo/bot.env`
-- a systemd service that runs `bun src/bin/bot.ts`
+- a systemd service that runs `bun src/bin/bot.ts` from `bot/`
 - optional Telegram image understanding through MiniMax MCP when
   `enable_image_understanding=true`
 
@@ -107,7 +108,7 @@ Vault file and installs `uvx` so the runtime can launch
    ```bash
    sudo systemd-run --wait --pipe \
      -p User=goodkiddo \
-     -p WorkingDirectory=/opt/goodkiddo/app \
+     -p WorkingDirectory=/opt/goodkiddo/app/bot \
      -p EnvironmentFile=/etc/goodkiddo/bot.env \
      /usr/local/bin/bun src/bin/admin.ts add-user telegram <chat-id> "Display name"
    ```
@@ -122,18 +123,19 @@ Vault file and installs `uvx` so the runtime can launch
 - `bot_main_domain`, `bot_app_domain`, and `bot_letsencrypt_email` must be set
   correctly or certificate issuance will fail.
 - The browser/search stack is local-only: Chrome is installed on the host,
-  `agent-browser` is installed globally with npm, Docker and `docker-compose`
+  `agent-browser` is installed globally with Bun, Docker and `docker-compose`
   are installed on the host, and SearXNG listens on
   `bot_searxng_host:bot_searxng_port`.
 - The SearXNG compose stack is managed by `{{ bot_searxng_service_name }}`
   through systemd instead of a one-off `docker-compose up -d` task.
 - nginx serves `landing/` on `https://<bot_main_domain>/` and proxies
   the Bun file-share UI on `https://<bot_app_domain>/`.
+- The embedded bot browser UI is built from the root workspace with
+  `bun run web:build`; the bot service reads the generated `web/dist` files.
 - The bot gets `SEARXNG_API_BASE` and `AGENT_BROWSER_EXECUTABLE_PATH` through
   `/etc/goodkiddo/bot.env`, which is what the current runtime expects.
 - MiniMax image understanding is controlled by `enable_image_understanding`,
   `minimax_api_key`, and `minimax_api_host`; these render to
   `ENABLE_IMAGE_UNDERSTANDING`, `MINIMAX_API_KEY`, and `MINIMAX_API_HOST`.
-- Node.js/npm are installed through NVM and symlinked into `/usr/local/bin`;
-  `pnpm install --prod --frozen-lockfile` is used on the server to match the
-  repository lockfile without bringing in dev tooling.
+- Production dependencies are installed from the root Bun workspace with
+  `bun install --frozen-lockfile --production`.

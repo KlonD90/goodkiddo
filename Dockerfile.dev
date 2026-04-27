@@ -40,10 +40,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+COPY package.json bun.lock ./
+COPY bot/package.json ./bot/package.json
+COPY landing/package.json ./landing/package.json
+COPY web/package.json ./web/package.json
 RUN bun install --frozen-lockfile
 
 COPY . .
+
+RUN bun run web:build
 
 # agent-browser CLI for browser research tools
 # ARM64 has no Chrome for Testing build, so use the system chromium package.

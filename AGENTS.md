@@ -1,6 +1,6 @@
 # Repo Notes
 
-- Do not use `pnpm --store-dir ...` in this repository.
-- Use plain `pnpm ...` commands here.
-- If `pnpm` reports an unexpected store location, fix the global pnpm `store-dir` to match the existing workspace install instead of passing `--store-dir` on each command.
+- This repository uses Bun workspaces. Do not use `pnpm` or `npm` commands here.
+- Use plain `bun ...` commands from the repository root unless a task explicitly needs a workspace-local working directory.
+- Workspaces are `bot/`, `landing/`, and `web/`; bot source lives under `bot/src/`, and the embedded bot browser UI source lives under `web/src/`.
 - When a task changes behavior, setup, architecture, or operational workflow, update the relevant `README.md` docs before finishing the task.

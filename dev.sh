@@ -34,6 +34,9 @@ if [[ ! -d node_modules ]]; then
   bun install
 fi
 
+log "Building bot web frontend"
+bun run web:build
+
 if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
   log "Building development image $IMAGE_NAME"
   docker build -f Dockerfile.dev -t "$IMAGE_NAME" .
@@ -46,7 +49,7 @@ if ! curl --silent --fail --max-time 2 "$MODEL_URL" >/dev/null 2>&1; then
 fi
 
 log "Running tests"
-bun test
+bun run test
 
 log "Starting bot"
-exec bun src/bin/bot.ts
+exec bun run --filter goodkiddo-bot start

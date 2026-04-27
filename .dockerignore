@@ -7,6 +7,8 @@ state.db*
 *.log
 .DS_Store
 dist
+landing/dist
+web/dist
 coverage
 .tmp
 tmp

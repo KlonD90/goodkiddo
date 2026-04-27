@@ -75,7 +75,7 @@
 
 - name: Install production dependencies
   ansible.builtin.command:
-    cmd: pnpm install --prod --frozen-lockfile
+    cmd: bun install --frozen-lockfile --production
     chdir: "{{ bot_app_dir }}"
   environment:
     HOME: "{{ bot_home }}"
@@ -91,6 +91,16 @@
     HOME: "{{ bot_home }}"
     PATH: "/usr/local/bin:/usr/bin:/bin"
   become_user: "{{ bot_user }}"
+
+- name: Build bot web frontend bundle
+  ansible.builtin.command:
+    cmd: bun run web:build
+    chdir: "{{ bot_app_dir }}"
+  environment:
+    HOME: "{{ bot_home }}"
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+  become_user: "{{ bot_user }}"
+  notify: restart bot service
 
 - name: Ensure landing entrypoint exists
   ansible.builtin.stat:
