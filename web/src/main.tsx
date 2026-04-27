@@ -1,3 +1,7 @@
+import "@mantine/core/styles.css";
+import "highlight.js/styles/github-dark.min.css";
+import "./styles.css";
+
 import { createTheme, MantineProvider } from "@mantine/core";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

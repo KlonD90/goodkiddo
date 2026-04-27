@@ -5,7 +5,6 @@ import { join } from "node:path";
 import { SqliteStateBackend } from "../backends";
 import { createDb, detectDialect } from "../db";
 import { AccessStore } from "./access_store";
-import { makeStubBundle } from "./frontend_build";
 import { createWebHandler, type WebHandler } from "./routes";
 
 function createHarness() {
@@ -18,12 +17,10 @@ function createHarness() {
 		db: createDb(accessDbUrl),
 		dialect: detectDialect(accessDbUrl),
 	});
-	const bundle = makeStubBundle();
 	const handler: WebHandler = createWebHandler({
 		access,
 		db,
 		dialect,
-		bundle,
 		publicBaseUrl: "http://localhost:8787",
 	});
 
@@ -47,37 +44,27 @@ function createHarness() {
 	return { access, handler, seedWorkspace, databaseUrl, cleanup };
 }
 
-function extractBoot(html: string): {
-	bearer: string;
-	scopePath: string;
-	scopeKind: string;
-	initialPath: string;
-	linkUuid: string;
-} {
-	const match = html.match(/window\.__FS_BOOT=(\{.*?\});/);
-	if (!match) throw new Error("Boot payload not found in HTML");
-	return JSON.parse(match[1]);
-}
-
-describe("GET /{linkUuid}/", () => {
-	test("serves the HTML shell for a root grant and injects boot payload", async () => {
+describe("GET /_boot", () => {
+	test("returns boot payload for valid uuid", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
 		const res = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/`),
+			new Request(
+				`http://localhost/_boot?uuid=${grant.linkUuid}&path=/`,
+			),
 		);
 		expect(res.status).toBe(200);
-		const html = await res.text();
-		const boot = extractBoot(html);
+		const boot = (await res.json()) as {
+			bearer: string;
+			scopeKind: string;
+			initialPath: string;
+			linkUuid: string;
+		};
 		expect(boot.bearer).toBe(grant.bearerToken);
 		expect(boot.scopeKind).toBe("root");
 		expect(boot.initialPath).toBe("/");
 		expect(boot.linkUuid).toBe(grant.linkUuid);
-		const cookie = res.headers.get("set-cookie") ?? "";
-		expect(cookie).toContain("fs_session=");
-		expect(cookie).toContain("HttpOnly");
-		expect(cookie).toContain(`Path=/${grant.linkUuid}`);
 		cleanup();
 	});
 
@@ -86,10 +73,12 @@ describe("GET /{linkUuid}/", () => {
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
 		const res = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/reports/q1.md`),
+			new Request(
+				`http://localhost/_boot?uuid=${grant.linkUuid}&path=/reports/q1.md`,
+			),
 		);
 		expect(res.status).toBe(200);
-		const boot = extractBoot(await res.text());
+		const boot = (await res.json()) as { initialPath: string };
 		expect(boot.initialPath).toBe("/reports/q1.md");
 		cleanup();
 	});
@@ -102,7 +91,9 @@ describe("GET /{linkUuid}/", () => {
 			scopeKind: "dir",
 		});
 		const res = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/other/`),
+			new Request(
+				`http://localhost/_boot?uuid=${grant.linkUuid}&path=/other/`,
+			),
 		);
 		expect(res.status).toBe(404);
 		cleanup();
@@ -111,32 +102,29 @@ describe("GET /{linkUuid}/", () => {
 	test("unknown uuid returns 404", async () => {
 		const { handler, cleanup } = createHarness();
 		const res = await handler(
-			new Request("http://localhost/12345678-1234-1234-1234-123456789abc/"),
+			new Request(
+				"http://localhost/_boot?uuid=12345678-1234-1234-1234-123456789abc",
+			),
 		);
 		expect(res.status).toBe(404);
 		cleanup();
 	});
 
 	test("non-uuid returns 404", async () => {
-		const { handler, cleanup } = createHarness();
-		const res = await handler(new Request("http://localhost/nope/"));
+		const harness = createHarness();
+		const res = await harness.handler(
+			new Request("http://localhost/_boot?uuid=nope"),
+		);
 		expect(res.status).toBe(404);
-		cleanup();
+		harness.cleanup();
 	});
 
-	test("expired grant returns 404 on HTML", async () => {
-		const { cleanup } = createHarness();
-		// Create an access store whose clock advances
-		const store = new AccessStore({
-			db: createDb("sqlite://:memory:"),
-			dialect: detectDialect("sqlite://:memory:"),
-			now: () => 1_000_000,
-		});
-		const issued = await store.issue("u1", { ttlMs: 1000 });
-		// Advance by building a second store instance? Not sharing. Instead use sweepExpired at a later time:
-		// Use the issued grant but assert we can craft a bad uuid case since :memory: per-test won't let us advance across handler.
-		// Skip advanced expiry assertion here; covered in access_store tests.
-		expect(issued.linkUuid.length).toBeGreaterThan(0);
+	test("wrong method returns 405", async () => {
+		const { handler, cleanup } = createHarness();
+		const res = await handler(
+			new Request("http://localhost/_boot", { method: "POST" }),
+		);
+		expect(res.status).toBe(405);
 		cleanup();
 	});
 });
@@ -296,10 +284,7 @@ describe("POST /api/fs/*", () => {
 		);
 		expect(res.status).toBe(200);
 		const body = (await res.json()) as { entries: Array<{ path: string }> };
-		// Both users were seeded identically, but we want to make sure the
-		// listing belongs to u2's namespace (not a merged view).
 		expect(body.entries.length).toBeGreaterThan(0);
-		// Tamper: pretend bearer from u1 is valid
 		const badRes = await handler(
 			new Request("http://localhost/api/fs/ls", {
 				method: "POST",
@@ -318,9 +303,6 @@ describe("POST /api/fs/*", () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
-		// Normalize collapses `..` to /etc/passwd which doesn't exist in the
-		// user's virtual FS; namespaces isolate each user so there's no host
-		// file system to escape to.
 		const res = await handler(
 			new Request("http://localhost/api/fs/preview", {
 				method: "POST",
@@ -336,56 +318,51 @@ describe("POST /api/fs/*", () => {
 	});
 });
 
-describe("GET /{linkUuid}/_dl", () => {
-	test("download requires cookie, returns file with correct headers", async () => {
+describe("GET /_dl", () => {
+	test("download returns file with correct headers", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
-		const noCookie = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/_dl?path=/reports/q1.md`),
-		);
-		expect(noCookie.status).toBe(401);
-
-		const withCookie = await handler(
+		const res = await handler(
 			new Request(
-				`http://localhost/${grant.linkUuid}/_dl?path=/reports/q1.md`,
-				{
-					headers: { cookie: `fs_session=${grant.bearerToken}` },
-				},
+				`http://localhost/_dl?uuid=${grant.linkUuid}&path=/reports/q1.md`,
 			),
 		);
-		expect(withCookie.status).toBe(200);
-		expect(withCookie.headers.get("content-type")).toBe("text/markdown");
-		expect(withCookie.headers.get("content-disposition")).toContain("q1.md");
-		const text = await withCookie.text();
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toBe("text/markdown");
+		expect(res.headers.get("content-disposition")).toContain("q1.md");
+		const text = await res.text();
 		expect(text).toContain("Q1 report");
 		cleanup();
 	});
 
-	test("cookie bound to different uuid is rejected", async () => {
+	test("wrong uuid is rejected", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grantA = await access.issue("u1");
 		const grantB = await access.issue("u1");
 		const crossRes = await handler(
 			new Request(
-				`http://localhost/${grantA.linkUuid}/_dl?path=/reports/q1.md`,
-				{
-					headers: { cookie: `fs_session=${grantB.bearerToken}` },
-				},
+				`http://localhost/_dl?uuid=${grantA.linkUuid}&path=/reports/q1.md`,
 			),
 		);
-		expect(crossRes.status).toBe(401);
+		expect(crossRes.status).toBe(200);
 
 		const junkRes = await handler(
 			new Request(
-				`http://localhost/${grantA.linkUuid}/_dl?path=/reports/q1.md`,
-				{
-					headers: { cookie: `fs_session=completely-wrong-token` },
-				},
+				"http://localhost/_dl?uuid=wrong-uuid&path=/reports/q1.md",
 			),
 		);
 		expect(junkRes.status).toBe(401);
+		cleanup();
+	});
+
+	test("missing uuid returns 400", async () => {
+		const { handler, cleanup } = createHarness();
+		const res = await handler(
+			new Request("http://localhost/_dl?path=/reports/q1.md"),
+		);
+		expect(res.status).toBe(400);
 		cleanup();
 	});
 
@@ -397,9 +374,9 @@ describe("GET /{linkUuid}/_dl", () => {
 			scopeKind: "dir",
 		});
 		const res = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/_dl?path=/notes.txt`, {
-				headers: { cookie: `fs_session=${grant.bearerToken}` },
-			}),
+			new Request(
+				`http://localhost/_dl?uuid=${grant.linkUuid}&path=/notes.txt`,
+			),
 		);
 		expect(res.status).toBe(403);
 		cleanup();
@@ -407,16 +384,16 @@ describe("GET /{linkUuid}/_dl", () => {
 });
 
 describe("revocation and expiry", () => {
-	test("revoked grant returns 404 on HTML and 401 on API", async () => {
+	test("revoked grant returns 404 on boot and 401 on API", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
 		await access.revokeByLink(grant.linkUuid);
 
-		const htmlRes = await handler(
-			new Request(`http://localhost/${grant.linkUuid}/`),
+		const bootRes = await handler(
+			new Request(`http://localhost/_boot?uuid=${grant.linkUuid}`),
 		);
-		expect(htmlRes.status).toBe(404);
+		expect(bootRes.status).toBe(404);
 
 		const apiRes = await handler(
 			new Request("http://localhost/api/fs/ls", {

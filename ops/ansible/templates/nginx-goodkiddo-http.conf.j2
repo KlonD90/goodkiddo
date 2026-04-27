@@ -26,12 +26,36 @@ server {
         try_files $uri =404;
     }
 
-    location / {
+    location /assets/ {
+        root {{ bot_web_dist_dir }};
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location /fs/ {
+        root {{ bot_web_dist_dir }};
+        try_files $uri $uri/ /fs/index.html;
+    }
+
+    location /api/fs/ {
         proxy_pass http://127.0.0.1:{{ web_port | default(8083) }};
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto http;
         proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location /_dl {
+        proxy_pass http://127.0.0.1:{{ web_port | default(8083) }};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    location / {
+        return 404;
     }
 }

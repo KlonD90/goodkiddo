@@ -28,14 +28,40 @@ import MarkdownIt from "markdown-it";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
 	basename,
-	boot,
 	downloadUrl,
+	type BootPayload,
 	type FsEntry,
 	listDirectory,
 	type PreviewResponse,
 	parentDir,
 	previewFile,
+	readBoot,
 } from "./api";
+
+function Workspace() {
+	const [boot, setBoot] = useState<BootPayload | null>(null);
+	const [error, setError] = useState<string | null>(null);
+	useEffect(() => {
+		readBoot()
+			.then(setBoot)
+			.catch((e) => setError(e instanceof Error ? e.message : String(e)));
+	}, []);
+	if (error) {
+		return (
+			<div style={{ padding: 24, color: "#ff7a7a", fontFamily: "sans-serif" }}>
+				Failed to load workspace. The link may have expired.
+			</div>
+		);
+	}
+	if (!boot) return null;
+	return <WorkspaceInner boot={boot} />;
+}
+
+function WorkspaceInner({ boot }: { boot: BootPayload }) {
+	return <WorkspaceApp boot={boot} />;
+}
+
+export { Workspace as App };
 import { decodeBase64Utf8 } from "./text";
 
 const EXT_TO_LANG: Record<string, string> = {
@@ -201,8 +227,10 @@ function buildBreadcrumbs(
 	return crumbs;
 }
 
-function updateUrl(path: string): void {
-	const urlPath = `/${boot.linkUuid}${path}`;
+function updateUrl(path: string, linkUuid: string): void {
+	const params = new URLSearchParams({ uuid: linkUuid });
+	if (path !== "/") params.set("path", path);
+	const urlPath = `/fs/?${params.toString()}`;
 	history.replaceState(null, "", urlPath);
 }
 
@@ -356,7 +384,7 @@ function FilePreview({
 	);
 }
 
-export function App() {
+export function WorkspaceApp({ boot }: { boot: BootPayload }) {
 	const scopeRoot =
 		boot.scopeKind === "file" ? parentDir(boot.scopePath) : boot.scopePath;
 	const [currentPath, setCurrentPath] = useState<string>(boot.initialPath);
@@ -393,7 +421,7 @@ export function App() {
 	}, []);
 
 	useEffect(() => {
-		updateUrl(currentPath);
+		updateUrl(currentPath, boot.linkUuid);
 		if (isDirPath(currentPath)) {
 			setPreview(null);
 			if (!isFileScope) void loadDirectory(currentPath);
@@ -404,7 +432,7 @@ export function App() {
 				void loadDirectory(parent);
 			}
 		}
-	}, [currentPath, isFileScope, loadDirectory, loadPreview]);
+	}, [currentPath, isFileScope, loadDirectory, loadPreview, boot.linkUuid]);
 
 	const breadcrumbs = useMemo(
 		() => buildBreadcrumbs(currentPath, scopeRoot),
@@ -476,7 +504,7 @@ export function App() {
 					{showingFile && (
 						<Button
 							component="a"
-							href={downloadUrl(currentPath)}
+							href={downloadUrl(currentPath, boot.linkUuid)}
 							leftSection={<IconDownload size={16} />}
 							variant="light"
 							size="xs"

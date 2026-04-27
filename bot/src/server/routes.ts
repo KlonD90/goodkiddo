@@ -3,10 +3,8 @@ import { detectMimeType } from "../utils/filesystem";
 import {
 	type AccessStore,
 	type ResolvedGrant,
-	type ScopeKind,
 	withinScope,
 } from "./access_store";
-import type { FrontendBundle } from "./frontend_build";
 
 type SQL = InstanceType<typeof Bun.SQL>;
 
@@ -14,7 +12,6 @@ export interface WebHandlerOptions {
 	access: AccessStore;
 	db: SQL;
 	dialect: "sqlite" | "postgres";
-	bundle: FrontendBundle;
 	publicBaseUrl: string;
 }
 
@@ -24,60 +21,20 @@ const DOWNLOAD_COOKIE_NAME = "fs_session";
 const PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
 
-function jsonResponse(body: unknown, status = 200): Response {
-	return new Response(JSON.stringify(body), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
+function jsonResponse(
+	body: unknown,
+	status = 200,
+	extraHeaders: Record<string, string> = {},
+): Response {
+	const headers = new Headers({ "content-type": "application/json" });
+	for (const [key, value] of Object.entries(extraHeaders)) {
+		headers.set(key, value);
+	}
+	return new Response(JSON.stringify(body), { status, headers });
 }
 
 function errorResponse(code: string, status: number): Response {
 	return jsonResponse({ error: code }, status);
-}
-
-function renderHtmlShell(options: {
-	bundle: FrontendBundle;
-	boot: {
-		bearer: string;
-		scopePath: string;
-		scopeKind: ScopeKind;
-		initialPath: string;
-		linkUuid: string;
-	};
-}): string {
-	const bootJson = JSON.stringify(options.boot)
-		.replaceAll("</", "<\\/")
-		.replaceAll("\u2028", "\\u2028")
-		.replaceAll("\u2029", "\\u2029");
-	return `<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="referrer" content="no-referrer" />
-<title>Workspace</title>
-<link rel="stylesheet" href="/${options.boot.linkUuid}/_assets/bundle.css" />
-</head>
-<body>
-<div id="root"></div>
-<script>window.__FS_BOOT=${bootJson};</script>
-<script src="/${options.boot.linkUuid}/_assets/bundle.js"></script>
-</body>
-</html>
-`;
-}
-
-function parseCookies(header: string | null): Map<string, string> {
-	const cookies = new Map<string, string>();
-	if (!header) return cookies;
-	for (const part of header.split(";")) {
-		const eq = part.indexOf("=");
-		if (eq === -1) continue;
-		const name = part.slice(0, eq).trim();
-		const value = part.slice(eq + 1).trim();
-		if (name !== "") cookies.set(name, value);
-	}
-	return cookies;
 }
 
 function buildDownloadCookie(
@@ -139,38 +96,34 @@ function inferRequestedPathKind(rawPath: string): "file" | "dir" {
 	return rawPath.endsWith("/") ? "dir" : "file";
 }
 
-function handleHtmlShell(
+async function handleBoot(
 	grant: ResolvedGrant,
-	bundle: FrontendBundle,
 	deepPath: string,
-): Response {
+): Promise<Response> {
 	let initialPath: string;
 	if (deepPath === "" || deepPath === "/") {
 		initialPath = grant.scopePath;
 	} else {
 		const kind: "file" | "dir" = deepPath.endsWith("/") ? "dir" : "file";
 		const normalized = tryNormalizeRequestedPath(deepPath, kind);
-		if (!normalized) return new Response("Not found", { status: 404 });
+		if (!normalized) return errorResponse("not_found", 404);
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
-			return new Response("Not found", { status: 404 });
+			return errorResponse("not_found", 404);
 		}
 		initialPath = normalized;
 	}
 
-	const html = renderHtmlShell({
-		bundle,
-		boot: {
-			bearer: grant.bearerToken,
-			scopePath: grant.scopePath,
-			scopeKind: grant.scopeKind,
-			initialPath,
-			linkUuid: grant.linkUuid,
-		},
-	});
+	const boot = {
+		bearer: grant.bearerToken,
+		scopePath: grant.scopePath,
+		scopeKind: grant.scopeKind,
+		initialPath,
+		linkUuid: grant.linkUuid,
+	};
 
 	const maxAgeSeconds = Math.ceil((grant.expiresAt - Date.now()) / 1000);
 	const headers = new Headers({
-		"content-type": "text/html; charset=utf-8",
+		"content-type": "application/json",
 		"cache-control": "no-store",
 		"set-cookie": buildDownloadCookie(
 			grant.linkUuid,
@@ -178,45 +131,15 @@ function handleHtmlShell(
 			maxAgeSeconds,
 		),
 	});
-	return new Response(html, { status: 200, headers });
-}
-
-function serveAsset(bundle: FrontendBundle, assetName: string): Response {
-	if (assetName === "bundle.js") {
-		return new Response(bundle.js, {
-			status: 200,
-			headers: {
-				"content-type": "text/javascript; charset=utf-8",
-				"cache-control": "public, max-age=3600",
-			},
-		});
-	}
-	if (assetName === "bundle.css") {
-		return new Response(bundle.css, {
-			status: 200,
-			headers: {
-				"content-type": "text/css; charset=utf-8",
-				"cache-control": "public, max-age=3600",
-			},
-		});
-	}
-	return new Response("Not found", { status: 404 });
+	return new Response(JSON.stringify(boot), { status: 200, headers });
 }
 
 async function handleDownload(
 	request: Request,
-	linkUuid: string,
-	access: AccessStore,
+	grant: ResolvedGrant,
 	db: SQL,
 	dialect: "sqlite" | "postgres",
 ): Promise<Response> {
-	const cookies = parseCookies(request.headers.get("cookie"));
-	const bearer = cookies.get(DOWNLOAD_COOKIE_NAME) ?? "";
-	const grant = await access.resolveBearer(bearer);
-	if (!grant || grant.linkUuid !== linkUuid) {
-		return new Response("Unauthorized", { status: 401 });
-	}
-
 	const url = new URL(request.url);
 	const rawPath = url.searchParams.get("path");
 	if (!rawPath) return errorResponse("missing_path", 400);
@@ -352,55 +275,43 @@ async function handleApi(
 	return errorResponse("not_found", 404);
 }
 
-const UUID_REGEX =
-	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function createWebHandler(options: WebHandlerOptions): WebHandler {
-	const { access, db, dialect, bundle } = options;
+	const { access, db, dialect } = options;
 
 	return async function handler(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 		const pathname = url.pathname;
 
+		if (
+			pathname === "/_boot" ||
+			pathname.startsWith("/_boot?") ||
+			pathname === "/api/fs/_boot" ||
+			pathname.startsWith("/api/fs/_boot?")
+		) {
+			if (request.method !== "GET") {
+				return errorResponse("method_not_allowed", 405);
+			}
+			const grant = await access.resolveLink(url.searchParams.get("uuid") ?? "");
+			if (!grant) return errorResponse("not_found", 404);
+			const deepPath = url.searchParams.get("path") ?? "";
+			return handleBoot(grant, deepPath);
+		}
+
 		if (pathname.startsWith("/api/fs/")) {
 			return handleApi(request, access, db, dialect);
 		}
 
-		if (pathname === "/" || pathname === "") {
-			return new Response("Not found", { status: 404 });
-		}
-
-		const afterLeading = pathname.slice(1);
-		const firstSlash = afterLeading.indexOf("/");
-		const linkUuid =
-			firstSlash === -1 ? afterLeading : afterLeading.slice(0, firstSlash);
-		const deepPath = firstSlash === -1 ? "" : afterLeading.slice(firstSlash);
-
-		if (!UUID_REGEX.test(linkUuid)) {
-			return new Response("Not found", { status: 404 });
-		}
-
-		if (deepPath.startsWith("/_assets/")) {
-			const assetName = deepPath.slice("/_assets/".length);
-			const grant = await access.resolveLink(linkUuid);
-			if (!grant) return new Response("Not found", { status: 404 });
-			return serveAsset(bundle, assetName);
-		}
-
-		if (deepPath === "/_dl" || deepPath.startsWith("/_dl?")) {
+		if (pathname === "/_dl" || pathname.startsWith("/_dl?")) {
 			if (request.method !== "GET") {
 				return errorResponse("method_not_allowed", 405);
 			}
-			return handleDownload(request, linkUuid, access, db, dialect);
+			const uuidParam = url.searchParams.get("uuid");
+			if (!uuidParam) return errorResponse("missing_uuid", 400);
+			const grant = await access.resolveLink(uuidParam);
+			if (!grant) return new Response("Unauthorized", { status: 401 });
+			return handleDownload(request, grant, db, dialect);
 		}
 
-		if (request.method !== "GET") {
-			return errorResponse("method_not_allowed", 405);
-		}
-
-		const grant = await access.resolveLink(linkUuid);
-		if (!grant) return new Response("Not found", { status: 404 });
-
-		return handleHtmlShell(grant, bundle, deepPath);
+		return new Response("Not found", { status: 404 });
 	};
 }

@@ -89,8 +89,9 @@ export function buildShareUrl(
 	scopePath: string,
 ): string {
 	const base = trimTrailingSlash(publicBaseUrl);
-	const suffix = scopePath === "/" ? "/" : scopePath;
-	return `${base}/${linkUuid}${suffix}`;
+	const query = new URLSearchParams({ uuid: linkUuid });
+	if (scopePath !== "/") query.set("path", scopePath);
+	return `${base}/fs/?${query.toString()}`;
 }
 
 export function createGrantFsAccessTool(options: GrantFsAccessOptions) {

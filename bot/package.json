@@ -7,6 +7,7 @@
   "scripts": {
     "start": "bun src/bin/bot.ts",
     "start:telegram": "APP_ENTRYPOINT=telegram bun src/bin/bot.ts",
+    "dev": "bun src/bin/dev_server.ts",
     "admin": "bun src/bin/admin.ts",
     "test": "bun test",
     "check": "biome check src/**/*.ts",

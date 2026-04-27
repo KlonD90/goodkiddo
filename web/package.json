@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "bun build.ts",
+    "build": "mkdir -p dist && cp index.html dist && bun build ./src/main.tsx --outdir ./dist --target browser --minify",
     "test": "bun test",
-    "check": "biome check src build.ts",
-    "format": "biome check --write src build.ts --unsafe",
-    "lint": "biome lint src build.ts",
+    "check": "biome check src",
+    "format": "biome check --write src --unsafe",
+    "lint": "biome lint src",
     "typecheck": "bunx --bun tsc --noEmit"
   },
   "dependencies": {

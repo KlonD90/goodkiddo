@@ -1,7 +1,6 @@
 import type { AppConfig } from "../config";
 import { createLogger } from "../logger";
 import { AccessStore } from "./access_store";
-import { buildFrontendBundle } from "./frontend_build";
 import { createWebHandler } from "./routes";
 
 const log = createLogger("http");
@@ -29,12 +28,10 @@ export async function startWebServer(
 
 	const { db, dialect } = options;
 	const access = new AccessStore({ db, dialect });
-	const bundle = await buildFrontendBundle();
 	const handler = createWebHandler({
 		access,
 		db,
 		dialect,
-		bundle,
 		publicBaseUrl: config.webPublicBaseUrl,
 	});
 
