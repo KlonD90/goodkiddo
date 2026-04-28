@@ -482,12 +482,15 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			displayName: "Chat 123",
 		});
 
-		const caller = await getTelegramCaller(store, "123");
-		expect(caller).toEqual({
-			id: "telegram:123",
-			entrypoint: "telegram",
-			externalId: "123",
-			displayName: "Chat 123",
+		const result = await getTelegramCaller(store, "123");
+		expect(result).toEqual({
+			caller: {
+				id: "telegram:123",
+				entrypoint: "telegram",
+				externalId: "123",
+				displayName: "Chat 123",
+			},
+			isNew: false,
 		});
 		const user = await store.getUser("telegram", "123");
 		expect(user?.tier).toBe("paid");
@@ -497,11 +500,14 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 	test("getTelegramCaller auto-creates free user for unknown telegram chat", async () => {
 		const db = new Bun.SQL("sqlite://:memory:");
 		store = new PermissionsStore({ db, dialect: "sqlite" });
-		const caller = await getTelegramCaller(store, "123");
-		expect(caller).toEqual({
-			id: "telegram:123",
-			entrypoint: "telegram",
-			externalId: "123",
+		const result = await getTelegramCaller(store, "123");
+		expect(result).toEqual({
+			caller: {
+				id: "telegram:123",
+				entrypoint: "telegram",
+				externalId: "123",
+			},
+			isNew: true,
 		});
 		const user = await store.getUser("telegram", "123");
 		expect(user).not.toBeNull();
@@ -646,6 +652,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			mockBot,
 			"123",
 			"/start",
+			false,
 		);
 
 		expect(handled).toBe(true);
@@ -665,6 +672,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			mockBot,
 			"123",
 			"/help",
+			false,
 		);
 
 		expect(handled).toBe(false);

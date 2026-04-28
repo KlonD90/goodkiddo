@@ -1,4 +1,5 @@
 import { type Bot, InlineKeyboard } from "grammy";
+import { trackBotStarted, trackUserCreated } from "../../analytics";
 import { createLogger } from "../../logger";
 import { readThreadMessages } from "../../memory/rotate_thread";
 import type {
@@ -145,8 +146,16 @@ export async function maybeHandleTelegramStartCommand(
 	bot: Bot,
 	chatId: string,
 	text: string,
+	isNewUser: boolean,
 ): Promise<boolean> {
 	if (!isTelegramStartCommand(text)) return false;
+	const spaceIdx = text.indexOf(" ");
+	const source = spaceIdx !== -1 ? text.slice(spaceIdx + 1).trim() : "";
+	if (source !== "") {
+		trackBotStarted(chatId, source);
+	} else if (isNewUser) {
+		trackBotStarted(chatId, "unknown");
+	}
 	await sendTelegramMessage(bot, chatId, renderTelegramWelcomeMessage());
 	return true;
 }
@@ -154,28 +163,35 @@ export async function maybeHandleTelegramStartCommand(
 export async function getTelegramCaller(
 	store: PermissionsStore,
 	chatId: string,
-): Promise<Caller | null> {
+): Promise<{ caller: Caller; isNew: boolean } | null> {
 	const user = await store.getUser("telegram", chatId);
 	if (user) {
 		if (user.status === "suspended") return null;
 		return {
-			id: user.id,
-			entrypoint: "telegram",
-			externalId: user.externalId,
-			displayName: user.displayName ?? undefined,
+			caller: {
+				id: user.id,
+				entrypoint: "telegram",
+				externalId: user.externalId,
+				displayName: user.displayName ?? undefined,
+			},
+			isNew: false,
 		};
 	}
 	await store.createUserFree({
 		entrypoint: "telegram",
 		externalId: chatId,
 	});
+	trackUserCreated(chatId, "telegram");
 	const newUser = await store.getUser("telegram", chatId);
 	if (!newUser) return null;
 	return {
-		id: newUser.id,
-		entrypoint: "telegram",
-		externalId: newUser.externalId,
-		displayName: newUser.displayName ?? undefined,
+		caller: {
+			id: newUser.id,
+			entrypoint: "telegram",
+			externalId: newUser.externalId,
+			displayName: newUser.displayName ?? undefined,
+		},
+		isNew: true,
 	};
 }
 

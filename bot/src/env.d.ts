@@ -13,5 +13,7 @@ declare namespace NodeJS {
 		DATABASE_URL?: string;
 		TRANSCRIPTION_API_KEY?: string;
 		TRANSCRIPTION_BASE_URL?: string;
+		POSTHOG_KEY?: string;
+		POSTHOG_HOST?: string;
 	}
 }

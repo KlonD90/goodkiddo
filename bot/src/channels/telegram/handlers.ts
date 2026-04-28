@@ -82,13 +82,15 @@ export const telegramChannel: AppChannel = {
 			session: TelegramAgentSession;
 			caller: Caller;
 			chatIdString: string;
+			isNew: boolean;
 		} | null> => {
 			const chatIdString = String(ctx.chat.id);
-			const caller = await getTelegramCaller(store, chatIdString);
-			if (!caller) {
+			const result = await getTelegramCaller(store, chatIdString);
+			if (!result) {
 				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return null;
 			}
+			const { caller, isNew } = result;
 			const locale = resolveLocale(
 				ctx.from?.language_code,
 				config.defaultStatusLocale as "en" | "ru" | "es",
@@ -109,7 +111,7 @@ export const telegramChannel: AppChannel = {
 				locale,
 			);
 			session.locale = locale;
-			return { session, caller, chatIdString };
+			return { session, caller, chatIdString, isNew };
 		};
 
 		await syncTelegramCommands(bot);
@@ -201,7 +203,7 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			// /start is always direct — never from a forwarded message
-			if (!isForwarded && await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text)) {
+			if (!isForwarded && await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text, resolved.isNew)) {
 				return;
 			}
 
@@ -483,15 +485,15 @@ export const telegramChannel: AppChannel = {
 			const existing = sessions.get(chatId);
 			if (existing) return existing;
 
-			const caller = await getTelegramCaller(store, chatId);
-			if (!caller || caller.id !== timer.userId) {
+			const callerResult = await getTelegramCaller(store, chatId);
+			if (!callerResult || callerResult.caller.id !== timer.userId) {
 				throw new Error(
 					`Timer user ${timer.userId} is not an active Telegram user.`,
 				);
 			}
 			return ensureTelegramSession(
 				chatId,
-				caller,
+				callerResult.caller,
 				config,
 				db,
 				dialect,
