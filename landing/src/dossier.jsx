@@ -1,4 +1,5 @@
 import React from 'react';
+import posthog from 'posthog-js';
 import LogoImage from './kiddo-logo.jpg';
 // dossier.jsx — shared tokens + editorial primitives for the Operator's Dossier
 
@@ -503,24 +504,28 @@ function FinalCTA() {
               Approve, redirect, or tell it to try again.
             </p>
             <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-              <a href="https://t.me/goodkiddo_bot" style={{
-                display: 'inline-flex', alignItems: 'center', gap: 12,
-                padding: '16px 26px', background: PAPER, color: INK,
-                fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
-                fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
-                textDecoration: 'none', border: `2px solid ${PAPER}`,
-              }}>
+              <a href="https://t.me/goodkiddo_bot?start=landing_final"
+                onClick={() => posthog.capture('final_cta_clicked', { location: 'final_section', transport: 'sendBeacon' })}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 12,
+                  padding: '16px 26px', background: PAPER, color: INK,
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+                  fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+                  textDecoration: 'none', border: `2px solid ${PAPER}`,
+                }}>
                 Open in Telegram
                 <span style={{ fontSize: 16 }}>→</span>
               </a>
-              <a href="#what" style={{
-                display: 'inline-flex', alignItems: 'center', gap: 12,
-                padding: '16px 26px', color: PAPER,
-                fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
-                fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase',
-                textDecoration: 'none', border: `2px solid ${PAPER}`,
-                opacity: 0.9,
-              }}>
+              <a href="#what"
+                onClick={() => posthog.capture('final_secondary_cta_clicked', { location: 'final_section' })}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 12,
+                  padding: '16px 26px', color: PAPER,
+                  fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+                  fontWeight: 500, letterSpacing: 2, textTransform: 'uppercase',
+                  textDecoration: 'none', border: `2px solid ${PAPER}`,
+                  opacity: 0.9,
+                }}>
                 Re-read the dossier
               </a>
             </div>

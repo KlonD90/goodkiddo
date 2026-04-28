@@ -1,4 +1,5 @@
 import React from 'react';
+import posthog from 'posthog-js';
 import { BURGUNDY, INK, MINT, MINT_DK, MUTE, OCHRE, PAPER, SHIBA } from './dossier';
 import { ChatFrame, Bubble, DayDivider } from './chat-mockup';
 import LogoImage from './kiddo-logo.jpg'
@@ -124,10 +125,12 @@ function Hero() {
           <a href="#what" style={{ textDecoration: 'none' }}>What it is</a>
           <a href="#do" style={{ textDecoration: 'none' }}>What it does</a>
           <a href="#how" style={{ textDecoration: 'none' }}>How it works</a>
-          <a href="https://t.me/goodkiddo_bot" className="gk-nav-cta" style={{
-            textDecoration: 'none', padding: '6px 14px',
-            background: INK, color: PAPER, borderRadius: 0,
-          }}>Open in Telegram →</a>
+          <a href="https://t.me/goodkiddo_bot?start=landing_nav" className="gk-nav-cta"
+            onClick={() => posthog.capture('nav_telegram_clicked', { location: 'nav', transport: 'sendBeacon' })}
+            style={{
+              textDecoration: 'none', padding: '6px 14px',
+              background: INK, color: PAPER, borderRadius: 0,
+            }}>Open in Telegram →</a>
         </nav>
       </div>
       {/* Thin rule line */}
@@ -241,14 +244,16 @@ function Hero() {
 
           {/* Hero CTA */}
           <div style={{ marginTop: 40, display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center' }}>
-            <a href="https://t.me/goodkiddo_bot" style={{
-              display: 'inline-flex', alignItems: 'center', gap: 12,
-              padding: '16px 28px', background: INK, color: PAPER,
-              fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
-              fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
-              textDecoration: 'none',
-              boxShadow: `4px 4px 0 ${BURGUNDY}`,
-            }}>
+            <a href="https://t.me/goodkiddo_bot?start=landing_hero"
+              onClick={() => posthog.capture('hero_cta_clicked', { location: 'hero', transport: 'sendBeacon' })}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 12,
+                padding: '16px 28px', background: INK, color: PAPER,
+                fontFamily: '"JetBrains Mono", monospace', fontSize: 12,
+                fontWeight: 700, letterSpacing: 2, textTransform: 'uppercase',
+                textDecoration: 'none',
+                boxShadow: `4px 4px 0 ${BURGUNDY}`,
+              }}>
               Start talking
               <span style={{ fontSize: 16 }}>→</span>
             </a>

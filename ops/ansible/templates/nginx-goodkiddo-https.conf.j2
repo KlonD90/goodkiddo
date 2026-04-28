@@ -72,6 +72,6 @@ server {
     }
 
     location / {
-        return 404;
+        return 302 https://{{ bot_main_domain }}/;
     }
 }

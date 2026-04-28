@@ -6,6 +6,7 @@
     "build": "bun build ./goodkiddo/main.jsx --outdir ./dist --minify"
   },
   "dependencies": {
+    "posthog-js": "^1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   }

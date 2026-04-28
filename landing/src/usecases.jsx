@@ -1,4 +1,5 @@
 import React from 'react';
+import posthog from 'posthog-js';
 import { BURGUNDY, Chapter, INK, MUTE, OCHRE, PAPER, RULE, Stamp } from './dossier';
 import { HeroThread } from './hero';
 // usecases.jsx — v2 "Operator's Dossier": four cases, full-bleed editorial.
@@ -104,8 +105,25 @@ function Phone({ threadIndex = 0, tilt = -2 }) {
 
 // ═══ Section header ═════════════════════════════════════
 function UseCasesHeader() {
+  const sectionRef = React.useRef(null);
+  React.useEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          posthog.capture('use_case_section_viewed');
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.3 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section id="do" className="gk-section" style={{
+    <section ref={sectionRef} id="do" className="gk-section" style={{
       padding: '120px 60px 60px', maxWidth: 1320, margin: '0 auto',
       position: 'relative',
     }}>
