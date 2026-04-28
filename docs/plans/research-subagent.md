@@ -34,12 +34,12 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Add `prompts.test.ts` covering the mapping and a snapshot of the prompt string
 
 ### Task 3: Inner-agent factory
-- [ ] In `agent.ts` export `buildResearchAgent({ model, workspace, browserManager, callerId, runId, tabularEngine? })` that:
+- [x] In `agent.ts` export `buildResearchAgent({ model, workspace, browserManager, callerId, runId, tabularEngine? })` that:
   - calls `createSessionRegistry(\`research-\${runId}\`)`
   - assembles the inner toolset: `createBrowserSnapshotTool`, `createBrowserActionTool` (sharing `browserManager`), `SearxngSearch`, `createLsTool`, `createReadFileTool`, `createGlobTool`, `createGrepTool`, plus `tabular_*` tools when the engine is provided, plus an internal `record_finding` tool that writes into a passed `ResearchNotes` instance
   - returns a `createAgent(...)` instance with `MemorySaver` checkpointer and the system prompt from Task 2
-- [ ] Inner toolset must NOT include any write/send/task/memory/execute tools — assert via a unit test
-- [ ] Add `agent.test.ts` with a stubbed model that drives one `record_finding` call and a final answer; verify notes are recorded and the agent completes
+- [x] Inner toolset must NOT include any write/send/task/memory/execute tools — assert via a unit test
+- [x] Add `agent.test.ts` with a stubbed model that drives one `record_finding` call and a final answer; verify notes are recorded and the agent completes
 
 ### Task 4: Outer `research` tool
 - [ ] In `tool.ts` export `createResearchTool({ model, workspace, browserManager, statusEmitter, locale, tabularEngine? })`
