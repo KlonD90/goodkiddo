@@ -29,9 +29,9 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Add `notes.test.ts` covering: ordering preserved, markdown render shape, id uniqueness
 
 ### Task 2: System prompt and depth → recursion table
-- [ ] In `prompts.ts` export `RESEARCH_SYSTEM_PROMPT` instructing: investigate the brief, prefer `tabular_*` for tabular files, use paged `read_file` only with `offset`/`limit`, call `record_finding` per useful source, return a terse synthesis when done
-- [ ] Export `depthToRecursionLimit(depth)` mapping `quick → 15`, `standard → 40`, `deep → 80`; default `standard`
-- [ ] Add `prompts.test.ts` covering the mapping and a snapshot of the prompt string
+- [x] In `prompts.ts` export `RESEARCH_SYSTEM_PROMPT` instructing: investigate the brief, prefer `tabular_*` for tabular files, use paged `read_file` only with `offset`/`limit`, call `record_finding` per useful source, return a terse synthesis when done
+- [x] Export `depthToRecursionLimit(depth)` mapping `quick → 15`, `standard → 40`, `deep → 80`; default `standard`
+- [x] Add `prompts.test.ts` covering the mapping and a snapshot of the prompt string
 
 ### Task 3: Inner-agent factory
 - [ ] In `agent.ts` export `buildResearchAgent({ model, workspace, browserManager, callerId, runId, tabularEngine? })` that:
