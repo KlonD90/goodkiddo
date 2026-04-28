@@ -78,4 +78,4 @@ Add a fixed, parameterized query API over CSV / XLSX / Parquet files in the work
 - [ ] Add `bot/src/capabilities/tabular/README.md` describing engine interface, supported formats, operator/aggregation lists, and how to add a new engine
 - [ ] Update `bot/src/channels/README.md` with a brief note pointing at the capability
 - [ ] Add a bullet under "Quick Context" in `CLAUDE.md` pointing at the new README
-- [ ] Mark the feature checkbox in `docs/plan/feature-tabular-read.md` Related section by linking this plan
+- [ ] Mark the feature checkbox in `docs/features/feature-tabular-read.md` Related section by linking this plan

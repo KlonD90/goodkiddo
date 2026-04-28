@@ -68,6 +68,6 @@ Prevent forced checkpoint creation and runtime compaction-context injection when
 ### Task 6: Update docs and final validation
 - [x] Update `src/channels/README.md` conversation-compaction section with the skip rule.
 - [x] Update `src/memory/README.md` if it describes compaction boundaries without mentioning the minimum-content gate.
-- [x] Link this plan from `docs/plan/README.md`.
+- [x] Link this plan from `docs/features/README.md`.
 - [ ] Run all validation commands listed above.
 - [ ] Mark tasks complete only after implementation and tests pass.

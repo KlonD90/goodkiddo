@@ -36,6 +36,7 @@ export type AppConfig = {
 	enableImageUnderstanding: boolean;
 	enableToolStatus: boolean;
 	enableAttachmentCompactionNotice: boolean;
+	enableBrowserOnParent: boolean;
 	defaultStatusLocale: string;
 	transcriptionProvider: TranscriptionProvider;
 	transcriptionApiKey: string;
@@ -66,6 +67,7 @@ const DEFAULT_ENABLE_SPREADSHEETS = true;
 const DEFAULT_ENABLE_IMAGE_UNDERSTANDING = false;
 const DEFAULT_ENABLE_TOOL_STATUS = true;
 const DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE = true;
+const DEFAULT_ENABLE_BROWSER_ON_PARENT = false;
 const DEFAULT_STATUS_LOCALE = "en";
 const DEFAULT_TIMEZONE = "UTC";
 const DEFAULT_MINIMAX_API_HOST = "https://api.minimax.io";
@@ -89,6 +91,7 @@ type ConfigIssueField =
 	| "ENABLE_PDF_DOCUMENTS"
 	| "ENABLE_SPREADSHEETS"
 	| "ENABLE_ATTACHMENT_COMPACTION_NOTICE"
+	| "ENABLE_BROWSER_ON_PARENT"
 	| "ENABLE_TOOL_STATUS"
 	| "ENABLE_VOICE_MESSAGES"
 	| "MAX_CONTEXT_WINDOW_TOKENS"
@@ -150,6 +153,7 @@ const PERSISTED_ENV_KEYS = [
 	"ENABLE_PDF_DOCUMENTS",
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
+	"ENABLE_BROWSER_ON_PARENT",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
 	"MAX_CONTEXT_WINDOW_TOKENS",
@@ -317,6 +321,15 @@ export const readConfigFromEnv = (
 			? DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE
 			: enableAttachmentCompactionNoticeRaw !== "false";
 
+	const enableBrowserOnParentRaw = getEnv(
+		"ENABLE_BROWSER_ON_PARENT",
+		persistedValues,
+	);
+	const enableBrowserOnParent =
+		enableBrowserOnParentRaw === ""
+			? DEFAULT_ENABLE_BROWSER_ON_PARENT
+			: enableBrowserOnParentRaw === "true";
+
 	const defaultStatusLocaleRaw = getEnv(
 		"DEFAULT_STATUS_LOCALE",
 		persistedValues,
@@ -412,6 +425,7 @@ export const readConfigFromEnv = (
 		enableImageUnderstanding,
 		enableToolStatus,
 		enableAttachmentCompactionNotice,
+		enableBrowserOnParent,
 		defaultStatusLocale,
 		transcriptionProvider,
 		transcriptionApiKey,
@@ -971,6 +985,8 @@ Press enter to allow any chat the bot is added to.> `,
 		enableAttachmentCompactionNotice:
 			initialConfig.enableAttachmentCompactionNotice ??
 			DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
+		enableBrowserOnParent:
+			initialConfig.enableBrowserOnParent ?? DEFAULT_ENABLE_BROWSER_ON_PARENT,
 		defaultStatusLocale:
 			initialConfig.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 		transcriptionProvider,
@@ -1034,6 +1050,10 @@ const formatPersistedEnvLine = (
 		case "ENABLE_ATTACHMENT_COMPACTION_NOTICE":
 			return `${key}=${escapeEnvValue(
 				config.enableAttachmentCompactionNotice ? "true" : "false",
+			)}`;
+		case "ENABLE_BROWSER_ON_PARENT":
+			return `${key}=${escapeEnvValue(
+				config.enableBrowserOnParent ? "true" : "false",
 			)}`;
 		case "ENABLE_TOOL_STATUS":
 			return `${key}=${escapeEnvValue(
@@ -1216,6 +1236,8 @@ export const resolveConfig = async (
 			enableAttachmentCompactionNotice:
 				config.enableAttachmentCompactionNotice ??
 				DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
+			enableBrowserOnParent:
+				config.enableBrowserOnParent ?? DEFAULT_ENABLE_BROWSER_ON_PARENT,
 			defaultStatusLocale: config.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 			transcriptionProvider:
 				config.transcriptionProvider ??

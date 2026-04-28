@@ -6,7 +6,7 @@ This repository now uses two related planning layers:
 
 | Location | Purpose |
 |------|---------|
-| `docs/plan/` | High-level feature docs: what and why |
+| `docs/features/` | High-level feature docs: what and why |
 | `docs/plans/` | RALPHEX-aligned execution plans: ordered implementation tasks and validation commands |
 
 Legacy task lists in this directory still exist and remain valid. New execution-ready plans should prefer `docs/plans/`.
@@ -29,7 +29,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 
 | Feature | Execution |
 |---------|-----------|
-| [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/plan/` |
+| [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/features/` |
 | [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
 | [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |
 | [Large Attachment Handling](feature-large-attachment-handling.md) | [RALPHEX plan](../plans/large-attachment-handling.md) |

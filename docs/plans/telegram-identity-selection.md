@@ -87,6 +87,6 @@ Add Telegram-facing identity presets. Authorized users can inspect and select a 
 - [ ] Update `src/channels/README.md` with `/identity` and prompt-boundary behavior.
 - [ ] Update `src/permissions/README.md` if the user schema documentation needs the new identity field.
 - [ ] Update `README.md` only if user-facing setup or operational workflow changes.
-- [ ] Link this execution plan from `docs/plan/feature-telegram-identity-selection.md` if that feature doc starts tracking execution links directly.
+- [ ] Link this execution plan from `docs/features/feature-telegram-identity-selection.md` if that feature doc starts tracking execution links directly.
 - [ ] Run all validation commands listed above.
 - [ ] Mark tasks complete only after their implementation and tests pass.

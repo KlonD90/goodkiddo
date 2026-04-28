@@ -69,7 +69,7 @@ Surface short, human-readable status lines to the active channel whenever the ag
 - [x] Cross-reference the forced-checkpoints feature (`full_history != runtime_context`) in the test comments so the invariant is explicit.
 
 ### Task 8: Docs and rollout
-- [x] Update `docs/plan/README.md` active-plans table with this feature and link to this execution plan.
+- [x] Update `docs/features/README.md` active-plans table with this feature and link to this execution plan.
 - [x] Update `src/channels/README.md` to describe `sendStatus` and the ephemerality rule.
 - [x] Update `src/tools/README.md` (create if missing) with the template contract, redaction rules, and how to add a template for a new tool in every supported locale.
 - [x] Add an `src/i18n/README.md` (or inline doc) explaining the locale dictionary layout and the step-by-step process for adding a new language.

@@ -50,7 +50,7 @@ Add structured per-caller active tasks in SQL, keep notes in the existing memory
 - [ ] Add coverage proving non-boundary turns do not run reconciliation.
 
 ### Task 6: Update docs
-- [ ] Add the high-level feature doc under `docs/plan/`.
+- [ ] Add the high-level feature doc under `docs/features/`.
 - [ ] Update `README.md`.
 - [ ] Update `src/memory/README.md` and `src/channels/README.md` when the feature ships.
 - [ ] Document `docs/plans/` as the RALPHEX-aligned execution layer.

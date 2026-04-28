@@ -41,7 +41,7 @@ Add explicit forced checkpoints so stored conversation history can keep growing 
 - [x] Add tests covering long-running conversations, resumed sessions, and post-`/new_thread` turns.
 
 ### Task 6: Update docs
-- [x] Keep the high-level feature description in `docs/plan/feature-forced-checkpoints-and-conversation-compaction.md`.
-- [x] Link this execution plan from `docs/plan/README.md`.
+- [x] Keep the high-level feature description in `docs/features/feature-forced-checkpoints-and-conversation-compaction.md`.
+- [x] Link this execution plan from `docs/features/README.md`.
 - [x] Update `src/memory/README.md` and `src/channels/README.md` when the feature ships.
 - [x] Update any top-level docs that describe conversation state so they explain `full_history != runtime_context`.

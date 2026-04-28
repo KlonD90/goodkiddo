@@ -99,7 +99,7 @@ bun run landing:build
 
 ## Plans
 
-- [`docs/plan/`](./docs/plan/) — high-level feature plans
+- [`docs/features/`](./docs/features/) — high-level feature descriptions
 - [`docs/plans/`](./docs/plans/) — execution-ready RALPHEX-aligned implementation plans, consumed one task section at a time
 
 ## Read Next

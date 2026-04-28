@@ -85,4 +85,4 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [ ] Boot the CLI channel (`bot/src/channels/cli.ts`) and ask: "compare three top noise-cancelling headphones reviewed this year"
 - [ ] Confirm: single `research` tool call in transcript; `research/<id>.md` written; no `GraphRecursionError`; no `oversized_attachment` checkpoint fired solely from this turn
 - [ ] Drop a Financial-Model-sized CSV into the workspace and ask "average revenue in 2024 from financial_model.csv?"; confirm sub-agent uses `tabular_*` tools and never `read_file` on the whole file
-- [ ] Mark the feature checkbox in `docs/plan/feature-research-subagent.md` Related section by linking this plan
+- [ ] Mark the feature checkbox in `docs/features/feature-research-subagent.md` Related section by linking this plan

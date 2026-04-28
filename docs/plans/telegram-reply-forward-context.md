@@ -93,6 +93,6 @@ Make Telegram replies and forwarded messages visible to the agent as explicit co
 
 ### Task 6: Update docs and final validation
 - [ ] Update `src/channels/README.md` with the new reply/forward behavior and the rule that contextual text is not command input.
-- [ ] Keep `docs/plan/feature-telegram-reply-forward-context.md` as the high-level feature note and this file as the RALPHEX execution plan.
+- [ ] Keep `docs/features/feature-telegram-reply-forward-context.md` as the high-level feature note and this file as the RALPHEX execution plan.
 - [ ] Run all validation commands listed above.
 - [ ] Mark completed tasks with `[x]` only after each task's implementation and tests pass.

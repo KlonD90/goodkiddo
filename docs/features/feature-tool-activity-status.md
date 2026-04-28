@@ -1,7 +1,7 @@
 # Feature: Tool Activity Status Messages
 
 ## Summary
-When the agent invokes a tool, emit a short, human-readable status message to the active channel so the user can see what the agent is doing between the moment a turn starts and the final reply arrives. Instead of a silent pause while the agent searches, reads a file, runs a command, or writes memory, the user sees lines like "Reading docs/plan/README.md", "Searching for 'session'", or "Running workspace script". Status messages are informational only — they are not part of the conversation history the model reads back, and they are not durable memory.
+When the agent invokes a tool, emit a short, human-readable status message to the active channel so the user can see what the agent is doing between the moment a turn starts and the final reply arrives. Instead of a silent pause while the agent searches, reads a file, runs a command, or writes memory, the user sees lines like "Reading docs/features/README.md", "Searching for 'session'", or "Running workspace script". Status messages are informational only — they are not part of the conversation history the model reads back, and they are not durable memory.
 
 ## User cases
 - A user on Telegram asks for a long task so that the bot surfaces "Reading X", "Writing Y" updates instead of appearing idle while tools run.
