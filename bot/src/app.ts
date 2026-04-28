@@ -119,6 +119,7 @@ export const createAppAgent = async (
 		locale: options.locale,
 		onMemoryMutation: options.onMemoryMutation,
 		imageUnderstandingProvider,
+		model,
 	});
 
 	const guardedTimerTools = options.timerTools

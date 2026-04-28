@@ -63,9 +63,9 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Update `factory.test.ts` asserting: `research` is registered, parent loses `browser_*` when `enableBrowserOnParent` is false
 
 ### Task 6: Plumb `model` through factory options
-- [ ] Add `model: BaseChatModel` to `CreateExecutionToolsetOptions` in `bot/src/tools/factory.ts`
-- [ ] In `bot/src/app.ts`, pass `model` into `createExecutionToolset({...})`
-- [ ] Update existing tests/types as required
+- [x] Add `model: BaseChatModel` to `CreateExecutionToolsetOptions` in `bot/src/tools/factory.ts`
+- [x] In `bot/src/app.ts`, pass `model` into `createExecutionToolset({...})`
+- [x] Update existing tests/types as required
 
 ### Task 7: Status template
 - [ ] Add `research` to `ALLOWLISTED_ARGS` in `bot/src/tools/status_templates.ts` allowlisting `question` only (truncated per existing rules)
