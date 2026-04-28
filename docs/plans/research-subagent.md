@@ -24,9 +24,9 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 ---
 
 ### Task 1: Skeleton and IDs
-- [ ] Create `bot/src/capabilities/research/` with `agent.ts`, `tool.ts`, `notes.ts`, `prompts.ts`, `README.md`
-- [ ] In `notes.ts` define `ResearchNotes` with `add(source, summary)`, `serializeMarkdown()`, and `mintId()` returning `r-<8 random chars>`
-- [ ] Add `notes.test.ts` covering: ordering preserved, markdown render shape, id uniqueness
+- [x] Create `bot/src/capabilities/research/` with `agent.ts`, `tool.ts`, `notes.ts`, `prompts.ts`, `README.md`
+- [x] In `notes.ts` define `ResearchNotes` with `add(source, summary)`, `serializeMarkdown()`, and `mintId()` returning `r-<8 random chars>`
+- [x] Add `notes.test.ts` covering: ordering preserved, markdown render shape, id uniqueness
 
 ### Task 2: System prompt and depth → recursion table
 - [ ] In `prompts.ts` export `RESEARCH_SYSTEM_PROMPT` instructing: investigate the brief, prefer `tabular_*` for tabular files, use paged `read_file` only with `offset`/`limit`, call `record_finding` per useful source, return a terse synthesis when done
