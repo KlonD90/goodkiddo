@@ -23,6 +23,7 @@ describe("status_templates", () => {
 			expect(hasTemplate("task_list_active")).toBe(true);
 			expect(hasTemplate("send_file")).toBe(true);
 			expect(hasTemplate("grant_fs_access")).toBe(true);
+			expect(hasTemplate("research")).toBe(true);
 		});
 
 		test("returns false for unknown tools", () => {
@@ -325,6 +326,63 @@ describe("status_templates", () => {
 			});
 		});
 
+		describe("research_tool", () => {
+			test("research in en", () => {
+				const result = renderStatus(
+					"research",
+					{ question: "top noise-cancelling headphones" },
+					"en",
+				);
+				expect(result?.message).toBe(
+					"Researching top noise-cancelling headphones",
+				);
+			});
+
+			test("research in ru", () => {
+				const result = renderStatus(
+					"research",
+					{ question: "лучшие наушники" },
+					"ru",
+				);
+				expect(result?.message).toBe("Исследую лучшие наушники");
+			});
+
+			test("research in es", () => {
+				const result = renderStatus(
+					"research",
+					{ question: "mejores auriculares" },
+					"es",
+				);
+				expect(result?.message).toBe("Investigando mejores auriculares");
+			});
+
+			test("research redacts hints and inputs", () => {
+				const result = renderStatus(
+					"research",
+					{
+						question: "compare headphones",
+						hints: ["look for ANC", "check battery"],
+						inputs: ["/workspace/data.csv"],
+					},
+					"en",
+				);
+				expect(result?.message).toBe("Researching compare headphones");
+				expect(result?.message).not.toContain("hints");
+				expect(result?.message).not.toContain("inputs");
+			});
+
+			test("research truncates long question", () => {
+				const longQuestion = "x".repeat(200);
+				const result = renderStatus(
+					"research",
+					{ question: longQuestion },
+					"en",
+				);
+				expect(result?.message.length).toBeLessThanOrEqual(200);
+				expect(result?.truncated).toBe(true);
+			});
+		});
+
 		describe("share_tools", () => {
 			test("grant_fs_access", () => {
 				const result = renderStatus(
@@ -439,6 +497,7 @@ describe("status_templates", () => {
 				"task_list_active",
 				"send_file",
 				"grant_fs_access",
+				"research",
 			];
 
 			for (const locale of locales) {

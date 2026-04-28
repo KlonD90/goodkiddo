@@ -68,9 +68,9 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Update existing tests/types as required
 
 ### Task 7: Status template
-- [ ] Add `research` to `ALLOWLISTED_ARGS` in `bot/src/tools/status_templates.ts` allowlisting `question` only (truncated per existing rules)
-- [ ] Add EN/RU/ES templates: `Researching {question}` / `Исследую {question}` / `Investigando {question}`
-- [ ] Add tests in `status_templates.test.ts`
+- [x] Add `research` to `ALLOWLISTED_ARGS` in `bot/src/tools/status_templates.ts` allowlisting `question` only (truncated per existing rules)
+- [x] Add EN/RU/ES templates: `Researching {question}` / `Исследую {question}` / `Investigando {question}`
+- [x] Add tests in `status_templates.test.ts`
 
 ### Task 8: Config flag
 - [ ] Add `enableBrowserOnParent: boolean` (default `false`) to `AppConfig` in `bot/src/config.ts`, persisted in the same shape as other flags
