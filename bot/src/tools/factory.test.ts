@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { SqliteStateBackend } from "../backends";
 import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import { createDb, detectDialect } from "../db";
 import type { SupportedLocale } from "../i18n/locale";
 import { createExecutionToolset } from "./factory";
 import type { StatusEmitter } from "./status_emitter";
+
+function stubModel(): BaseChatModel {
+	return {
+		invoke: async () => ({ content: "" }),
+	} as unknown as BaseChatModel;
+}
 
 class FakeStatusEmitter implements StatusEmitter {
 	public calls: Array<{ callerId: string; message: string }> = [];
@@ -104,6 +111,42 @@ describe("createExecutionToolset enableToolStatus flag", () => {
 		expect(
 			tools.find((tool) => tool.name === "understand_image"),
 		).toBeDefined();
+		await db.close();
+	});
+
+	test("research tool is registered when model is provided", async () => {
+		const { workspace, db } = createTestWorkspace("factory-research-on");
+		const tools = await createExecutionToolset({
+			workspace,
+			model: stubModel(),
+		});
+		expect(tools.find((t) => t.name === "research")).toBeDefined();
+		await db.close();
+	});
+
+	test("research tool is absent when no model is provided", async () => {
+		const { workspace, db } = createTestWorkspace("factory-research-off");
+		const tools = await createExecutionToolset({ workspace });
+		expect(tools.find((t) => t.name === "research")).toBeUndefined();
+		await db.close();
+	});
+
+	test("browser_snapshot and browser_action absent when enableBrowserOnParent is false (default)", async () => {
+		const { workspace, db } = createTestWorkspace("factory-browser-off");
+		const tools = await createExecutionToolset({ workspace });
+		expect(tools.find((t) => t.name === "browser_snapshot")).toBeUndefined();
+		expect(tools.find((t) => t.name === "browser_action")).toBeUndefined();
+		await db.close();
+	});
+
+	test("browser_snapshot and browser_action present when enableBrowserOnParent is true", async () => {
+		const { workspace, db } = createTestWorkspace("factory-browser-on");
+		const tools = await createExecutionToolset({
+			workspace,
+			enableBrowserOnParent: true,
+		});
+		expect(tools.find((t) => t.name === "browser_snapshot")).toBeDefined();
+		expect(tools.find((t) => t.name === "browser_action")).toBeDefined();
 		await db.close();
 	});
 

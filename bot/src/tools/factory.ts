@@ -1,5 +1,8 @@
 import { SearxngSearch } from "@langchain/community/tools/searxng_search";
+import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { WorkspaceBackend } from "../backends/types";
+import type { TabularEngine } from "../capabilities/research/agent";
+import { createResearchTool } from "../capabilities/research/tool";
 import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import type { OutboundChannel } from "../channels/outbound";
 import type { ExecutionPolicy } from "../execution/manifest";
@@ -65,6 +68,9 @@ export interface CreateExecutionToolsetOptions {
 	enableToolStatus?: boolean;
 	onMemoryMutation?: MemoryMutationCallback;
 	imageUnderstandingProvider?: ImageUnderstandingProvider | null;
+	model?: BaseChatModel;
+	enableBrowserOnParent?: boolean;
+	tabularEngine?: TabularEngine;
 }
 
 const UNGUARDED_TOOL_NAMES = new Set<string>(["send_file", "grant_fs_access"]);
@@ -83,6 +89,8 @@ export async function createExecutionToolset(
 		});
 		executeTool = createExecuteWorkspaceTool(orchestrator, options.workspace);
 	}
+
+	const enableBrowserOnParent = options.enableBrowserOnParent ?? false;
 
 	const browserRegistry = createSessionRegistry(options.callerId ?? "shared");
 	const browserManager = createBrowserSessionManager({
@@ -140,6 +148,17 @@ export async function createExecutionToolset(
 				]
 			: [];
 
+	const researchTool = options.model
+		? createResearchTool({
+				model: options.model,
+				workspace: options.workspace,
+				browserManager,
+				statusEmitter: options.statusEmitter,
+				locale: options.locale,
+				tabularEngine: options.tabularEngine,
+			})
+		: null;
+
 	const tools = [
 		createLsTool(options.workspace),
 		createReadFileTool(options.workspace),
@@ -151,8 +170,12 @@ export async function createExecutionToolset(
 		createSkillWriteTool(options.workspace, options.onMemoryMutation),
 		createMemoryAppendLogTool(options.workspace),
 		...taskTools,
-		createBrowserSnapshotTool({ registry: browserRegistry, manager: browserManager }),
-		createBrowserActionTool({ registry: browserRegistry, manager: browserManager }),
+		...(enableBrowserOnParent
+			? [
+					createBrowserSnapshotTool({ registry: browserRegistry, manager: browserManager }),
+					createBrowserActionTool({ registry: browserRegistry, manager: browserManager }),
+				]
+			: []),
 		new SearxngSearch({
 			apiBase: process.env.SEARXNG_API_BASE ?? "http://127.0.0.1:8080",
 			params: {
@@ -173,6 +196,7 @@ export async function createExecutionToolset(
 					}),
 				]
 			: []),
+		...(researchTool ? [researchTool] : []),
 	];
 
 	if (!options.guard) return tools;

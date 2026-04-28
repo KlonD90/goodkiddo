@@ -56,11 +56,11 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Add `tool.test.ts` covering: happy path returns compact summary, notes file written, recursion limit propagated, oversized output is trimmed with notes-path pointer, recursion error path returns tool-error not throw
 
 ### Task 5: Register in execution toolset
-- [ ] In `bot/src/tools/factory.ts`, build `createResearchTool` with the parent's `model`, shared `browserManager`, `workspace`, `statusEmitter`, `locale`, and the `tabularEngine` from the Tabular Read feature when available
-- [ ] Add a config flag `enableBrowserOnParent` (default `false` once research ships); when `false`, exclude `browser_snapshot` and `browser_action` from the parent toolset (`SearxngSearch` stays on parent)
-- [ ] Re-export `createResearchTool` from `bot/src/tools/index.ts`
-- [ ] Wrap the `research` tool with `wrapToolWithGuard` like other guarded tools
-- [ ] Update `factory.test.ts` asserting: `research` is registered, parent loses `browser_*` when `enableBrowserOnParent` is false
+- [x] In `bot/src/tools/factory.ts`, build `createResearchTool` with the parent's `model`, shared `browserManager`, `workspace`, `statusEmitter`, `locale`, and the `tabularEngine` from the Tabular Read feature when available
+- [x] Add a config flag `enableBrowserOnParent` (default `false` once research ships); when `false`, exclude `browser_snapshot` and `browser_action` from the parent toolset (`SearxngSearch` stays on parent)
+- [x] Re-export `createResearchTool` from `bot/src/tools/index.ts`
+- [x] Wrap the `research` tool with `wrapToolWithGuard` like other guarded tools
+- [x] Update `factory.test.ts` asserting: `research` is registered, parent loses `browser_*` when `enableBrowserOnParent` is false
 
 ### Task 6: Plumb `model` through factory options
 - [ ] Add `model: BaseChatModel` to `CreateExecutionToolsetOptions` in `bot/src/tools/factory.ts`

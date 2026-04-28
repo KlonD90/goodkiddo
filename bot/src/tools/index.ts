@@ -3,6 +3,7 @@ export {
 	createBrowserSnapshotTool,
 	createSessionRegistry,
 } from "./browser_tools";
+export { createResearchTool } from "../capabilities/research/tool";
 export {
 	createExecuteScriptTool,
 	createExecuteWorkspaceTool,
