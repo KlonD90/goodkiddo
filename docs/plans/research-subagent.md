@@ -42,9 +42,9 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
 - [x] Add `agent.test.ts` with a stubbed model that drives one `record_finding` call and a final answer; verify notes are recorded and the agent completes
 
 ### Task 4: Outer `research` tool
-- [ ] In `tool.ts` export `createResearchTool({ model, workspace, browserManager, statusEmitter, locale, tabularEngine? })`
-- [ ] Tool args (zod): `{ question: string, hints?: string[], inputs?: string[], depth?: "quick"|"standard"|"deep" }`
-- [ ] On invocation:
+- [x] In `tool.ts` export `createResearchTool({ model, workspace, browserManager, statusEmitter, locale, tabularEngine? })`
+- [x] Tool args (zod): `{ question: string, hints?: string[], inputs?: string[], depth?: "quick"|"standard"|"deep" }`
+- [x] On invocation:
   - mint `runId`
   - build `ResearchNotes`
   - build inner agent via Task 3
@@ -53,7 +53,7 @@ Add a `research` tool that delegates investigation-heavy turns to a short-lived 
   - on `GraphRecursionError` (catch by name/message), return a polite tool error with the partial notes path
   - after completion, write `research/<runId>.md` via `WorkspaceBackend.write`
   - return a compact summary string; if over cap (per `estimateAttachmentTokens`), ask the inner model for a shorter version once, else truncate with a pointer to the notes file
-- [ ] Add `tool.test.ts` covering: happy path returns compact summary, notes file written, recursion limit propagated, oversized output is trimmed with notes-path pointer, recursion error path returns tool-error not throw
+- [x] Add `tool.test.ts` covering: happy path returns compact summary, notes file written, recursion limit propagated, oversized output is trimmed with notes-path pointer, recursion error path returns tool-error not throw
 
 ### Task 5: Register in execution toolset
 - [ ] In `bot/src/tools/factory.ts`, build `createResearchTool` with the parent's `model`, shared `browserManager`, `workspace`, `statusEmitter`, `locale`, and the `tabularEngine` from the Tabular Read feature when available
