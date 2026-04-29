@@ -391,8 +391,7 @@ export function createMemoryMaintainTool(backend: BackendProtocol) {
 					const content = await readOrEmpty(backend, path);
 					const archivedPath = `${path}.archived`;
 					await overwrite(backend, archivedPath, content);
-					await backend.deleteFile(path);
-					return `Archived ${path} → ${archivedPath}. Original removed from disk.`;
+					return `Archived ${path} → ${archivedPath}. Original kept on disk as backup.`;
 				}
 
 				if (action === "mark_permanent") {
