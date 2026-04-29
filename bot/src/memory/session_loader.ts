@@ -34,9 +34,25 @@ import MEMORY_PROMPT_MD from "./memory_prompt.md?raw";
 
 function truncateToCap(content: string, cap: number): string {
 	if (content.length <= cap) return content;
-	const suffix =
-		"\n\n... [memory snapshot truncated — call memory_lint or compact via rotate_actuel]";
-	return content.slice(0, Math.max(0, cap - suffix.length)) + suffix;
+
+	// Split by newlines and accumulate line-by-line, never slicing mid-line.
+	const lines = content.split("\n");
+	const result: string[] = [];
+	let total = 0;
+
+	for (const line of lines) {
+		const withSeparator = result.length > 0 ? line.length + 1 : line.length;
+		if (total + withSeparator <= cap) {
+			result.push(line);
+			total += withSeparator;
+		} else {
+			break;
+		}
+	}
+
+	const overflow = lines.length - result.length;
+	const suffix = `\n\n... [+${overflow} more entries — use grep to retrieve specific topics]`;
+	return result.join("\n") + suffix;
 }
 
 export async function composeMemorySnapshot(
