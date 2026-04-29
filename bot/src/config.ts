@@ -18,6 +18,8 @@ export type AppConfig = {
 	aiBaseUrl: string;
 	aiType: SupportedAiTypes;
 	aiModelName: string;
+	aiTemperature: number;
+	aiSubAgentTemperature: number;
 	appEntrypoint: AppEntrypoint;
 	telegramBotToken: string;
 	telegramAllowedChatId: string;
@@ -37,6 +39,7 @@ export type AppConfig = {
 	enableToolStatus: boolean;
 	enableAttachmentCompactionNotice: boolean;
 	enableBrowserOnParent: boolean;
+	enableTabular: boolean;
 	defaultStatusLocale: string;
 	transcriptionProvider: TranscriptionProvider;
 	transcriptionApiKey: string;
@@ -47,6 +50,7 @@ export type AppConfig = {
 	webPort: number;
 	webPublicBaseUrl: string;
 	timezone: string;
+	recursionLimit: number;
 };
 
 export type TranscriptionProvider = "openai" | "openrouter";
@@ -58,6 +62,8 @@ const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
 const DEFAULT_DATABASE_URL = "sqlite://./state.db";
+const DEFAULT_AI_TEMPERATURE = 1.0;
+const DEFAULT_AI_SUB_AGENT_TEMPERATURE = 0.4;
 const DEFAULT_WEB_HOST = "127.0.0.1";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
@@ -68,9 +74,11 @@ const DEFAULT_ENABLE_IMAGE_UNDERSTANDING = false;
 const DEFAULT_ENABLE_TOOL_STATUS = true;
 const DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE = true;
 const DEFAULT_ENABLE_BROWSER_ON_PARENT = false;
+const DEFAULT_ENABLE_TABULAR = true;
 const DEFAULT_STATUS_LOCALE = "en";
 const DEFAULT_TIMEZONE = "UTC";
 const DEFAULT_MINIMAX_API_HOST = "https://api.minimax.io";
+const DEFAULT_RECURSION_LIMIT = 60;
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
 	"openai",
 	"openrouter",
@@ -80,6 +88,9 @@ type ConfigIssueField =
 	| "AI_API_KEY"
 	| "AI_BASE_URL"
 	| "AI_MODEL_NAME"
+	| "AI_RECURSION_LIMIT"
+	| "AI_SUB_AGENT_TEMPERATURE"
+	| "AI_TEMPERATURE"
 	| "AI_TYPE"
 	| "APP_ENTRYPOINT"
 	| "BLOCKED_USER_MESSAGE"
@@ -92,6 +103,7 @@ type ConfigIssueField =
 	| "ENABLE_SPREADSHEETS"
 	| "ENABLE_ATTACHMENT_COMPACTION_NOTICE"
 	| "ENABLE_BROWSER_ON_PARENT"
+	| "ENABLE_TABULAR"
 	| "ENABLE_TOOL_STATUS"
 	| "ENABLE_VOICE_MESSAGES"
 	| "MAX_CONTEXT_WINDOW_TOKENS"
@@ -142,6 +154,9 @@ const PERSISTED_ENV_KEYS = [
 	"AI_API_KEY",
 	"AI_BASE_URL",
 	"AI_MODEL_NAME",
+	"AI_RECURSION_LIMIT",
+	"AI_SUB_AGENT_TEMPERATURE",
+	"AI_TEMPERATURE",
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
@@ -154,6 +169,7 @@ const PERSISTED_ENV_KEYS = [
 	"ENABLE_SPREADSHEETS",
 	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
 	"ENABLE_BROWSER_ON_PARENT",
+	"ENABLE_TABULAR",
 	"ENABLE_TOOL_STATUS",
 	"ENABLE_VOICE_MESSAGES",
 	"MAX_CONTEXT_WINDOW_TOKENS",
@@ -203,6 +219,13 @@ const parsePositiveInteger = (rawValue: string): number => {
 	const value = Number.parseInt(rawValue, 10);
 	return Number.isSafeInteger(value) && value > 0 ? value : Number.NaN;
 };
+const parseTemperature = (rawValue: string): number => {
+	if (rawValue === "") return Number.NaN;
+	const value = Number(rawValue);
+	return Number.isFinite(value) && value >= 0 && value <= 1
+		? value
+		: Number.NaN;
+};
 const readPositiveIntegerEnv = (
 	name: ConfigIssueField,
 	persistedValues: PersistedEnvValues,
@@ -210,6 +233,14 @@ const readPositiveIntegerEnv = (
 ): number => {
 	const rawValue = getEnv(name, persistedValues);
 	return rawValue === "" ? fallback : parsePositiveInteger(rawValue);
+};
+const readTemperatureEnv = (
+	name: ConfigIssueField,
+	persistedValues: PersistedEnvValues,
+	fallback: number,
+): number => {
+	const rawValue = getEnv(name, persistedValues);
+	return rawValue === "" ? fallback : parseTemperature(rawValue);
 };
 
 const defaultPrompt: WizardPrompt = (message) => prompt(message);
@@ -330,6 +361,10 @@ export const readConfigFromEnv = (
 			? DEFAULT_ENABLE_BROWSER_ON_PARENT
 			: enableBrowserOnParentRaw === "true";
 
+	const enableTabularRaw = getEnv("ENABLE_TABULAR", persistedValues);
+	const enableTabular =
+		enableTabularRaw === "" ? DEFAULT_ENABLE_TABULAR : enableTabularRaw !== "false";
+
 	const defaultStatusLocaleRaw = getEnv(
 		"DEFAULT_STATUS_LOCALE",
 		persistedValues,
@@ -393,11 +428,28 @@ export const readConfigFromEnv = (
 		persistedValues,
 		DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
 	);
+	const recursionLimit = readPositiveIntegerEnv(
+		"AI_RECURSION_LIMIT",
+		persistedValues,
+		DEFAULT_RECURSION_LIMIT,
+	);
+	const aiTemperature = readTemperatureEnv(
+		"AI_TEMPERATURE",
+		persistedValues,
+		DEFAULT_AI_TEMPERATURE,
+	);
+	const aiSubAgentTemperature = readTemperatureEnv(
+		"AI_SUB_AGENT_TEMPERATURE",
+		persistedValues,
+		DEFAULT_AI_SUB_AGENT_TEMPERATURE,
+	);
 
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
 		aiBaseUrl: getEnv("AI_BASE_URL", persistedValues),
 		aiModelName: getEnv("AI_MODEL_NAME", persistedValues),
+		aiTemperature,
+		aiSubAgentTemperature,
 		appEntrypoint: checkAppEntrypoint(entrypointValue)
 			? entrypointValue
 			: undefined,
@@ -426,6 +478,7 @@ export const readConfigFromEnv = (
 		enableToolStatus,
 		enableAttachmentCompactionNotice,
 		enableBrowserOnParent,
+		enableTabular,
 		defaultStatusLocale,
 		transcriptionProvider,
 		transcriptionApiKey,
@@ -436,6 +489,7 @@ export const readConfigFromEnv = (
 		webPort: Number.isFinite(webPort) ? webPort : DEFAULT_WEB_PORT,
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 		timezone: getEnv("TIMEZONE", persistedValues) || DEFAULT_TIMEZONE,
+		recursionLimit,
 	};
 };
 
@@ -581,6 +635,7 @@ export const findConfigIssues = (
 	}
 
 	for (const field of [
+		"AI_RECURSION_LIMIT",
 		"MAX_CONTEXT_WINDOW_TOKENS",
 		"CONTEXT_RESERVE_SUMMARY_TOKENS",
 		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
@@ -595,6 +650,20 @@ export const findConfigIssues = (
 			issues.push({
 				field,
 				reason: `${field} must be a positive integer.`,
+			});
+		}
+	}
+
+	for (const field of ["AI_TEMPERATURE", "AI_SUB_AGENT_TEMPERATURE"] as const) {
+		const rawValue = getEnv(field, persistedValues);
+		if (rawValue === "") {
+			continue;
+		}
+
+		if (Number.isNaN(parseTemperature(rawValue))) {
+			issues.push({
+				field,
+				reason: `${field} must be a number between 0 and 1.`,
 			});
 		}
 	}
@@ -950,6 +1019,16 @@ Press enter to allow any chat the bot is added to.> `,
 		aiApiKey,
 		aiBaseUrl,
 		aiModelName,
+		aiTemperature:
+			initialConfig.aiTemperature !== undefined &&
+			Number.isFinite(initialConfig.aiTemperature)
+				? initialConfig.aiTemperature
+				: DEFAULT_AI_TEMPERATURE,
+		aiSubAgentTemperature:
+			initialConfig.aiSubAgentTemperature !== undefined &&
+			Number.isFinite(initialConfig.aiSubAgentTemperature)
+				? initialConfig.aiSubAgentTemperature
+				: DEFAULT_AI_SUB_AGENT_TEMPERATURE,
 		aiType,
 		appEntrypoint,
 		telegramAllowedChatId,
@@ -987,6 +1066,7 @@ Press enter to allow any chat the bot is added to.> `,
 			DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
 		enableBrowserOnParent:
 			initialConfig.enableBrowserOnParent ?? DEFAULT_ENABLE_BROWSER_ON_PARENT,
+		enableTabular: initialConfig.enableTabular ?? DEFAULT_ENABLE_TABULAR,
 		defaultStatusLocale:
 			initialConfig.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 		transcriptionProvider,
@@ -999,6 +1079,7 @@ Press enter to allow any chat the bot is added to.> `,
 		webPublicBaseUrl:
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 		timezone: initialConfig.timezone ?? DEFAULT_TIMEZONE,
+		recursionLimit: initialConfig.recursionLimit ?? DEFAULT_RECURSION_LIMIT,
 	};
 };
 
@@ -1015,6 +1096,12 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.aiBaseUrl)}`;
 		case "AI_MODEL_NAME":
 			return `${key}=${escapeEnvValue(config.aiModelName)}`;
+		case "AI_RECURSION_LIMIT":
+			return `${key}=${escapeEnvValue(String(config.recursionLimit))}`;
+		case "AI_SUB_AGENT_TEMPERATURE":
+			return `${key}=${escapeEnvValue(String(config.aiSubAgentTemperature))}`;
+		case "AI_TEMPERATURE":
+			return `${key}=${escapeEnvValue(String(config.aiTemperature))}`;
 		case "AI_TYPE":
 			return `${key}=${escapeEnvValue(config.aiType)}`;
 		case "APP_ENTRYPOINT":
@@ -1055,6 +1142,8 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(
 				config.enableBrowserOnParent ? "true" : "false",
 			)}`;
+		case "ENABLE_TABULAR":
+			return `${key}=${escapeEnvValue(config.enableTabular ? "true" : "false")}`;
 		case "ENABLE_TOOL_STATUS":
 			return `${key}=${escapeEnvValue(
 				config.enableToolStatus ? "true" : "false",
@@ -1203,6 +1292,9 @@ export const resolveConfig = async (
 			aiApiKey: config.aiApiKey ?? "",
 			aiBaseUrl: config.aiBaseUrl ?? "",
 			aiModelName: config.aiModelName ?? "",
+			aiTemperature: config.aiTemperature ?? DEFAULT_AI_TEMPERATURE,
+			aiSubAgentTemperature:
+				config.aiSubAgentTemperature ?? DEFAULT_AI_SUB_AGENT_TEMPERATURE,
 			aiType: config.aiType ?? DEFAULT_AI_TYPE,
 			appEntrypoint: config.appEntrypoint ?? DEFAULT_APP_ENTRYPOINT,
 			telegramAllowedChatId: config.telegramAllowedChatId ?? "",
@@ -1238,6 +1330,7 @@ export const resolveConfig = async (
 				DEFAULT_ENABLE_ATTACHMENT_COMPACTION_NOTICE,
 			enableBrowserOnParent:
 				config.enableBrowserOnParent ?? DEFAULT_ENABLE_BROWSER_ON_PARENT,
+			enableTabular: config.enableTabular ?? DEFAULT_ENABLE_TABULAR,
 			defaultStatusLocale: config.defaultStatusLocale ?? DEFAULT_STATUS_LOCALE,
 			transcriptionProvider:
 				config.transcriptionProvider ??
@@ -1250,6 +1343,7 @@ export const resolveConfig = async (
 			webPort: config.webPort ?? DEFAULT_WEB_PORT,
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 			timezone: config.timezone ?? DEFAULT_TIMEZONE,
+			recursionLimit: config.recursionLimit ?? DEFAULT_RECURSION_LIMIT,
 		};
 		return resolvedConfig;
 	}

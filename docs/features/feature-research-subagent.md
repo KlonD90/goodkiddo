@@ -31,6 +31,14 @@ Adds a `research` tool that lets the main agent delegate investigation-heavy wor
 - `wrapToolWithGuard` wraps the `research` tool the same way other tools are guarded (`bot/src/tools/factory.ts`).
 - Sub-agent model can differ from parent (config-gated). Browsing and scanning don't need the parent's strongest model.
 
+## Manual End-to-End Smoke Test
+
+Steps (manual, not automated):
+
+1. Boot the CLI channel (`bot/src/channels/cli.ts`) and ask: "compare three top noise-cancelling headphones reviewed this year"
+   - Confirm: single `research` tool call in transcript; `research/<id>.md` written; no `GraphRecursionError`; no `oversized_attachment` checkpoint fired solely from this turn
+2. Drop a Financial-Model-sized CSV into the workspace and ask "average revenue in 2024 from financial_model.csv?"; confirm sub-agent uses `tabular_*` tools and never `read_file` on the whole file
+
 ## Related
 - [Feature: Tabular Read](feature-tabular-read.md) — sub-agent consumes its tools when present.
-- Execution plan: TBD `docs/plans/research-subagent.md`.
+- Execution plan: `docs/plans/research-subagent.md`.

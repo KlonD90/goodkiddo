@@ -20,31 +20,47 @@ export type IndexEntry = {
 	hook: string;
 };
 
-const ENTRY_REGEX = /^-\s+\[([^\]]+)\]\(([^)]+)\):\s*(.*)$/;
-
-export function parseIndex(content: string): {
+export type IndexParseResult = {
 	header: string;
 	entries: IndexEntry[];
-} {
+	malformedLines: string[];
+};
+
+const ENTRY_REGEX = /^-\s+\[([^\]]+)\]\(([^)]+)\):\s*(.*)$/;
+
+export function parseIndexDetailed(content: string): IndexParseResult {
 	const indexIdx = content.indexOf(`\n${INDEX_HEADING}`);
 	if (indexIdx === -1) {
-		return { header: content, entries: [] };
+		return { header: content, entries: [], malformedLines: [] };
 	}
 	const header = content.slice(0, indexIdx);
 	const body = content.slice(indexIdx + 1 + INDEX_HEADING.length);
 	const entries: IndexEntry[] = [];
+	const malformedLines: string[] = [];
 	for (const rawLine of body.split("\n")) {
 		const line = rawLine.trim();
 		if (line.length === 0) continue;
 		if (line.startsWith("#")) break; // stop at next section
+		if (line === "_No entries yet._") continue;
 		const match = ENTRY_REGEX.exec(line);
-		if (!match) continue;
+		if (!match) {
+			malformedLines.push(line);
+			continue;
+		}
 		entries.push({
 			slug: (match[1] ?? "").trim(),
 			path: (match[2] ?? "").trim(),
 			hook: (match[3] ?? "").trim(),
 		});
 	}
+	return { header, entries, malformedLines };
+}
+
+export function parseIndex(content: string): {
+	header: string;
+	entries: IndexEntry[];
+} {
+	const { header, entries } = parseIndexDetailed(content);
 	return { header, entries };
 }
 

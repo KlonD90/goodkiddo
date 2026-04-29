@@ -1,8 +1,8 @@
 import type { BackendProtocol, FileInfo } from "deepagents";
-import { currentActuel } from "./actuel_archive";
 import { readOrEmpty } from "./fs";
-import { readIndexFile } from "./index_manager";
+import { parseIndexDetailed, readIndexFile } from "./index_manager";
 import {
+	ACTUEL_HEADING,
 	LINT_OVER_BUDGET_RATIO,
 	LINT_STALE_DAYS,
 	MEMORY_INDEX_PATH,
@@ -12,11 +12,10 @@ import {
 	SKILLS_ROOT,
 	USER_PROFILE_PATH,
 } from "./layout";
-
-// Matches the seeded placeholder from bootstrap.ts. Anything else — even a
-// single fact — means the profile has been populated and we stop nudging.
-const USER_PROFILE_PLACEHOLDER =
-	"_No profile yet. Populate as you learn about the user._";
+import {
+	isStructuredUserProfile,
+	userProfileIsEmpty,
+} from "./user_profile";
 
 // Pure-function health check over the memory subtrees. Findings surface to the
 // agent via the `## Memory maintenance` block appended to the system prompt by
@@ -28,8 +27,12 @@ export type LintFindings = {
 	staleNotes: string[]; // paths of files with mtime older than LINT_STALE_DAYS
 	orphans: string[]; // files present on disk but not in the index
 	duplicates: string[]; // slugs appearing more than once in an index
+	malformedIndexLines: string[]; // index lines that do not match the strict contract
+	emptySlugPaths: string[]; // paths like /memory/notes/.md or /skills/.md
+	missingActuelPaths: string[]; // note/skill files missing ## Actuel
 	overBudget: { memoryChars: number; skillsChars: number } | null;
-	userProfileEmpty: boolean; // USER.md still holds the bootstrap placeholder
+	userProfileEmpty: boolean; // USER.md has no durable facts in its current shape
+	userProfileUnstructured: boolean; // USER.md has not been updated to fixed sections
 };
 
 export function isEmpty(findings: LintFindings): boolean {
@@ -37,8 +40,12 @@ export function isEmpty(findings: LintFindings): boolean {
 		findings.staleNotes.length === 0 &&
 		findings.orphans.length === 0 &&
 		findings.duplicates.length === 0 &&
+		findings.malformedIndexLines.length === 0 &&
+		findings.emptySlugPaths.length === 0 &&
+		findings.missingActuelPaths.length === 0 &&
 		findings.overBudget === null &&
-		!findings.userProfileEmpty
+		!findings.userProfileEmpty &&
+		!findings.userProfileUnstructured
 	);
 }
 
@@ -73,6 +80,36 @@ function findDuplicateSlugs(entries: { slug: string }[]): string[] {
 		.map(([slug]) => slug);
 }
 
+function isMemoryContentFile(path: string): boolean {
+	return (
+		path.startsWith(NOTES_DIR) ||
+		(path.startsWith(SKILLS_ROOT) && path !== SKILLS_INDEX_PATH)
+	);
+}
+
+function hasEmptySlugPath(path: string): boolean {
+	return path.endsWith("/.md");
+}
+
+function hasActuelSection(content: string): boolean {
+	return new RegExp(`(^|\\n)${ACTUEL_HEADING}(\\n|$)`).test(content);
+}
+
+async function findMissingActuelPaths(
+	backend: BackendProtocol,
+	files: FileInfo[],
+): Promise<string[]> {
+	const results = await Promise.all(
+		files
+			.filter((file) => isMemoryContentFile(file.path))
+			.map(async (file) => {
+				const content = await readOrEmpty(backend, file.path);
+				return hasActuelSection(content) ? null : file.path;
+			}),
+	);
+	return results.filter((path): path is string => path !== null);
+}
+
 export async function runLint(
 	backend: BackendProtocol,
 	now: Date = new Date(),
@@ -86,6 +123,18 @@ export async function runLint(
 		listFiles(backend, NOTES_DIR),
 		listFiles(backend, SKILLS_ROOT),
 	]);
+	const [memoryIndexRaw, skillsIndexRaw] = await Promise.all([
+		readOrEmpty(backend, MEMORY_INDEX_PATH),
+		readOrEmpty(backend, SKILLS_INDEX_PATH),
+	]);
+	const malformedIndexLines = [
+		...parseIndexDetailed(memoryIndexRaw).malformedLines.map(
+			(line) => `${MEMORY_INDEX_PATH}: ${line}`,
+		),
+		...parseIndexDetailed(skillsIndexRaw).malformedLines.map(
+			(line) => `${SKILLS_INDEX_PATH}: ${line}`,
+		),
+	];
 
 	const staleNotes: string[] = [];
 	for (const file of [...noteFiles, ...skillFiles]) {
@@ -108,6 +157,16 @@ export async function runLint(
 		...findDuplicateSlugs(memoryIndex.entries),
 		...findDuplicateSlugs(skillsIndex.entries),
 	];
+	const allContentFiles = [...noteFiles, ...skillFiles].filter((file) =>
+		isMemoryContentFile(file.path),
+	);
+	const emptySlugPaths = allContentFiles
+		.map((file) => file.path)
+		.filter(hasEmptySlugPath);
+	const missingActuelPaths = await findMissingActuelPaths(
+		backend,
+		allContentFiles,
+	);
 
 	const memoryChars =
 		(await backendCharCount(backend, MEMORY_INDEX_PATH)) +
@@ -118,12 +177,21 @@ export async function runLint(
 			: null;
 
 	const userProfile = await readOrEmpty(backend, USER_PROFILE_PATH);
-	const userProfileActuel = currentActuel(userProfile);
-	const userProfileEmpty =
-		userProfileActuel.length === 0 ||
-		userProfileActuel === USER_PROFILE_PLACEHOLDER;
+	const userProfileEmpty = userProfileIsEmpty(userProfile);
+	const userProfileUnstructured =
+		userProfile.trim().length > 0 && !isStructuredUserProfile(userProfile);
 
-	return { staleNotes, orphans, duplicates, overBudget, userProfileEmpty };
+	return {
+		staleNotes,
+		orphans,
+		duplicates,
+		malformedIndexLines,
+		emptySlugPaths,
+		missingActuelPaths,
+		overBudget,
+		userProfileEmpty,
+		userProfileUnstructured,
+	};
 }
 
 async function backendCharCount(
@@ -166,6 +234,27 @@ export function formatMaintenanceBlock(findings: LintFindings): string {
 	if (findings.duplicates.length > 0) {
 		lines.push(`- Duplicate slugs: ${findings.duplicates.join(", ")}`);
 	}
+	if (findings.malformedIndexLines.length > 0) {
+		const shown = findings.malformedIndexLines.slice(0, 5).join("; ");
+		const more =
+			findings.malformedIndexLines.length > 5
+				? ` (+${findings.malformedIndexLines.length - 5} more)`
+				: "";
+		lines.push(`- Malformed index line(s): ${shown}${more}`);
+	}
+	if (findings.emptySlugPaths.length > 0) {
+		lines.push(
+			`- Empty-slug memory path(s): ${findings.emptySlugPaths.join(", ")}`,
+		);
+	}
+	if (findings.missingActuelPaths.length > 0) {
+		const shown = findings.missingActuelPaths.slice(0, 5).join(", ");
+		const more =
+			findings.missingActuelPaths.length > 5
+				? ` (+${findings.missingActuelPaths.length - 5} more)`
+				: "";
+		lines.push(`- Note/skill file(s) missing ## Actuel: ${shown}${more}`);
+	}
 	if (findings.overBudget) {
 		lines.push(
 			`- Indexes exceed budget (${findings.overBudget.memoryChars} chars vs ${MEMORY_PROMPT_CHAR_CAP} cap) — compact via rotate_actuel or consolidate notes.`,
@@ -173,7 +262,12 @@ export function formatMaintenanceBlock(findings: LintFindings): string {
 	}
 	if (findings.userProfileEmpty) {
 		lines.push(
-			'- USER.md is empty. Before doing other work this turn, ask the user about their role, primary goal, and working-style preferences, then save what you learned with `memory_write` (target: "user"). One short set of questions — don\'t interrogate.',
+			'- USER.md has no durable user facts yet. Continue with the user request; only ask a small profile question when it directly helps the task, then save the answer with `memory_write` (target: "user").',
+		);
+	}
+	if (findings.userProfileUnstructured) {
+		lines.push(
+			'- USER.md uses the legacy unstructured shape. On the next explicit user-profile update, rewrite it with the fixed sections: Profile, Preferences, Environment, Constraints, Open Questions.',
 		);
 	}
 	return lines.join("\n");

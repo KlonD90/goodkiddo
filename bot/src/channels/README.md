@@ -321,6 +321,14 @@ Relevant spreadsheet files:
 - `src/channels/telegram.test.ts`
 - `src/capabilities/spreadsheet/README.md`
 
+## Tabular Query Tools
+
+The agent has six structured query tools for CSV, TSV, and Excel files stored in the workspace: `tabular_describe`, `tabular_head`, `tabular_sample`, `tabular_distinct`, `tabular_filter`, and `tabular_aggregate`. These tools are registered in the parent toolset when a `TabularEngine` is wired up via `createExecutionToolset` options, and are available to the research sub-agent as well.
+
+- Enabled by default; disable with `ENABLE_TABULAR=false`
+- Large tabular files read via `read_file` receive a hint to switch to `tabular_*` tools
+- See `src/capabilities/tabular/README.md` for supported formats, operators, and aggregation functions
+
 ## Telegram Text File Documents
 
 Text files and source code files sent as Telegram documents are read as UTF-8 and injected into the agent's turn wrapped in `[File: <filename>]` / `[/File: <filename>]` tags.
@@ -393,6 +401,14 @@ The Telegram channel sends status messages as plain text via `bot.api.sendMessag
 - `src/tools/status_emitter.ts` — StatusEmitter factory and no-op emitter
 - `src/tools/status_templates.ts` — per-tool, per-locale status templates
 - `src/i18n/locale.ts` — locale resolution utilities
+
+## Research Sub-Agent
+
+The `research` tool delegates investigation-heavy turns to a short-lived inner LangGraph agent. The inner agent owns its own checkpointer, recursion budget, browser-session namespace, and read-only toolset; it returns a compact synthesis and writes raw notes to `research/<id>.md` in the workspace.
+
+- Status template: `"Researching {question}"` (EN/RU/ES) in `status_templates.ts`
+- Config flag: `enableBrowserOnParent` (default `false`) controls whether `browser_snapshot` / `browser_action` remain on the parent toolset
+- Full architecture, inner agent shape, recursion budgets, and safe extension guidelines: `bot/src/capabilities/research/README.md`
 
 ## Scheduled Timers
 

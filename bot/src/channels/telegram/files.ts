@@ -185,7 +185,7 @@ export async function processTelegramFile(
 	log.info("processTelegramFile called", { metadata: params.metadata });
 	const capability = registry.match(params.metadata);
 	log.info("processTelegramFile matched capability", { name: capability?.name ?? "null" });
-	const result = await registry.handle(params.metadata, params.download);
+	const result = await registry.handle(params.metadata, params.download, undefined, session.workspace);
 	log.info("processTelegramFile result", { ok: result.ok, userMessage: result.ok ? "N/A" : result.userMessage });
 	if (!result.ok) {
 		await sendMessage(bot, chatId, result.userMessage);

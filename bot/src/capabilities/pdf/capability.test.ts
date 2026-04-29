@@ -8,6 +8,8 @@ const BASE_CONFIG: AppConfig = {
 	aiBaseUrl: "",
 	aiType: "openai",
 	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
 	appEntrypoint: "telegram",
 	telegramBotToken: "telegram-token",
 	telegramAllowedChatId: "",

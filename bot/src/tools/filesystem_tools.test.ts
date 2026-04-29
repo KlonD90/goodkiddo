@@ -8,6 +8,8 @@ import {
 	createLsTool,
 	createReadFileTool,
 	createWriteFileTool,
+	TABULAR_EXTENSIONS,
+	TABULAR_NUDGE_BYTES,
 } from "./filesystem_tools";
 
 function createBackend(namespace: string) {
@@ -284,5 +286,52 @@ describe("createGrepTool", () => {
 		const result = await tool.invoke({ pattern: "(", path: "/", glob: "*.ts" });
 
 		expect(result).toBe("No matches found for pattern '('");
+	});
+});
+
+describe("tabular nudge", () => {
+	test("TABULAR_EXTENSIONS covers expected extensions", () => {
+		for (const ext of [".csv", ".tsv", ".xlsx", ".xls", ".parquet"]) {
+			expect(TABULAR_EXTENSIONS.has(ext), `${ext} should be tabular`).toBe(true);
+		}
+		expect(TABULAR_EXTENSIONS.has(".ts")).toBe(false);
+		expect(TABULAR_EXTENSIONS.has(".txt")).toBe(false);
+	});
+
+	test("TABULAR_NUDGE_BYTES is 200 KB", () => {
+		expect(TABULAR_NUDGE_BYTES).toBe(200 * 1024);
+	});
+
+	test("nudge fires for .csv file exceeding threshold", async () => {
+		const backend = createBackend("nudge-csv-large");
+		const largeContent = "a,b,c\n" + "x,y,z\n".repeat(TABULAR_NUDGE_BYTES / 6 + 1);
+		await backend.write("/data.csv", largeContent);
+
+		const tool = createReadFileTool(backend);
+		const result = (await tool.invoke({ file_path: "/data.csv" })) as string;
+
+		expect(result).toContain("Hint");
+		expect(result).toContain("tabular");
+	});
+
+	test("nudge does NOT fire for .csv file under threshold", async () => {
+		const backend = createBackend("nudge-csv-small");
+		await backend.write("/small.csv", "a,b\n1,2\n3,4\n");
+
+		const tool = createReadFileTool(backend);
+		const result = (await tool.invoke({ file_path: "/small.csv" })) as string;
+
+		expect(result).not.toContain("Hint");
+	});
+
+	test("nudge does NOT fire for non-tabular extension", async () => {
+		const backend = createBackend("nudge-txt");
+		const largeContent = "x".repeat(TABULAR_NUDGE_BYTES + 1);
+		await backend.write("/notes.txt", largeContent);
+
+		const tool = createReadFileTool(backend);
+		const result = (await tool.invoke({ file_path: "/notes.txt" })) as string;
+
+		expect(result).not.toContain("tabular");
 	});
 });

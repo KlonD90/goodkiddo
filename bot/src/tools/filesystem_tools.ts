@@ -1,8 +1,10 @@
+import { extname } from "node:path";
 import type { BackendProtocol } from "deepagents";
 import { context, tool } from "langchain";
 import { z } from "zod";
 import {
 	detectMimeType,
+	fileDataToString,
 	formatReadResponse,
 	isMultimodalMimeType,
 	MAX_LINE_LENGTH,
@@ -10,6 +12,13 @@ import {
 } from "../utils/filesystem.js";
 
 const DEFAULT_READ_LINE_LIMIT = 100;
+
+export const TABULAR_EXTENSIONS = new Set([".csv", ".tsv", ".tab", ".xlsx", ".xls", ".xlsm", ".parquet"]);
+export const TABULAR_NUDGE_BYTES = 200 * 1024; // 200 KB
+
+function isTabularExtension(filePath: string): boolean {
+	return TABULAR_EXTENSIONS.has(extname(filePath).toLowerCase());
+}
 
 function toBackendPath(filePath: string): string {
 	return filePath.startsWith("/") ? filePath : `/${filePath}`;
@@ -102,7 +111,8 @@ const FILE_READ_PROMPT = context`
   - Lines longer than ${MAX_LINE_LENGTH} characters will be split into multiple lines with continuation markers (e.g., 5.1, 5.2, etc.). When you specify a limit, these continuation lines count towards the limit.
     - You have the capability to call multiple tools in a single response. It is always better to speculatively read multiple files as a batch that are potentially useful.
     - If you read a file that exists but has empty contents you will receive a system reminder warning in place of file contents.
-    - You should ALWAYS make sure a file has been read before editing it.`;
+    - You should ALWAYS make sure a file has been read before editing it.
+    - **For .csv, .tsv, .xlsx, .xls, .xlsm, .parquet files prefer the \`tabular_*\` tools** (tabular_describe, tabular_head, tabular_sample, tabular_distinct, tabular_filter, tabular_aggregate). They are safer, faster, and respect output budget. Only fall back to read_file for small tabular files when tabular_* tools are unavailable.`;
 
 export function createLsTool(backend: BackendProtocol) {
 	return tool(
@@ -187,6 +197,7 @@ export function createReadFileTool(backend: BackendProtocol) {
 
 			try {
 				const fileData = await backend.readRaw(resolvedPath);
+				const rawText = fileDataToString(fileData);
 				let result = formatReadResponse(
 					fileData,
 					resolvedOffset,
@@ -195,6 +206,15 @@ export function createReadFileTool(backend: BackendProtocol) {
 				const lines = result.split("\n");
 				if (lines.length > resolvedLimit) {
 					result = lines.slice(0, resolvedLimit).join("\n");
+				}
+				if (
+					isTabularExtension(resolvedPath) &&
+					rawText.length > TABULAR_NUDGE_BYTES
+				) {
+					result =
+						`[Hint: this file is a large tabular file (${Math.round(rawText.length / 1024)} KB). ` +
+						`Consider using tabular_describe, tabular_head, tabular_filter, or tabular_aggregate instead.]\n` +
+						result;
 				}
 				return result;
 			} catch (error) {

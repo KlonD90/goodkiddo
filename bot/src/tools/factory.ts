@@ -1,7 +1,8 @@
 import { SearxngSearch } from "@langchain/community/tools/searxng_search";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { WorkspaceBackend } from "../backends/types";
-import type { TabularEngine } from "../capabilities/research/agent";
+import type { TabularEngine } from "../capabilities/tabular/engine";
+import { createTabularTools } from "../capabilities/tabular/tools";
 import { createResearchTool } from "../capabilities/research/tool";
 import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import type { OutboundChannel } from "../channels/outbound";
@@ -71,6 +72,7 @@ export interface CreateExecutionToolsetOptions {
 	model?: BaseChatModel;
 	enableBrowserOnParent?: boolean;
 	tabularEngine?: TabularEngine;
+	enableTabular?: boolean;
 }
 
 const UNGUARDED_TOOL_NAMES = new Set<string>(["send_file", "grant_fs_access"]);
@@ -148,6 +150,15 @@ export async function createExecutionToolset(
 				]
 			: [];
 
+	const enableTabular = options.enableTabular ?? true;
+	const tabularTools =
+		enableTabular && options.tabularEngine
+			? createTabularTools(options.tabularEngine, options.workspace)
+			: [];
+
+	const researchEngine =
+		enableTabular && options.tabularEngine ? options.tabularEngine : undefined;
+
 	const researchTool = options.model
 		? createResearchTool({
 				model: options.model,
@@ -155,7 +166,7 @@ export async function createExecutionToolset(
 				browserManager,
 				statusEmitter: options.statusEmitter,
 				locale: options.locale,
-				tabularEngine: options.tabularEngine,
+				tabularEngine: researchEngine,
 			})
 		: null;
 
@@ -197,6 +208,7 @@ export async function createExecutionToolset(
 				]
 			: []),
 		...(researchTool ? [researchTool] : []),
+		...tabularTools,
 	];
 
 	if (!options.guard) return tools;

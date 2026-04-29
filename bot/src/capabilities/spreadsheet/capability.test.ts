@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import type { BackendProtocol } from "deepagents";
 import type { AppConfig } from "../../config";
 import { createSpreadsheetCapability } from "./capability";
+import { TABULAR_INLINE_THRESHOLD_BYTES } from "./constants";
 import type { SpreadsheetParser, SpreadsheetParseResult } from "./parser";
 
 const BASE_CONFIG: AppConfig = {
@@ -8,6 +10,8 @@ const BASE_CONFIG: AppConfig = {
 	aiBaseUrl: "",
 	aiType: "openai",
 	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
 	appEntrypoint: "telegram",
 	telegramBotToken: "telegram-token",
 	telegramAllowedChatId: "",
@@ -38,6 +42,14 @@ class StubSpreadsheetParser implements SpreadsheetParser {
 	constructor(private readonly result: SpreadsheetParseResult) {}
 	async parse(): Promise<SpreadsheetParseResult> {
 		return this.result;
+	}
+}
+
+class StubWorkspace implements Partial<BackendProtocol> {
+	uploads: Array<[string, Uint8Array]> = [];
+	async uploadFiles(files: Array<[string, Uint8Array]>): Promise<Array<{ path: string; error: string | null }>> {
+		this.uploads.push(...files);
+		return files.map(([path]) => ({ path, error: null }));
 	}
 }
 
@@ -176,5 +188,91 @@ describe("createSpreadsheetCapability", () => {
 				expect(result.value.currentUserText).toBe(result.value.content);
 			}
 		}
-		});
 	});
+
+	test("process saves large spreadsheet to /incoming/ and returns path message when workspace is provided", async () => {
+		const workspace = new StubWorkspace();
+		const capability = createSpreadsheetCapability(BASE_CONFIG, {
+			parser: new StubSpreadsheetParser({ sheets: [], isEmpty: false, isCorrupt: false }),
+		})!;
+
+		const bigBytes = new Uint8Array(TABULAR_INLINE_THRESHOLD_BYTES + 1);
+		const result = await capability.process({
+			bytes: bigBytes,
+			metadata: { mimeType: "text/csv", byteSize: bigBytes.length, filename: "big.csv" },
+			workspace: workspace as unknown as BackendProtocol,
+		});
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(typeof result.value.content).toBe("string");
+			const content = result.value.content as string;
+			expect(content).toContain("/incoming/");
+			expect(content).toContain("tabular_describe");
+			expect(result.value.currentUserText).toBe(content);
+		}
+		expect(workspace.uploads).toHaveLength(1);
+		expect(workspace.uploads[0][0]).toMatch(/^\/incoming\/.*\.csv$/);
+	});
+
+	test("process renders inline when file is below threshold even with workspace", async () => {
+		const workspace = new StubWorkspace();
+		const capability = createSpreadsheetCapability(BASE_CONFIG, {
+			parser: new StubSpreadsheetParser({
+				sheets: [
+					{
+						name: "Sheet1",
+						headers: ["Name"],
+						rows: [["Alice"]],
+						rowCount: 1,
+						colCount: 1,
+					},
+				],
+				isEmpty: false,
+				isCorrupt: false,
+			}),
+		})!;
+
+		const smallBytes = new Uint8Array(10);
+		const result = await capability.process({
+			bytes: smallBytes,
+			metadata: { mimeType: "text/csv", byteSize: smallBytes.length, filename: "small.csv" },
+			workspace: workspace as unknown as BackendProtocol,
+		});
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.value.content).toContain("| Name |");
+		}
+		expect(workspace.uploads).toHaveLength(0);
+	});
+
+	test("process renders inline when no workspace provided even for large file", async () => {
+		const capability = createSpreadsheetCapability(BASE_CONFIG, {
+			parser: new StubSpreadsheetParser({
+				sheets: [
+					{
+						name: "Sheet1",
+						headers: ["Name"],
+						rows: [["Alice"]],
+						rowCount: 1,
+						colCount: 1,
+					},
+				],
+				isEmpty: false,
+				isCorrupt: false,
+			}),
+		})!;
+
+		const bigBytes = new Uint8Array(TABULAR_INLINE_THRESHOLD_BYTES + 1);
+		const result = await capability.process({
+			bytes: bigBytes,
+			metadata: { mimeType: "text/csv", byteSize: bigBytes.length, filename: "big.csv" },
+		});
+
+		expect(result.ok).toBe(true);
+		if (result.ok) {
+			expect(result.value.content).toContain("| Name |");
+		}
+	});
+});

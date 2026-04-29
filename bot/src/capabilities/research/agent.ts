@@ -1,7 +1,6 @@
 import { MemorySaver } from "@langchain/langgraph";
 import { SearxngSearch } from "@langchain/community/tools/searxng_search";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
-import type { StructuredTool } from "@langchain/core/tools";
 import { createAgent, tool } from "langchain";
 import { z } from "zod";
 import type { WorkspaceBackend } from "../../backends/types";
@@ -17,12 +16,10 @@ import {
 	createLsTool,
 	createReadFileTool,
 } from "../../tools/filesystem_tools";
+import { createTabularTools } from "../tabular/tools";
+import type { TabularEngine } from "../tabular/engine";
 import { ResearchNotes } from "./notes";
 import { RESEARCH_SYSTEM_PROMPT } from "./prompts";
-
-export interface TabularEngine {
-	createTools(workspace: WorkspaceBackend): StructuredTool[];
-}
 
 export interface BuildResearchAgentOptions {
 	model: BaseChatModel;
@@ -82,7 +79,7 @@ export function buildResearchAgent(options: BuildResearchAgentOptions) {
 		createReadFileTool(workspace),
 		createGlobTool(workspace),
 		createGrepTool(workspace),
-		...(tabularEngine ? tabularEngine.createTools(workspace) : []),
+		...(tabularEngine ? createTabularTools(tabularEngine, workspace) : []),
 		createRecordFindingTool(notes),
 	];
 

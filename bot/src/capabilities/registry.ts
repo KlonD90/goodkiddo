@@ -51,6 +51,7 @@ export class CapabilityRegistry {
 		metadata: FileMetadata,
 		download: FileDownloader,
 		budget?: CapabilityHandleBudget,
+		workspace?: import("deepagents").BackendProtocol,
 	): Promise<CapabilityResult> {
 		const capability = this.match(metadata);
 		if (capability === null) {
@@ -73,7 +74,7 @@ export class CapabilityRegistry {
 			return { ok: false, userMessage: `Failed to download file: ${message}` };
 		}
 
-		const result = await this.processWith(capability, { bytes, metadata });
+		const result = await this.processWith(capability, { bytes, metadata, workspace });
 		return applyAttachmentBudgetToResult(capability.name, result, budget);
 	}
 

@@ -24,7 +24,7 @@ describe("composeMemorySnapshot", () => {
 		await overwrite(
 			backend,
 			USER_PROFILE_PATH,
-			"# USER.md\n\n## Actuel\nTerse replies preferred.\n",
+			"# USER.md\n\n## Profile\n_No durable facts recorded yet._\n\n## Preferences\nTerse replies preferred.\n\n## Environment\n_No durable facts recorded yet._\n\n## Constraints\n_No durable facts recorded yet._\n\n## Open Questions\n_No durable facts recorded yet._\n",
 		);
 		const snapshot = await composeMemorySnapshot(backend);
 		expect(snapshot).toContain("## Current memory");
@@ -86,11 +86,11 @@ describe("buildSystemPrompt", () => {
 			"/memory/notes/alpha.md",
 			"# Alpha\n\n## Actuel\nOK\n",
 		);
-		// USER.md must be populated or lint will flag the onboarding nudge.
+		// USER.md must be populated or lint will emit the empty-profile note.
 		await overwrite(
 			backend,
 			"/memory/USER.md",
-			"# USER.md\n\n## Actuel\nRole: staff eng. Prefers terse replies.\n",
+			"# USER.md\n\n## Profile\nRole: staff eng.\n\n## Preferences\nPrefers terse replies.\n\n## Environment\nTimezone: Asia/Bangkok.\n\n## Constraints\n_No durable facts recorded yet._\n\n## Open Questions\n_No durable facts recorded yet._\n",
 		);
 		const prompt = await buildSystemPrompt({
 			identityPrompt: "# Identity",

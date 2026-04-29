@@ -24,3 +24,12 @@ export {
 	createTaskDismissTool,
 	createTaskListActiveTool,
 } from "./task_tools";
+export {
+	createTabularAggregateTool,
+	createTabularDescribeTool,
+	createTabularDistinctTool,
+	createTabularFilterTool,
+	createTabularHeadTool,
+	createTabularSampleTool,
+	createTabularTools,
+} from "../capabilities/tabular/tools";

@@ -17,6 +17,7 @@ import {
 	USER_PROFILE_PATH,
 } from "../memory/layout";
 import { appendLog, todayIso } from "../memory/log";
+import { normalizeUserProfile } from "../memory/user_profile";
 import { withLock } from "../utils/async_lock";
 
 // Three guarded tools. No read tools — agent already has read_file/grep/glob
@@ -38,10 +39,13 @@ Two targets:
     domain knowledge, lessons learned, named things worth looking up later.
   - target: "user" — writes /memory/USER.md (no index). Use for stable facts
     about the user: role, goals, working style, recurring preferences. The
-    "topic" argument is ignored when target is "user".
+    "topic" argument is ignored when target is "user". USER.md is normalized
+    into fixed sections: Profile, Preferences, Environment, Constraints, and
+    Open Questions.
 
 Each file has a header, a ## Actuel section (current content), and a
-## Archive section that grows when mode: "rotate_actuel" is used.
+## Archive section that grows when mode: "rotate_actuel" is used. USER.md is
+the exception: it uses fixed profile sections instead of Actuel/Archive.
 
 Returns the updated file excerpt so you can confirm the write.`;
 
@@ -65,6 +69,7 @@ type WriteContext = {
 	backend: BackendProtocol;
 	targetPath: string;
 	indexPath: string;
+	slug: string;
 	topic: string;
 	content: string;
 	mode: "replace" | "rotate_actuel";
@@ -77,6 +82,30 @@ export type MemoryMutationKind = "notes" | "user" | "skills";
 export type MemoryMutationCallback = (
 	kind: MemoryMutationKind,
 ) => void | Promise<void>;
+
+function normalizeOneLine(value: string): string {
+	return value.replace(/\s+/g, " ").trim();
+}
+
+function safeHeaderTitle(value: string): string {
+	const normalized = normalizeOneLine(value);
+	return normalized.length > 0 ? normalized : "Untitled";
+}
+
+function normalizeHook(hook: string | undefined, fallback: string): string {
+	const normalized = normalizeOneLine(hook ?? "");
+	return normalized.length > 0 ? normalized : normalizeOneLine(fallback);
+}
+
+function slugOrError(value: string, label: string): string {
+	const slug = slugify(value);
+	if (slug.length === 0) {
+		throw new Error(
+			`${label} must contain at least one ASCII letter or number so it can be indexed safely.`,
+		);
+	}
+	return slug;
+}
 
 async function writeActuelFile(
 	backend: BackendProtocol,
@@ -104,8 +133,7 @@ async function performWrite(ctx: WriteContext): Promise<string> {
 	// pair. Without this, concurrent writes read the same stale index and the
 	// last writer silently drops earlier entries.
 	return withLock(ctx.indexPath, async () => {
-		const slug = slugify(ctx.topic);
-		const header = `# ${ctx.topic.trim()}`;
+		const header = `# ${safeHeaderTitle(ctx.topic)}`;
 		await writeActuelFile(
 			ctx.backend,
 			ctx.targetPath,
@@ -118,9 +146,9 @@ async function performWrite(ctx: WriteContext): Promise<string> {
 		const indexRaw = await readOrEmpty(ctx.backend, ctx.indexPath);
 		const { header: indexHeader, entries } = parseIndex(indexRaw);
 		const nextEntries = upsertEntry(entries, {
-			slug,
+			slug: ctx.slug,
 			path: ctx.targetPath,
-			hook: ctx.hook.trim() || ctx.topic.trim(),
+			hook: normalizeHook(ctx.hook, ctx.topic),
 		});
 		const indexFormatted = formatIndex(indexHeader, nextEntries);
 		await overwrite(ctx.backend, ctx.indexPath, indexFormatted);
@@ -132,18 +160,9 @@ async function performWrite(ctx: WriteContext): Promise<string> {
 async function performUserWrite(
 	backend: BackendProtocol,
 	content: string,
-	mode: "replace" | "rotate_actuel",
-	now: Date,
 ): Promise<string> {
 	return withLock(USER_PROFILE_PATH, async () => {
-		await writeActuelFile(
-			backend,
-			USER_PROFILE_PATH,
-			"# USER.md",
-			content,
-			mode,
-			now,
-		);
+		await overwrite(backend, USER_PROFILE_PATH, normalizeUserProfile(content));
 		return readOrEmpty(backend, USER_PROFILE_PATH);
 	});
 }
@@ -172,8 +191,6 @@ export function createMemoryWriteTool(
 					const updated = await performUserWrite(
 						backend,
 						content,
-						effectiveMode,
-						new Date(),
 					);
 					await onMutation?.("user");
 					return `Saved to ${USER_PROFILE_PATH}.\n\n--- Updated USER.md ---\n${updated}`;
@@ -181,11 +198,13 @@ export function createMemoryWriteTool(
 				if (!topic || topic.trim().length === 0) {
 					return "Error: topic is required when target is 'notes'.";
 				}
+				const slug = slugOrError(topic, "topic");
 				const targetPath = notePath(topic);
 				const updated = await performWrite({
 					backend,
 					targetPath,
 					indexPath: MEMORY_INDEX_PATH,
+					slug,
 					topic,
 					content,
 					mode: effectiveMode,
@@ -248,11 +267,13 @@ export function createSkillWriteTool(
 			mode?: "replace" | "rotate_actuel";
 		}) => {
 			try {
+				const slug = slugOrError(name, "name");
 				const targetPath = skillPath(name);
 				const updated = await performWrite({
 					backend,
 					targetPath,
 					indexPath: SKILLS_INDEX_PATH,
+					slug,
 					topic: name,
 					content,
 					mode: mode ?? "replace",

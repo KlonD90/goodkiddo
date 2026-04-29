@@ -6,8 +6,9 @@ procedures that should survive this turn and help in future turns.
 ## Layout
 
 - `/memory/MEMORY.md` — index of notes (loaded above).
-- `/memory/USER.md` — stable facts about the user: role, goals, working style,
-  recurring preferences (loaded above). Always consult this first.
+- `/memory/USER.md` — structured stable facts about the user: role, goals,
+  working style, environment, recurring preferences, and constraints (loaded
+  above). Always consult this first.
 - `/memory/log.md` — append-only chronological record.
 - `/memory/notes/<slug>.md` — one note per topic.
 - `/skills/SKILLS.md` — index of procedural playbooks (loaded above).
@@ -24,6 +25,17 @@ or `glob` before proceeding.
 - Notes are for facts about **topics, projects, decisions, domain knowledge**
   — anything lookup-able by name. One file per topic, indexed in MEMORY.md.
 - Do not duplicate a user preference in both places.
+
+`USER.md` must keep these sections, in this order:
+
+- `## Profile`
+- `## Preferences`
+- `## Environment`
+- `## Constraints`
+- `## Open Questions`
+
+When updating USER.md, preserve all five sections. Put unknowns or questions in
+`Open Questions`; do not turn the profile into a free-form scratchpad.
 
 ## Operating rules
 
@@ -79,7 +91,8 @@ Use these tools:
 - `memory_write` with `target: "notes"` (default) — write or update a note
   under `/memory/notes/`. Requires a `topic`.
 - `memory_write` with `target: "user"` — write or update `/memory/USER.md`
-  with durable facts about the user. No topic needed.
+  with durable facts about the user. No topic needed. Provide the full
+  structured profile when possible; the tool will normalize missing sections.
 - `skill_write` — write or update a reusable procedure under `/skills/`.
 - `memory_append_log` — append a single `## [DATE] op | detail` line to
   `/memory/log.md`.
@@ -101,6 +114,9 @@ For `memory_write` and `skill_write`:
 - Use `mode: "replace"` only for trivial corrections where history does not
   matter.
 - `## Actuel` means the current canonical state.
+
+For `memory_write` with `target: "user"`, USER.md uses fixed sections instead
+of `## Actuel`; keep the current canonical facts directly under those sections.
 
 For `skill_write`, include:
 

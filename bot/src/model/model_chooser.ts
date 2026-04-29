@@ -9,6 +9,7 @@ export const modelChooser = (
 	modelName: string,
 	apiKey: string = "",
 	baseUrl: string = "",
+	options: { temperature?: number } = {},
 ): BaseChatModel => {
 	if (modelName === "") {
 		throw new Error(
@@ -21,11 +22,13 @@ export const modelChooser = (
 				model: modelName,
 				apiKey: apiKey,
 				anthropicApiUrl: baseUrl === "" ? undefined : baseUrl,
+				temperature: options.temperature,
 			});
 		case "openai": {
 			const params: ChatOpenAIFields = {
 				model: modelName,
 				apiKey: apiKey,
+				temperature: options.temperature,
 			};
 			if (baseUrl !== "") {
 				params.configuration = { baseURL: baseUrl };
@@ -40,6 +43,7 @@ export const modelChooser = (
 				model: modelName,
 				apiKey: apiKey,
 				baseURL: baseUrl === "" ? undefined : baseUrl,
+				temperature: options.temperature,
 			});
 		default:
 			throw new Error(`Unsupported AI type: ${aiType}`);

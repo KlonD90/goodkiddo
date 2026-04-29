@@ -7,6 +7,7 @@ import {
 	SKILLS_INDEX_PATH,
 	USER_PROFILE_PATH,
 } from "./layout";
+import { composeUserProfile } from "./user_profile";
 
 // Seed the four canonical memory files on first use. Idempotent: if a file
 // already exists we leave it alone, so re-bootstrapping an established caller
@@ -26,13 +27,6 @@ const SKILLS_HEADER = [
 	"`/skills/` with a one-line hook describing when to reach for it.",
 ].join("\n");
 
-const USER_PROFILE_TEMPLATE = [
-	"# USER.md",
-	"",
-	"## Actuel",
-	"_No profile yet. Populate as you learn about the user._",
-].join("\n");
-
 const LOG_TEMPLATE = "# Log\n";
 
 export async function ensureMemoryBootstrapped(
@@ -45,7 +39,7 @@ export async function ensureMemoryBootstrapped(
 		await overwrite(backend, SKILLS_INDEX_PATH, formatIndex(SKILLS_HEADER, []));
 	}
 	if (!(await exists(backend, USER_PROFILE_PATH))) {
-		await overwrite(backend, USER_PROFILE_PATH, `${USER_PROFILE_TEMPLATE}\n`);
+		await overwrite(backend, USER_PROFILE_PATH, composeUserProfile());
 	}
 	if (!(await exists(backend, MEMORY_LOG_PATH))) {
 		await overwrite(backend, MEMORY_LOG_PATH, LOG_TEMPLATE);

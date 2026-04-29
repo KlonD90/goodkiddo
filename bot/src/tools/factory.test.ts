@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { SqliteStateBackend } from "../backends";
 import type { ImageUnderstandingProvider } from "../capabilities/image/types";
+import { StreamingTabularEngine } from "../capabilities/tabular/streaming_engine";
 import { createDb, detectDialect } from "../db";
 import type { SupportedLocale } from "../i18n/locale";
 import { createExecutionToolset } from "./factory";
@@ -170,6 +171,40 @@ describe("createExecutionToolset enableToolStatus flag", () => {
 		});
 
 		expect(mutations).toEqual(["user"]);
+		await db.close();
+	});
+
+	test("tabular tools absent when no engine provided", async () => {
+		const { workspace, db } = createTestWorkspace("factory-tabular-off");
+		const tools = await createExecutionToolset({ workspace });
+		expect(tools.find((t) => t.name === "tabular_describe")).toBeUndefined();
+		expect(tools.find((t) => t.name === "tabular_head")).toBeUndefined();
+		await db.close();
+	});
+
+	test("tabular tools present when engine is provided", async () => {
+		const { workspace, db } = createTestWorkspace("factory-tabular-on");
+		const tools = await createExecutionToolset({
+			workspace,
+			tabularEngine: new StreamingTabularEngine(),
+		});
+		expect(tools.find((t) => t.name === "tabular_describe")).toBeDefined();
+		expect(tools.find((t) => t.name === "tabular_head")).toBeDefined();
+		expect(tools.find((t) => t.name === "tabular_sample")).toBeDefined();
+		expect(tools.find((t) => t.name === "tabular_distinct")).toBeDefined();
+		expect(tools.find((t) => t.name === "tabular_filter")).toBeDefined();
+		expect(tools.find((t) => t.name === "tabular_aggregate")).toBeDefined();
+		await db.close();
+	});
+
+	test("tabular tools absent when enableTabular is false even if engine is provided", async () => {
+		const { workspace, db } = createTestWorkspace("factory-tabular-disabled");
+		const tools = await createExecutionToolset({
+			workspace,
+			tabularEngine: new StreamingTabularEngine(),
+			enableTabular: false,
+		});
+		expect(tools.find((t) => t.name === "tabular_describe")).toBeUndefined();
 		await db.close();
 	});
 });

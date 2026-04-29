@@ -10,8 +10,8 @@ import { estimateAttachmentTokens } from "../attachment_budget";
 import {
 	buildResearchAgent,
 	type BuildResearchAgentOptions,
-	type TabularEngine,
 } from "./agent";
+import type { TabularEngine } from "../tabular/engine";
 import { mintId, ResearchNotes } from "./notes";
 import { depthToRecursionLimit } from "./prompts";
 

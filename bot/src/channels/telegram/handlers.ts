@@ -540,6 +540,7 @@ export const telegramChannel: AppChannel = {
 					{
 						configurable: { thread_id: session.threadId },
 						streamMode: "messages",
+						recursionLimit: session.recursionLimit,
 					},
 				);
 				let fullText = "";

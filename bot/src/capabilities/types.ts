@@ -25,6 +25,7 @@ export type CapabilityResult =
 export type CapabilityInput = {
 	readonly bytes: Uint8Array;
 	readonly metadata: FileMetadata;
+	readonly workspace?: import("deepagents").BackendProtocol;
 };
 
 export interface FileCapability {

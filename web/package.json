@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "mkdir -p dist && cp index.html dist && bun build ./src/main.tsx --outdir ./dist --target browser --minify",
+    "build": "bun build index.html --outdir dist --production",
     "test": "bun test",
     "check": "biome check src",
     "format": "biome check --write src --unsafe",

@@ -68,6 +68,8 @@ const TEST_CONFIG: AppConfig = {
 	aiBaseUrl: "",
 	aiType: "openai",
 	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
 	appEntrypoint: "cli",
 	telegramBotToken: "",
 	telegramAllowedChatId: "",
@@ -85,6 +87,7 @@ const TEST_CONFIG: AppConfig = {
 	enableImageUnderstanding: false,
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
+	enableBrowserOnParent: false,
 	defaultStatusLocale: "en",
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
@@ -96,6 +99,7 @@ const TEST_CONFIG: AppConfig = {
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
+	recursionLimit: 60,
 };
 
 const NOOP_BROKER: ApprovalBroker = {
@@ -131,6 +135,7 @@ function stubSession(
 		workspace: {} as unknown as BackendProtocol,
 		model: {} as unknown as BaseChatModel,
 		refreshAgent: async () => {},
+		recursionLimit: 60,
 		...overrides,
 	};
 }

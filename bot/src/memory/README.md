@@ -20,7 +20,7 @@ Layout per caller:
 ```
 /memory/
   MEMORY.md          index of notes
-  USER.md            user profile
+  USER.md            structured user profile
   log.md             append-only events
   notes/<slug>.md    one file per topic
 /skills/
@@ -29,6 +29,10 @@ Layout per caller:
 ```
 
 Writes go through the three guarded tools in [`src/tools/memory_tools.ts`](../tools/memory_tools.ts); reads reuse the existing `read_file` / `grep` / `glob` tools.
+
+Memory note topics and skill names must slugify to at least one ASCII letter or number before they are written. This prevents empty paths such as `/memory/notes/.md` or `/skills/.md`. Index hooks are normalized to one line before `MEMORY.md` / `SKILLS.md` are rewritten, so a malformed hook cannot inject extra index entries.
+
+`USER.md` uses a fixed Markdown shape with `## Profile`, `## Preferences`, `## Environment`, `## Constraints`, and `## Open Questions`. New callers are bootstrapped with all five sections. Existing legacy profiles remain readable until `memory_write` with `target: "user"` updates them, at which point the tool normalizes the file into the fixed-section shape. Notes and skills still use `## Actuel` / `## Archive`.
 
 Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. Dismissals require an explicit user confirmation turn before `task_dismiss` is allowed to mutate state. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
 

@@ -49,6 +49,12 @@ const ALLOWLISTED_ARGS: Record<string, readonly string[]> = {
 	grant_fs_access: ["scope_path", "ttl_hours", "note"],
 	understand_image: ["prompt"],
 	research: ["question"],
+	tabular_describe: ["path"],
+	tabular_head: ["path", "n"],
+	tabular_sample: ["path", "n"],
+	tabular_distinct: ["path", "column"],
+	tabular_filter: ["path"],
+	tabular_aggregate: ["path", "fn", "column"],
 };
 
 type ToolTemplates = Record<string, string>;
@@ -78,6 +84,12 @@ const dictionaries: LocaleDictionary = {
 		grant_fs_access: "Creating share link for {scope_path}",
 		understand_image: "Analyzing image: {prompt}",
 		research: "Researching {question}",
+		tabular_describe: "Reading schema of {path}",
+		tabular_head: "Reading first {n} rows of {path}",
+		tabular_sample: "Sampling {n} rows from {path}",
+		tabular_distinct: "Getting distinct values of {column} in {path}",
+		tabular_filter: "Filtering rows in {path}",
+		tabular_aggregate: "Aggregating {fn}({column}) in {path}",
 	},
 	ru: {
 		ls: "Просмотр {path}",
@@ -101,6 +113,12 @@ const dictionaries: LocaleDictionary = {
 		grant_fs_access: "Создание ссылки для {scope_path}",
 		understand_image: "Анализ изображения: {prompt}",
 		research: "Исследую {question}",
+		tabular_describe: "Читаю схему {path}",
+		tabular_head: "Читаю первые {n} строк {path}",
+		tabular_sample: "Сэмплирую {n} строк из {path}",
+		tabular_distinct: "Получаю уникальные значения {column} в {path}",
+		tabular_filter: "Фильтрую строки в {path}",
+		tabular_aggregate: "Агрегирую {fn}({column}) в {path}",
 	},
 	es: {
 		ls: "Listando {path}",
@@ -124,6 +142,12 @@ const dictionaries: LocaleDictionary = {
 		grant_fs_access: "Creando enlace para {scope_path}",
 		understand_image: "Analizando imagen: {prompt}",
 		research: "Investigando {question}",
+		tabular_describe: "Leyendo esquema de {path}",
+		tabular_head: "Leyendo primeras {n} filas de {path}",
+		tabular_sample: "Muestreando {n} filas de {path}",
+		tabular_distinct: "Obteniendo valores distintos de {column} en {path}",
+		tabular_filter: "Filtrando filas en {path}",
+		tabular_aggregate: "Agregando {fn}({column}) en {path}",
 	},
 };
 
@@ -259,6 +283,30 @@ function formatPathGlob(args: StatusTemplateArgs): string {
 	return parts.join("");
 }
 
+function formatTabularAggColumn(args: StatusTemplateArgs): string {
+	const aggs = args.aggregations;
+	if (Array.isArray(aggs) && aggs.length > 0) {
+		const first = aggs[0] as Record<string, unknown>;
+		if (first && typeof first.column === "string" && first.column !== "") {
+			return first.column;
+		}
+	}
+	const col = args.column;
+	if (col === undefined || col === null || col === "") return "*";
+	return String(col);
+}
+
+function formatTabularAggFn(args: StatusTemplateArgs): string {
+	// aggregations is an array; pull fn from first entry if present
+	const aggs = args.aggregations;
+	if (Array.isArray(aggs) && aggs.length > 0) {
+		const first = aggs[0] as Record<string, unknown>;
+		if (first && typeof first.fn === "string") return first.fn;
+	}
+	if (typeof args.fn === "string") return args.fn;
+	return "agg";
+}
+
 function buildInterpolatedArgs(
 	toolName: string,
 	args: StatusTemplateArgs,
@@ -280,6 +328,10 @@ function buildInterpolatedArgs(
 			break;
 		case "grep":
 			augmented.pathGlob = formatPathGlob(args);
+			break;
+		case "tabular_aggregate":
+			augmented.fn = formatTabularAggFn(args);
+			augmented.column = formatTabularAggColumn(args);
 			break;
 	}
 

@@ -3,12 +3,12 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-IMAGE_NAME="${TOP_FEDDER_DEV_IMAGE:-top-fedder-dev:latest}"
-MODEL_URL="${TOP_FEDDER_MODEL_URL:-http://localhost:1234}"
 
 log() {
   printf '[dev] %s\n' "$1"
 }
+
+cd "$ROOT_DIR"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -17,10 +17,7 @@ require_cmd() {
   fi
 }
 
-cd "$ROOT_DIR"
-
 require_cmd bun
-require_cmd docker
 
 if [[ -f ".env" ]]; then
   # shellcheck disable=SC1091
@@ -34,22 +31,11 @@ if [[ ! -d node_modules ]]; then
   bun install
 fi
 
-log "Building bot web frontend"
+log "Building landing"
+bun run landing:build
+
+log "Building web"
 bun run web:build
 
-if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-  log "Building development image $IMAGE_NAME"
-  docker build -f Dockerfile.dev -t "$IMAGE_NAME" .
-fi
-
-if ! curl --silent --fail --max-time 2 "$MODEL_URL" >/dev/null 2>&1; then
-  log "Model endpoint $MODEL_URL is not reachable"
-  log "bot.ts expects an Anthropic-compatible endpoint at $MODEL_URL"
-  exit 1
-fi
-
-log "Running tests"
-bun run test
-
 log "Starting bot"
-exec bun run --filter goodkiddo-bot start
+exec bun run start

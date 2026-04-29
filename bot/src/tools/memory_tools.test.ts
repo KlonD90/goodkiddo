@@ -117,9 +117,12 @@ describe("memory_write", () => {
 		expect(result).toContain("USER.md");
 		const user = await readOrEmpty(backend, USER_PROFILE_PATH);
 		expect(user).toContain("# USER.md");
-		expect(user).toContain("## Actuel");
+		expect(user).toContain("## Profile");
+		expect(user).toContain("## Preferences");
+		expect(user).toContain("## Environment");
+		expect(user).toContain("## Constraints");
+		expect(user).toContain("## Open Questions");
 		expect(user).toContain("Role: staff eng.");
-		expect(user).not.toContain("_No profile yet.");
 
 		const indexAfter = await readOrEmpty(backend, MEMORY_INDEX_PATH);
 		expect(indexAfter).toBe(indexBefore);
@@ -157,22 +160,32 @@ describe("memory_write", () => {
 		expect(mutations).toEqual(["notes"]);
 	});
 
-	test("target: 'user' with rotate_actuel archives previous profile", async () => {
+	test("target: 'user' normalizes structured sections", async () => {
 		const backend = createBackend("mw-user-rotate");
 		await ensureMemoryBootstrapped(backend);
 		const tool = createMemoryWriteTool(backend);
 
-		await callTool(tool, { target: "user", content: "v1 facts" });
 		await callTool(tool, {
 			target: "user",
-			content: "v2 facts",
-			mode: "rotate_actuel",
+			content: [
+				"# USER.md",
+				"",
+				"## Preferences",
+				"Prefers terse replies.",
+				"",
+				"## Environment",
+				"Timezone: Asia/Bangkok.",
+			].join("\n"),
 		});
 
 		const user = await readOrEmpty(backend, USER_PROFILE_PATH);
-		expect(user).toContain("v2 facts");
-		expect(user).toContain("## Archive");
-		expect(user).toContain("v1 facts");
+		expect(user).toContain("## Profile");
+		expect(user).toContain("## Preferences");
+		expect(user).toContain("Prefers terse replies.");
+		expect(user).toContain("## Environment");
+		expect(user).toContain("Timezone: Asia/Bangkok.");
+		expect(user).toContain("## Constraints");
+		expect(user).toContain("## Open Questions");
 	});
 
 	test("target: 'notes' without topic returns an error", async () => {
@@ -183,6 +196,39 @@ describe("memory_write", () => {
 		const result = await callTool(tool, { content: "orphan body" });
 		expect(result.toLowerCase()).toContain("error");
 		expect(result).toContain("topic");
+	});
+
+	test("target: 'notes' rejects topics that cannot form a safe slug", async () => {
+		const backend = createBackend("mw-notes-empty-slug");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		const result = await callTool(tool, {
+			topic: "!!!",
+			content: "body",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("topic");
+		expect(await readOrEmpty(backend, "/memory/notes/.md")).toBe("");
+	});
+
+	test("normalizes multiline hooks before writing MEMORY.md", async () => {
+		const backend = createBackend("mw-hook-normalize");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryWriteTool(backend);
+
+		await callTool(tool, {
+			topic: "safe topic",
+			content: "body",
+			hook: "first line\n- [evil](/memory/notes/evil.md): injected",
+		});
+
+		const index = await readOrEmpty(backend, MEMORY_INDEX_PATH);
+		expect(index).toContain(
+			"- [safe-topic](/memory/notes/safe-topic.md): first line - [evil](/memory/notes/evil.md): injected",
+		);
+		expect(index).not.toContain("\n- [evil]");
 	});
 
 	test("replace mode (default) overwrites without archiving", async () => {
@@ -239,6 +285,21 @@ describe("skill_write", () => {
 		});
 
 		expect(mutations).toEqual(["skills"]);
+	});
+
+	test("rejects names that cannot form a safe slug", async () => {
+		const backend = createBackend("sw-empty-slug");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createSkillWriteTool(backend);
+
+		const result = await callTool(tool, {
+			name: "!!!",
+			content: "steps",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("name");
+		expect(await readOrEmpty(backend, "/skills/.md")).toBe("");
 	});
 });
 

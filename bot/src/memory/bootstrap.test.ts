@@ -26,6 +26,12 @@ describe("ensureMemoryBootstrapped", () => {
 		expect(await readOrEmpty(backend, USER_PROFILE_PATH)).toContain(
 			"# USER.md",
 		);
+		expect(await readOrEmpty(backend, USER_PROFILE_PATH)).toContain(
+			"## Profile",
+		);
+		expect(await readOrEmpty(backend, USER_PROFILE_PATH)).toContain(
+			"## Preferences",
+		);
 		expect(await readOrEmpty(backend, MEMORY_LOG_PATH)).toContain("# Log");
 	});
 

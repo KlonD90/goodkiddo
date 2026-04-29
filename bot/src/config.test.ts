@@ -14,6 +14,9 @@ const CONFIG_KEYS = [
 	"AI_API_KEY",
 	"AI_BASE_URL",
 	"AI_MODEL_NAME",
+	"AI_RECURSION_LIMIT",
+	"AI_SUB_AGENT_TEMPERATURE",
+	"AI_TEMPERATURE",
 	"AI_TYPE",
 	"APP_ENTRYPOINT",
 	"BLOCKED_USER_MESSAGE",
@@ -21,6 +24,8 @@ const CONFIG_KEYS = [
 	"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
 	"CONTEXT_RESERVE_SUMMARY_TOKENS",
 	"DEFAULT_STATUS_LOCALE",
+	"ENABLE_BROWSER_ON_PARENT",
+	"ENABLE_TABULAR",
 	"ENABLE_EXECUTE",
 	"ENABLE_ATTACHMENT_COMPACTION_NOTICE",
 	"ENABLE_IMAGE_UNDERSTANDING",
@@ -113,6 +118,8 @@ describe("config", () => {
 					aiApiKey: "test-key",
 					aiBaseUrl: "https://example.test",
 					aiModelName: "gpt-4.1-mini",
+					aiTemperature: 1.0,
+					aiSubAgentTemperature: 0.4,
 					aiType: "openai",
 					appEntrypoint: "telegram",
 					telegramAllowedChatId: "12345",
@@ -131,6 +138,8 @@ describe("config", () => {
 					enableImageUnderstanding: false,
 					enableToolStatus: true,
 					enableAttachmentCompactionNotice: true,
+					enableBrowserOnParent: false,
+					enableTabular: true,
 					defaultStatusLocale: "en",
 					enableVoiceMessages: false,
 					transcriptionProvider: "openrouter",
@@ -142,6 +151,7 @@ describe("config", () => {
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
+					recursionLimit: 60,
 				});
 			},
 		);
@@ -657,6 +667,8 @@ describe("config", () => {
 					aiApiKey: "wizard-key",
 					aiBaseUrl: "https://openai.example",
 					aiModelName: "gpt-4.1-mini",
+					aiTemperature: 1.0,
+					aiSubAgentTemperature: 0.4,
 					aiType: "openai",
 					appEntrypoint: "cli",
 					telegramAllowedChatId: "",
@@ -675,6 +687,8 @@ describe("config", () => {
 					enableImageUnderstanding: false,
 					enableToolStatus: true,
 					enableAttachmentCompactionNotice: true,
+					enableBrowserOnParent: false,
+					enableTabular: true,
 					defaultStatusLocale: "en",
 					enableVoiceMessages: true,
 					transcriptionProvider: "openai",
@@ -686,6 +700,7 @@ describe("config", () => {
 					webPort: 8083,
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
+					recursionLimit: 60,
 				});
 			},
 		);
@@ -724,6 +739,8 @@ describe("config", () => {
 				aiApiKey: "selector-key",
 				aiBaseUrl: "",
 				aiModelName: "gpt-4.1",
+				aiTemperature: 1.0,
+				aiSubAgentTemperature: 0.4,
 				aiType: "openai",
 				appEntrypoint: "telegram",
 				telegramAllowedChatId: "-1001234567890",
@@ -742,6 +759,8 @@ describe("config", () => {
 				enableImageUnderstanding: false,
 				enableToolStatus: true,
 				enableAttachmentCompactionNotice: true,
+				enableBrowserOnParent: false,
+				enableTabular: true,
 				defaultStatusLocale: "en",
 				enableVoiceMessages: true,
 				transcriptionProvider: "openai",
@@ -753,6 +772,7 @@ describe("config", () => {
 				webPort: 8083,
 				webPublicBaseUrl: "http://localhost:8083",
 				timezone: "UTC",
+				recursionLimit: 60,
 			});
 		});
 	});
@@ -882,6 +902,189 @@ describe("config", () => {
 
 				expect(config.aiBaseUrl).toBe("http://127.0.0.1:11434/v1");
 				expect(config.aiApiKey).toBe("");
+			},
+		);
+	});
+
+test("defaults enableBrowserOnParent to false when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableBrowserOnParent).toBe(false);
+			},
+		);
+	});
+
+	test("respects ENABLE_BROWSER_ON_PARENT=true env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_BROWSER_ON_PARENT: "true",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableBrowserOnParent).toBe(true);
+			},
+		);
+	});
+
+	test("respects ENABLE_BROWSER_ON_PARENT=false env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_BROWSER_ON_PARENT: "false",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableBrowserOnParent).toBe(false);
+			},
+		);
+	});
+
+	test("defaults enableTabular to true when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableTabular).toBe(true);
+			},
+		);
+	});
+
+	test("respects ENABLE_TABULAR=false env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_TABULAR: "false",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableTabular).toBe(false);
+			},
+		);
+	});
+
+	test("respects ENABLE_TABULAR=true env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				ENABLE_TABULAR: "true",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.enableTabular).toBe(true);
+			},
+		);
+	});
+
+	test("defaults recursionLimit to 60 when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.recursionLimit).toBe(60);
+			},
+		);
+	});
+
+	test("respects AI_RECURSION_LIMIT env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				AI_RECURSION_LIMIT: "100",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.recursionLimit).toBe(100);
+			},
+		);
+	});
+
+	test("defaults agent temperatures when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.aiTemperature).toBe(1.0);
+				expect(config.aiSubAgentTemperature).toBe(0.4);
+			},
+		);
+	});
+
+	test("reads agent temperatures from env", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "openai",
+				AI_MODEL_NAME: "gpt-4.1-mini",
+				AI_TEMPERATURE: "1",
+				AI_SUB_AGENT_TEMPERATURE: "0.25",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.aiTemperature).toBe(1);
+				expect(config.aiSubAgentTemperature).toBe(0.25);
+			},
+		);
+	});
+
+	test("reports invalid agent temperatures", async () => {
+		await withEnv(
+			{
+				AI_TEMPERATURE: "1.5",
+				AI_SUB_AGENT_TEMPERATURE: "cold",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toEqual(
+					expect.arrayContaining([
+						{
+							field: "AI_TEMPERATURE",
+							reason: "AI_TEMPERATURE must be a number between 0 and 1.",
+						},
+						{
+							field: "AI_SUB_AGENT_TEMPERATURE",
+							reason:
+								"AI_SUB_AGENT_TEMPERATURE must be a number between 0 and 1.",
+						},
+					]),
+				);
 			},
 		);
 	});

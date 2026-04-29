@@ -23,6 +23,7 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	handleTelegramQueuedTurn,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
@@ -32,6 +33,7 @@ import {
 	renderTelegramHtml,
 	renderTelegramWelcomeMessage,
 	TELEGRAM_COMMANDS,
+	type TelegramAgentSession,
 	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
 	takeTelegramParagraphStreamChunks,
@@ -564,6 +566,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 					},
 				],
 			]),
+			recursionLimit: 60,
 		};
 
 		const result = maybeHandleTelegramApprovalReply(session, "always");
@@ -588,6 +591,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			pdfExtractor: new NoOpPdfExtractor(),
 			spreadsheetParser: new NoOpSpreadsheetParser(),
 			pendingApprovals: new Map(),
+			recursionLimit: 60,
 		};
 
 		expect(maybeHandleTelegramApprovalReply(session, "hello")).toEqual({
@@ -679,6 +683,110 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(mockBot.api.sendMessage).not.toHaveBeenCalled();
 	});
 
+	test("queued user messages wait for the running turn and merge before the next agent call", async () => {
+		let releaseFirstStream!: () => void;
+		const firstStreamReleased = new Promise<void>((resolve) => {
+			releaseFirstStream = resolve;
+		});
+		const streamInputs: Array<{ messages?: Array<{ content?: unknown }> }> = [];
+		let streamCalls = 0;
+
+		const agent = {
+			getState: async () => ({ values: { messages: [] } }),
+			stream: async (input: { messages?: Array<{ content?: unknown }> }) => {
+				streamInputs.push(input);
+				streamCalls += 1;
+				const callNumber = streamCalls;
+				if (callNumber === 1) {
+					await firstStreamReleased;
+				}
+				return (async function* () {
+					yield [{ getType: () => "ai", content: `reply ${callNumber}` }];
+				})();
+			},
+		};
+		const session = {
+			agent,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+		} as unknown as TelegramAgentSession;
+		const bot = {
+			api: {
+				sendChatAction: vi.fn().mockResolvedValue(undefined),
+				sendMessage: vi.fn().mockResolvedValue(undefined),
+			},
+		} as unknown as Bot;
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			"first",
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			"first",
+			undefined,
+			new Date("2026-04-28T00:00:00.000Z"),
+		);
+		// drain all pending microtasks so runAgentTurn reaches agent.stream
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(streamInputs).toHaveLength(1);
+		expect(session.running).toBe(true);
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			"second",
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			"second",
+			undefined,
+			new Date("2026-04-28T00:00:01.000Z"),
+		);
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			"third",
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			"third",
+			undefined,
+			new Date("2026-04-28T00:00:02.000Z"),
+		);
+
+		expect(streamInputs).toHaveLength(1);
+		expect(session.queue).toHaveLength(2);
+
+		releaseFirstStream();
+		for (let i = 0; i < 20 && streamInputs.length < 2; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(streamInputs).toHaveLength(2);
+		const secondAgentMessages = streamInputs[1]?.messages ?? [];
+		expect(secondAgentMessages.at(-1)?.content).toBe("second\nthird");
+		expect(session.queue).toHaveLength(0);
+	});
+
 	test("callback payload parsing preserves prompt ids containing colons", () => {
 		const data = "approve-once:1712345678901:abc123";
 		const separator = data.indexOf(":");
@@ -746,6 +854,7 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 					},
 				],
 			]),
+			recursionLimit: 60,
 		};
 
 		const result = maybeHandleTelegramApprovalReply(session, "approve");

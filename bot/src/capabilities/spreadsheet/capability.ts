@@ -1,11 +1,12 @@
 import type { AppConfig } from "../../config";
+import { saveIncomingAttachment } from "../incoming/save_attachment";
 import type {
 	CapabilityInput,
 	CapabilityResult,
 	FileCapability,
 	FileMetadata,
 } from "../types";
-import { SPREADSHEET_MAX_BYTES } from "./constants";
+import { SPREADSHEET_MAX_BYTES, TABULAR_INLINE_THRESHOLD_BYTES } from "./constants";
 import { CsvParser } from "./csv_parser";
 import { ExcelParser } from "./excel_parser";
 import type { SpreadsheetParser } from "./parser";
@@ -71,6 +72,30 @@ async function processSpreadsheet(
 ): Promise<CapabilityResult> {
 	const filename = input.metadata.filename ?? "spreadsheet";
 	const mimeType = input.metadata.mimeType ?? "";
+
+	if (input.workspace !== undefined && input.bytes.length > TABULAR_INLINE_THRESHOLD_BYTES) {
+		const ext = filename.includes(".") ? filename.split(".").pop()! : "csv";
+		try {
+			const { vfsPath } = await saveIncomingAttachment({
+				backend: input.workspace,
+				bytes: input.bytes,
+				extension: ext,
+			});
+			const message =
+				`Spreadsheet saved to \`${vfsPath}\`. ` +
+				`Use \`tabular_describe\`, \`tabular_head\`, \`tabular_filter\`, or \`tabular_aggregate\` to query it.`;
+			return {
+				ok: true,
+				value: {
+					content: message,
+					currentUserText: message,
+				},
+			};
+		} catch {
+			// fall through to inline rendering if save fails
+		}
+	}
+
 	const result = await parser.parse(input.bytes, filename, mimeType);
 
 	if (result.isCorrupt) {

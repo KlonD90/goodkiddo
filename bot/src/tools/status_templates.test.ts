@@ -24,6 +24,12 @@ describe("status_templates", () => {
 			expect(hasTemplate("send_file")).toBe(true);
 			expect(hasTemplate("grant_fs_access")).toBe(true);
 			expect(hasTemplate("research")).toBe(true);
+			expect(hasTemplate("tabular_describe")).toBe(true);
+			expect(hasTemplate("tabular_head")).toBe(true);
+			expect(hasTemplate("tabular_sample")).toBe(true);
+			expect(hasTemplate("tabular_distinct")).toBe(true);
+			expect(hasTemplate("tabular_filter")).toBe(true);
+			expect(hasTemplate("tabular_aggregate")).toBe(true);
 		});
 
 		test("returns false for unknown tools", () => {
@@ -509,6 +515,198 @@ describe("status_templates", () => {
 					});
 				}
 			}
+		});
+
+		describe("tabular tools", () => {
+			test("tabular_describe en", () => {
+				const result = renderStatus(
+					"tabular_describe",
+					{ path: "/data/sales.csv" },
+					"en",
+				);
+				expect(result?.message).toBe("Reading schema of /data/sales.csv");
+			});
+
+			test("tabular_describe ru", () => {
+				const result = renderStatus(
+					"tabular_describe",
+					{ path: "/data/sales.csv" },
+					"ru",
+				);
+				expect(result?.message).toBe("Читаю схему /data/sales.csv");
+			});
+
+			test("tabular_describe es", () => {
+				const result = renderStatus(
+					"tabular_describe",
+					{ path: "/data/sales.csv" },
+					"es",
+				);
+				expect(result?.message).toBe("Leyendo esquema de /data/sales.csv");
+			});
+
+			test("tabular_head en", () => {
+				const result = renderStatus(
+					"tabular_head",
+					{ path: "/data.csv", n: 10 },
+					"en",
+				);
+				expect(result?.message).toBe("Reading first 10 rows of /data.csv");
+			});
+
+			test("tabular_head ru", () => {
+				const result = renderStatus(
+					"tabular_head",
+					{ path: "/data.csv", n: 5 },
+					"ru",
+				);
+				expect(result?.message).toBe("Читаю первые 5 строк /data.csv");
+			});
+
+			test("tabular_head es", () => {
+				const result = renderStatus(
+					"tabular_head",
+					{ path: "/data.csv", n: 20 },
+					"es",
+				);
+				expect(result?.message).toBe("Leyendo primeras 20 filas de /data.csv");
+			});
+
+			test("tabular_sample en", () => {
+				const result = renderStatus(
+					"tabular_sample",
+					{ path: "/data.csv", n: 15 },
+					"en",
+				);
+				expect(result?.message).toBe("Sampling 15 rows from /data.csv");
+			});
+
+			test("tabular_sample ru", () => {
+				const result = renderStatus(
+					"tabular_sample",
+					{ path: "/data.csv", n: 10 },
+					"ru",
+				);
+				expect(result?.message).toBe("Сэмплирую 10 строк из /data.csv");
+			});
+
+			test("tabular_sample es", () => {
+				const result = renderStatus(
+					"tabular_sample",
+					{ path: "/data.csv", n: 10 },
+					"es",
+				);
+				expect(result?.message).toBe("Muestreando 10 filas de /data.csv");
+			});
+
+			test("tabular_distinct en", () => {
+				const result = renderStatus(
+					"tabular_distinct",
+					{ path: "/data.csv", column: "category" },
+					"en",
+				);
+				expect(result?.message).toBe(
+					"Getting distinct values of category in /data.csv",
+				);
+			});
+
+			test("tabular_distinct ru", () => {
+				const result = renderStatus(
+					"tabular_distinct",
+					{ path: "/data.csv", column: "status" },
+					"ru",
+				);
+				expect(result?.message).toBe(
+					"Получаю уникальные значения status в /data.csv",
+				);
+			});
+
+			test("tabular_distinct es", () => {
+				const result = renderStatus(
+					"tabular_distinct",
+					{ path: "/data.csv", column: "ciudad" },
+					"es",
+				);
+				expect(result?.message).toBe(
+					"Obteniendo valores distintos de ciudad en /data.csv",
+				);
+			});
+
+			test("tabular_filter en", () => {
+				const result = renderStatus(
+					"tabular_filter",
+					{ path: "/data.csv", where: [{ column: "age", op: "gt", value: 18 }] },
+					"en",
+				);
+				expect(result?.message).toBe("Filtering rows in /data.csv");
+			});
+
+			test("tabular_filter ru", () => {
+				const result = renderStatus(
+					"tabular_filter",
+					{ path: "/data.csv" },
+					"ru",
+				);
+				expect(result?.message).toBe("Фильтрую строки в /data.csv");
+			});
+
+			test("tabular_filter es", () => {
+				const result = renderStatus(
+					"tabular_filter",
+					{ path: "/data.csv" },
+					"es",
+				);
+				expect(result?.message).toBe("Filtrando filas en /data.csv");
+			});
+
+			test("tabular_aggregate en with aggregations array", () => {
+				const result = renderStatus(
+					"tabular_aggregate",
+					{
+						path: "/data.csv",
+						aggregations: [{ fn: "sum", column: "revenue" }],
+					},
+					"en",
+				);
+				expect(result?.message).toBe("Aggregating sum(revenue) in /data.csv");
+			});
+
+			test("tabular_aggregate ru", () => {
+				const result = renderStatus(
+					"tabular_aggregate",
+					{
+						path: "/data.csv",
+						aggregations: [{ fn: "count" }],
+					},
+					"ru",
+				);
+				expect(result?.message).toBe("Агрегирую count(*) в /data.csv");
+			});
+
+			test("tabular_aggregate es", () => {
+				const result = renderStatus(
+					"tabular_aggregate",
+					{
+						path: "/data.csv",
+						aggregations: [{ fn: "mean", column: "price" }],
+					},
+					"es",
+				);
+				expect(result?.message).toBe("Agregando mean(price) en /data.csv");
+			});
+
+			test("hasTemplate returns true for all tabular tools", () => {
+				for (const name of [
+					"tabular_describe",
+					"tabular_head",
+					"tabular_sample",
+					"tabular_distinct",
+					"tabular_filter",
+					"tabular_aggregate",
+				]) {
+					expect(hasTemplate(name), `${name} should have a template`).toBe(true);
+				}
+			});
 		});
 	});
 });

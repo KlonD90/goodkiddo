@@ -44,6 +44,8 @@ export interface CreateAppAgentOptions {
 	imageUnderstandingProvider?: ImageUnderstandingProvider | null;
 	/** Resolved identity prompt to use as the agent's system identity. Defaults to the registry default. */
 	identityPrompt?: string;
+	/** Maximum recursion depth for the main agent. Defaults to LangGraph's built-in limit. */
+	recursionLimit?: number;
 }
 
 // Memory-scoped agent bits that the channel layer also needs access to — the
@@ -66,6 +68,14 @@ export const createAppAgent = async (
 		config.aiModelName,
 		config.aiApiKey,
 		config.aiBaseUrl,
+		{ temperature: config.aiTemperature },
+	);
+	const subAgentModel = modelChooser(
+		config.aiType,
+		config.aiModelName,
+		config.aiApiKey,
+		config.aiBaseUrl,
+		{ temperature: config.aiSubAgentTemperature },
 	);
 
 	const workspace = new SqliteStateBackend({
@@ -119,7 +129,7 @@ export const createAppAgent = async (
 		locale: options.locale,
 		onMemoryMutation: options.onMemoryMutation,
 		imageUnderstandingProvider,
-		model,
+		model: subAgentModel,
 	});
 
 	const guardedTimerTools = options.timerTools

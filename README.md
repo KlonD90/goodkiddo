@@ -19,6 +19,10 @@ site. Run workspace commands from the repository root.
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
 endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
+Agent sampling uses `AI_TEMPERATURE=1.0` for the main agent and
+`AI_SUB_AGENT_TEMPERATURE=0.4` for delegated sub-agents by default. The lower
+sub-agent default keeps research and web-search synthesis more factual while
+still leaving room for query exploration.
 Telegram voice messages are enabled by default. Use `ENABLE_VOICE_MESSAGES=false`
 to disable them, `TRANSCRIPTION_PROVIDER=openai|openrouter` to choose the
 OpenAI-compatible transcription backend, `TRANSCRIPTION_API_KEY` to provide a

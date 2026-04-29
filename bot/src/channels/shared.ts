@@ -99,6 +99,8 @@ export type ChannelAgentSession = {
 	promptNeedsRefresh?: boolean;
 	/** The active identity preset id for this session. Null means server default. */
 	selectedIdentityId?: string | null;
+	/** Maximum recursion depth for agent invocations. */
+	recursionLimit: number;
 };
 
 type SQL = InstanceType<typeof Bun.SQL>;
@@ -155,6 +157,7 @@ export async function createChannelAgentSession(
 			onMemoryMutation: () => {
 				if (session) session.promptNeedsRefresh = true;
 			},
+			recursionLimit: config.recursionLimit,
 		});
 	};
 	let bundle = await makeBundle();
@@ -167,6 +170,7 @@ export async function createChannelAgentSession(
 		refreshAgent: async () => {
 			bundle = await makeBundle();
 			createdSession.agent = bundle.agent;
+			createdSession.recursionLimit = config.recursionLimit;
 			createdSession.workspace = bundle.workspace;
 			createdSession.model = bundle.model;
 		},
@@ -183,6 +187,7 @@ export async function createChannelAgentSession(
 		},
 		statusEmitter: options.statusEmitter,
 		locale: options.locale,
+		recursionLimit: config.recursionLimit,
 	};
 	session = createdSession;
 

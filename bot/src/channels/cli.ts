@@ -220,7 +220,10 @@ export const cliChannel: AppChannel = {
 				});
 				const result = await session.agent.invoke(
 					{ messages: invokeMessages },
-					{ configurable: { thread_id: session.threadId } },
+					{
+						configurable: { thread_id: session.threadId },
+						recursionLimit: session.recursionLimit,
+					},
 				);
 				const reply = extractAgentReply(result);
 

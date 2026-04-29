@@ -79,13 +79,14 @@ describe("buildResearchAgent", () => {
 		const model = new FakeToolCallingModel({ toolCalls: [] });
 		const workspace = createWorkspace("toolset-tabular");
 		const browserManager = stubBrowserManager();
-		const fakeTool = {
-			name: "tabular_query",
-			invoke: async () => "result",
-		} as unknown as ReturnType<typeof import("langchain").tool>;
 		const tabularEngine = {
-			createTools: () => [fakeTool],
-		};
+			describe: async () => ({ columns: [], rowCount: 0 }),
+			head: async () => ({ columns: [], rows: [] }),
+			sample: async () => ({ columns: [], rows: [] }),
+			distinct: async () => ({ column: "x", values: [] }),
+			filter: async () => ({ columns: [], rows: [] }),
+			aggregate: async () => ({ columns: [], rows: [] }),
+		} as unknown as import("../tabular/engine").TabularEngine;
 
 		const agent = buildResearchAgent({
 			model,
@@ -98,7 +99,9 @@ describe("buildResearchAgent", () => {
 		});
 
 		const toolNames = (agent as any).options.tools.map((t: any) => t.name);
-		expect(toolNames).toContain("tabular_query");
+		expect(toolNames).toContain("tabular_describe");
+		expect(toolNames).toContain("tabular_filter");
+		expect(toolNames).toContain("tabular_aggregate");
 	});
 
 	test("record_finding tool writes into notes and agent completes", async () => {

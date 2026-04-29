@@ -11,6 +11,8 @@
 - PDF parsing capability structure and extractor interface are documented in `bot/src/capabilities/pdf/README.md`.
 - Spreadsheet parsing capability structure and parser interface are documented in `bot/src/capabilities/spreadsheet/README.md`.
 - Scheduled timers (`bot/src/capabilities/timers/`) let the agent run memory file prompts on cron schedules. Timer tools available to the LLM: `create_timer(mdFilePath, cronExpression, timezone?)`, `list_timers()`, `update_timer(timerId, updates)`, `delete_timer(timerId)`. See `bot/src/capabilities/timers/README.md` for cron format and notification backend extension points.
+- Research sub-agent (`bot/src/capabilities/research/`) delegates investigation-heavy turns to a short-lived inner LangGraph agent with scoped browser sessions, recursion budgets, and read-only toolset. Notes are written to `research/<id>.md` in the workspace. See `bot/src/capabilities/research/README.md` for architecture and safe extension guidelines.
+- Tabular query tools (`bot/src/capabilities/tabular/`) provide six structured tools for CSV/XLSX/Parquet files: `tabular_describe`, `tabular_head`, `tabular_sample`, `tabular_distinct`, `tabular_filter`, `tabular_aggregate`. Whitelisted operators/aggregations, capped limits, per-tool output budget. See `bot/src/capabilities/tabular/README.md` for the engine interface, supported formats, and how to add a new engine.
 
 ## Tool Authoring
 

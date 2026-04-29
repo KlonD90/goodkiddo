@@ -49,6 +49,18 @@ describe("modelChooser", () => {
 		expect(model.fields?.configuration).toBeUndefined();
 	});
 
+	test("applies temperature to provider models", () => {
+		const model = modelChooser(
+			"openai",
+			"gpt-4.1-mini",
+			"openai-key",
+			"",
+			{ temperature: 0.3 },
+		) as ChatOpenAI & { temperature?: number };
+
+		expect(model.temperature).toBe(0.3);
+	});
+
 	test("creates an openrouter model with the provided API key and base URL", () => {
 		const model = modelChooser(
 			"openrouter",

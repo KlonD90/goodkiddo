@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "bun build ./goodkiddo/main.jsx --outdir ./dist --minify"
+    "build": "bun build ./index.html --outdir ./dist --production"
   },
   "dependencies": {
     "posthog-js": "^1",

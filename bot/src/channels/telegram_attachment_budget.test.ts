@@ -13,6 +13,8 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 	aiBaseUrl: "",
 	aiType: "openai",
 	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
 	appEntrypoint: "telegram",
 	telegramBotToken: "telegram-token",
 	telegramAllowedChatId: "",
@@ -31,6 +33,7 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 	enableImageUnderstanding: false,
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
+	enableBrowserOnParent: false,
 	defaultStatusLocale: "en",
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
@@ -41,6 +44,7 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 	webPort: 8083,
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
+	recursionLimit: 60,
 };
 
 type TelegramProcessSession = Parameters<typeof processTelegramFile>[2];
@@ -92,6 +96,7 @@ function createProcessSession(
 			caller: "telegram:123",
 			store: {} as never,
 		},
+		recursionLimit: 60,
 	};
 }
 

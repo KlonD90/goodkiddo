@@ -415,6 +415,7 @@ async function runAgentTurn(
 			{
 				configurable: { thread_id: session.threadId },
 				streamMode: "messages",
+				recursionLimit: session.recursionLimit,
 			},
 		);
 		let pendingReply = "";
@@ -615,6 +616,8 @@ async function pumpQueue(
 	bot: Bot,
 	chatId: string,
 ): Promise<void> {
+	if (session.running) return;
+
 	const current = session.queue.shift();
 	if (current === undefined) return;
 
