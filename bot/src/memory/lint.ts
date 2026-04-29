@@ -7,6 +7,7 @@ import {
 	LINT_STALE_DAYS,
 	MEMORY_INDEX_PATH,
 	MEMORY_PROMPT_CHAR_CAP,
+	MEMORY_ROOT,
 	NOTES_DIR,
 	SKILLS_INDEX_PATH,
 	SKILLS_ROOT,
@@ -16,6 +17,11 @@ import {
 	isStructuredUserProfile,
 	userProfileIsEmpty,
 } from "./user_profile";
+
+// File listing paths that are intentionally kept without modification
+// and should not trigger stale warnings. Format: JSON array of string paths.
+// Users can edit this file directly to acknowledge long-lived but valid files.
+export const LINT_RESOLVED_PATH = `${MEMORY_ROOT}.lint_resolved.json`;
 
 // Pure-function health check over the memory subtrees. Findings surface to the
 // agent via the `## Memory maintenance` block appended to the system prompt by
@@ -87,6 +93,10 @@ function isMemoryContentFile(path: string): boolean {
 	);
 }
 
+function isExemptMarker(path: string): boolean {
+	return path.endsWith(".archived") || path.endsWith(".permanent");
+}
+
 function hasEmptySlugPath(path: string): boolean {
 	return path.endsWith("/.md");
 }
@@ -136,9 +146,23 @@ export async function runLint(
 		),
 	];
 
+	// Files with a .permanent or .archived marker are exempt from stale warnings.
+	const exemptPaths = new Set<string>();
+	for (const file of [...noteFiles, ...skillFiles]) {
+		if (file.path.endsWith(".permanent") || file.path.endsWith(".archived")) {
+			const base = file.path.endsWith(".permanent")
+				? file.path.slice(0, -".permanent".length)
+				: file.path.slice(0, -".archived".length);
+			exemptPaths.add(base);
+		}
+	}
+
 	const staleNotes: string[] = [];
 	for (const file of [...noteFiles, ...skillFiles]) {
-		if (msSince(file.modified_at, nowMs) > staleThreshold) {
+		if (
+			msSince(file.modified_at, nowMs) > staleThreshold &&
+			!exemptPaths.has(file.path)
+		) {
 			staleNotes.push(file.path);
 		}
 	}
@@ -150,6 +174,7 @@ export async function runLint(
 	const orphans: string[] = [];
 	for (const file of [...noteFiles, ...skillFiles]) {
 		if (file.path === SKILLS_INDEX_PATH) continue;
+		if (isExemptMarker(file.path)) continue;
 		if (!indexedPaths.has(file.path)) orphans.push(file.path);
 	}
 
@@ -162,7 +187,8 @@ export async function runLint(
 	);
 	const emptySlugPaths = allContentFiles
 		.map((file) => file.path)
-		.filter(hasEmptySlugPath);
+		.filter(hasEmptySlugPath)
+		.filter((path) => !isExemptMarker(path));
 	const missingActuelPaths = await findMissingActuelPaths(
 		backend,
 		allContentFiles,
@@ -170,6 +196,7 @@ export async function runLint(
 
 	const memoryChars =
 		(await backendCharCount(backend, MEMORY_INDEX_PATH)) +
+		(await backendCharCount(backend, USER_PROFILE_PATH)) +
 		(await backendCharCount(backend, SKILLS_INDEX_PATH));
 	const overBudget =
 		memoryChars > MEMORY_PROMPT_CHAR_CAP * LINT_OVER_BUDGET_RATIO

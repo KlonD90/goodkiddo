@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { SqliteStateBackend } from "../backends";
 import { createDb, detectDialect } from "../db";
 import { ensureMemoryBootstrapped } from "../memory/bootstrap";
-import { readOrEmpty } from "../memory/fs";
+import { overwrite, readOrEmpty } from "../memory/fs";
 import {
 	MEMORY_INDEX_PATH,
 	MEMORY_LOG_PATH,
@@ -11,6 +11,7 @@ import {
 } from "../memory/layout";
 import {
 	createMemoryAppendLogTool,
+	createMemoryMaintainTool,
 	createMemoryWriteTool,
 	createSkillWriteTool,
 } from "./memory_tools";
@@ -319,5 +320,135 @@ describe("memory_append_log", () => {
 
 		const log = await readOrEmpty(backend, MEMORY_LOG_PATH);
 		expect(log).toContain("preference_learned | user likes TS");
+	});
+});
+
+describe("memory_maintain", () => {
+	test("touch resets mtime of an existing file", async () => {
+		const backend = createBackend("mm-touch");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		await overwrite(backend, "/memory/notes/alpha.md", "# Alpha\n\n## Actuel\nInitial.\n");
+
+		const result = await callTool(tool, {
+			action: "touch",
+			path: "/memory/notes/alpha.md",
+		});
+
+		expect(result).toContain("Touched");
+		expect(result).toContain("/memory/notes/alpha.md");
+		const content = await readOrEmpty(backend, "/memory/notes/alpha.md");
+		expect(content).toContain("Initial.");
+	});
+
+	test("touch returns error for non-existent file", async () => {
+		const backend = createBackend("mm-touch-missing");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		const result = await callTool(tool, {
+			action: "touch",
+			path: "/memory/notes/does-not-exist.md",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("not found");
+	});
+
+	test("touch rejects paths outside allowed roots", async () => {
+		const backend = createBackend("mm-touch-bad-path");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		const result = await callTool(tool, {
+			action: "touch",
+			path: "/etc/passwd",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("/memory/notes/");
+	});
+
+	test("archive copies file to .archived and deletes original", async () => {
+		const backend = createBackend("mm-archive");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		await overwrite(backend, "/memory/notes/beta.md", "# Beta\n\n## Actuel\nOld content.\n");
+
+		const result = await callTool(tool, {
+			action: "archive",
+			path: "/memory/notes/beta.md",
+		});
+
+		expect(result).toContain("Archived");
+		expect(result).toContain(".archived");
+		const archived = await readOrEmpty(backend, "/memory/notes/beta.md.archived");
+		expect(archived).toContain("Old content.");
+		const gone = await readOrEmpty(backend, "/memory/notes/beta.md");
+		expect(gone).toBe("");
+	});
+
+	test("archive returns error for non-existent file", async () => {
+		const backend = createBackend("mm-archive-missing");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		const result = await callTool(tool, {
+			action: "archive",
+			path: "/memory/notes/nonexistent.md",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("not found");
+	});
+
+	test("mark_permanent creates a .permanent companion file", async () => {
+		const backend = createBackend("mm-permanent");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		await overwrite(backend, "/memory/notes/gamma.md", "# Gamma\n\n## Actuel\nReference doc.\n");
+
+		const result = await callTool(tool, {
+			action: "mark_permanent",
+			path: "/memory/notes/gamma.md",
+		});
+
+		expect(result).toContain("permanent");
+		const marker = await readOrEmpty(backend, "/memory/notes/gamma.md.permanent");
+		expect(marker).toBe("");
+	});
+
+	test("mark_permanent works on skills files", async () => {
+		const backend = createBackend("mm-permanent-skill");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		await overwrite(backend, "/skills/deploy.md", "# deploy\n\n## Steps\n1. deploy\n");
+
+		const result = await callTool(tool, {
+			action: "mark_permanent",
+			path: "/skills/deploy.md",
+		});
+
+		expect(result).toContain("permanent");
+		const marker = await readOrEmpty(backend, "/skills/deploy.md.permanent");
+		expect(marker).toBe("");
+	});
+
+	test("mark_permanent returns error for non-existent file", async () => {
+		const backend = createBackend("mm-permanent-missing");
+		await ensureMemoryBootstrapped(backend);
+		const tool = createMemoryMaintainTool(backend);
+
+		const result = await callTool(tool, {
+			action: "mark_permanent",
+			path: "/memory/notes/no.md",
+		});
+
+		expect(result).toContain("Error:");
+		expect(result).toContain("not found");
 	});
 });

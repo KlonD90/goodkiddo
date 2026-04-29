@@ -33,6 +33,7 @@ import { type GuardContext, wrapToolWithGuard } from "./guard";
 import { createUnderstandImageTool } from "./image_understanding_tool";
 import {
 	createMemoryAppendLogTool,
+	createMemoryMaintainTool,
 	createMemoryWriteTool,
 	createSkillWriteTool,
 	type MemoryMutationCallback,
@@ -180,6 +181,7 @@ export async function createExecutionToolset(
 		createMemoryWriteTool(options.workspace, options.onMemoryMutation),
 		createSkillWriteTool(options.workspace, options.onMemoryMutation),
 		createMemoryAppendLogTool(options.workspace),
+		createMemoryMaintainTool(options.workspace),
 		...taskTools,
 		...(enableBrowserOnParent
 			? [

@@ -130,7 +130,7 @@ export function buildRuntimeContext(options: {
 		checkpoint,
 		allMessages,
 		currentInput,
-		recentTurnCount = 2,
+		recentTurnCount = 4,
 	} = options;
 
 	const currentUserMessage: ThreadMessage = {

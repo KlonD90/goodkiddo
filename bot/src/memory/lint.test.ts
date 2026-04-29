@@ -4,7 +4,7 @@ import { createDb, detectDialect } from "../db";
 import { ensureMemoryBootstrapped } from "./bootstrap";
 import { overwrite } from "./fs";
 import { upsertIndexFile } from "./index_manager";
-import { MEMORY_INDEX_PATH, MEMORY_PROMPT_CHAR_CAP } from "./layout";
+import { MEMORY_INDEX_PATH, MEMORY_PROMPT_CHAR_CAP, USER_PROFILE_PATH } from "./layout";
 import {
 	formatMaintenanceBlock,
 	isEmpty,
@@ -117,6 +117,17 @@ describe("runLint", () => {
 		expect(findings.overBudget).not.toBeNull();
 	});
 
+	test("flags over-budget when USER_PROFILE_PATH alone exceeds cap", async () => {
+		const backend = createBackend("lint-budget-user");
+		await ensureMemoryBootstrapped(backend);
+		// USER_PROFILE_PATH is now included in overBudget calculation
+		const bloat = "x".repeat(Math.ceil(MEMORY_PROMPT_CHAR_CAP * 1.5));
+		await overwrite(backend, USER_PROFILE_PATH, bloat);
+
+		const findings = await runLint(backend);
+		expect(findings.overBudget).not.toBeNull();
+	});
+
 	test("flags malformed index lines", async () => {
 		const backend = createBackend("lint-malformed-index");
 		await ensureMemoryBootstrapped(backend);
@@ -186,5 +197,59 @@ describe("formatMaintenanceBlock", () => {
 		const block = formatMaintenanceBlock(findings({ userProfileEmpty: true }));
 		expect(block).toContain("Continue with the user request");
 		expect(block).not.toContain("Before doing other work");
+	});
+});
+
+describe("exempt markers (.archived / .permanent)", () => {
+	test("stale .archived file is NOT flagged as stale", async () => {
+		const backend = createBackend("lint-exempt-archived-stale");
+		await ensureMemoryBootstrapped(backend);
+		// Write a note directly (bypass index) so it looks like a legacy file
+		await overwrite(
+			backend,
+			"/memory/notes/old.archived",
+			"# Old\n\n## Actuel\nLegacy content.\n",
+		);
+
+		const findings = await runLint(backend);
+		// The file has no index entry so it's an orphan — but it should NOT
+		// appear in staleNotes even if we later add it to the index
+		expect(findings.staleNotes).not.toContain("/memory/notes/old.archived");
+	});
+
+	test("stale .permanent file is NOT flagged as stale", async () => {
+		const backend = createBackend("lint-exempt-permanent-stale");
+		await ensureMemoryBootstrapped(backend);
+		await overwrite(
+			backend,
+			"/memory/notes/ref.permanent",
+			"# Ref\n\n## Actuel\nReference.\n",
+		);
+
+		const findings = await runLint(backend);
+		expect(findings.staleNotes).not.toContain("/memory/notes/ref.permanent");
+	});
+
+	test(".archived file is NOT flagged as orphan", async () => {
+		const backend = createBackend("lint-exempt-archived-orphan");
+		await ensureMemoryBootstrapped(backend);
+		// Create a .archived file not in the index — should NOT be flagged orphan
+		await overwrite(
+			backend,
+			"/memory/notes/dead.archived",
+			"# Dead\n\n## Actuel\nArchived.\n",
+		);
+
+		const findings = await runLint(backend);
+		expect(findings.orphans).not.toContain("/memory/notes/dead.archived");
+	});
+
+	test(".archived empty-slug file is NOT flagged as empty-slug", async () => {
+		const backend = createBackend("lint-exempt-archived-slug");
+		await ensureMemoryBootstrapped(backend);
+		await overwrite(backend, "/memory/notes/.archived", "# Empty\n\n## Actuel\nBad.\n");
+
+		const findings = await runLint(backend);
+		expect(findings.emptySlugPaths).not.toContain("/memory/notes/.archived");
 	});
 });
