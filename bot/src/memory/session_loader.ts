@@ -35,6 +35,12 @@ import MEMORY_PROMPT_MD from "./memory_prompt.md?raw";
 function truncateToCap(content: string, cap: number): string {
 	if (content.length <= cap) return content;
 
+	// Build suffix first so we can reserve its length from the cap.
+	const estimateOverflow = (n: number) =>
+		`\n\n... [${n} more entries truncated — use grep to retrieve specific topics, then run memory_lint or compact via rotate_actuel]`;
+	const MAX_SUFFIX_ESTIMATE = 130; // safe upper bound for any overflow count
+	const effectiveCap = cap - MAX_SUFFIX_ESTIMATE;
+
 	// Split by newlines and accumulate line-by-line, never slicing mid-line.
 	const lines = content.split("\n");
 	const result: string[] = [];
@@ -42,7 +48,7 @@ function truncateToCap(content: string, cap: number): string {
 
 	for (const line of lines) {
 		const withSeparator = result.length > 0 ? line.length + 1 : line.length;
-		if (total + withSeparator <= cap) {
+		if (total + withSeparator <= effectiveCap) {
 			result.push(line);
 			total += withSeparator;
 		} else {
@@ -51,7 +57,7 @@ function truncateToCap(content: string, cap: number): string {
 	}
 
 	const overflow = lines.length - result.length;
-	const suffix = `\n\n... [+${overflow} more entries — use grep to retrieve specific topics]`;
+	const suffix = estimateOverflow(overflow);
 	return result.join("\n") + suffix;
 }
 

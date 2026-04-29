@@ -93,6 +93,10 @@ function isMemoryContentFile(path: string): boolean {
 	);
 }
 
+function isExemptMarker(path: string): boolean {
+	return path.endsWith(".archived") || path.endsWith(".permanent");
+}
+
 function hasEmptySlugPath(path: string): boolean {
 	return path.endsWith("/.md");
 }
@@ -170,6 +174,7 @@ export async function runLint(
 	const orphans: string[] = [];
 	for (const file of [...noteFiles, ...skillFiles]) {
 		if (file.path === SKILLS_INDEX_PATH) continue;
+		if (isExemptMarker(file.path)) continue;
 		if (!indexedPaths.has(file.path)) orphans.push(file.path);
 	}
 
@@ -182,7 +187,8 @@ export async function runLint(
 	);
 	const emptySlugPaths = allContentFiles
 		.map((file) => file.path)
-		.filter(hasEmptySlugPath);
+		.filter(hasEmptySlugPath)
+		.filter((path) => !isExemptMarker(path));
 	const missingActuelPaths = await findMissingActuelPaths(
 		backend,
 		allContentFiles,

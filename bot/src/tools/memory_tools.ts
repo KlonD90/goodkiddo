@@ -128,12 +128,11 @@ async function writeActuelFile(
 	await overwrite(backend, targetPath, nextBody);
 }
 
-async function performWrite(ctx: WriteContext): Promise<string> {
-	// Serialize by both targetPath and indexPath: the note file + index update
-	// is a read-modify-write pair. Without this, concurrent writes to the same
-	// note read the same stale file content and the last writer silently drops
-	// earlier entries.
-	return withLock(`${ctx.targetPath}:${ctx.indexPath}`, async () => {
+	async function performWrite(ctx: WriteContext): Promise<string> {
+		// Serialize by indexPath: the note file + index update is a read-modify-write
+		// pair. The index is the single source of truth for which notes exist, so all
+		// writes must serialize on it to prevent last-write-wins.
+		return withLock(ctx.indexPath, async () => {
 		const header = `# ${safeHeaderTitle(ctx.topic)}`;
 		await writeActuelFile(
 			ctx.backend,
@@ -356,6 +355,14 @@ Three actions:
 
 Returns a confirmation message on success.`;
 
+function isAllowedMemoryPath(path: string): boolean {
+	return (
+		path.startsWith("/memory/notes/") ||
+		path.startsWith("/memory/USER.md") ||
+		path.startsWith("/skills/")
+	);
+}
+
 export function createMemoryMaintainTool(backend: BackendProtocol) {
 	return tool(
 		async ({
@@ -366,30 +373,29 @@ export function createMemoryMaintainTool(backend: BackendProtocol) {
 			path: string;
 		}) => {
 			try {
+				if (!isAllowedMemoryPath(path)) {
+					return `Error: path must be under /memory/notes/, /memory/USER.md, or /skills/. Got: ${path}`;
+				}
+				const hasFile = await exists(backend, path);
+				if (!hasFile) {
+					return `Error: file not found: ${path}`;
+				}
+
 				if (action === "touch") {
 					const content = await readOrEmpty(backend, path);
-					if (content === "") {
-						return `Error: file not found: ${path}`;
-					}
 					await overwrite(backend, path, content);
 					return `Touched ${path} — mtime reset.`;
 				}
 
 				if (action === "archive") {
 					const content = await readOrEmpty(backend, path);
-					if (content === "") {
-						return `Error: file not found: ${path}`;
-					}
 					const archivedPath = `${path}.archived`;
 					await overwrite(backend, archivedPath, content);
-					return `Archived ${path} → ${archivedPath}.`;
+					await backend.deleteFile(path);
+					return `Archived ${path} → ${archivedPath}. Original removed from disk.`;
 				}
 
 				if (action === "mark_permanent") {
-					const hasFile = await exists(backend, path);
-					if (!hasFile) {
-						return `Error: file not found: ${path}`;
-					}
 					const markerPath = `${path}.permanent`;
 					await overwrite(backend, markerPath, "");
 					return `Marked ${path} permanent — lint will skip it.`;
