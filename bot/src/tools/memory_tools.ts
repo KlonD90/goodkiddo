@@ -129,10 +129,11 @@ async function writeActuelFile(
 }
 
 async function performWrite(ctx: WriteContext): Promise<string> {
-	// Serialize by indexPath: the note file + index update is a read-modify-write
-	// pair. Without this, concurrent writes read the same stale index and the
-	// last writer silently drops earlier entries.
-	return withLock(ctx.indexPath, async () => {
+	// Serialize by both targetPath and indexPath: the note file + index update
+	// is a read-modify-write pair. Without this, concurrent writes to the same
+	// note read the same stale file content and the last writer silently drops
+	// earlier entries.
+	return withLock(`${ctx.targetPath}:${ctx.indexPath}`, async () => {
 		const header = `# ${safeHeaderTitle(ctx.topic)}`;
 		await writeActuelFile(
 			ctx.backend,
@@ -336,6 +337,80 @@ export function createMemoryAppendLogTool(backend: BackendProtocol) {
 					.string()
 					.min(1)
 					.describe("One-line detail. Longer than a line gets flattened."),
+			}),
+		},
+	);
+}
+
+const MEMORY_MAINTAIN_PROMPT = context`Maintain memory files — resolve stale warnings or mark files as permanently exempt.
+
+Three actions:
+
+- touch: Read and re-write a file unchanged to reset its modified timestamp,
+  clearing the stale (>60d) warning in the next lint cycle.
+- archive: Append .archived to the file path. The original stays on disk; the
+  .archived suffix marks it as intentionally inactive and lint skips it.
+- mark_permanent: Create a companion .permanent marker file alongside the target.
+  Lint skips files with a .permanent marker regardless of age. Use for files that
+  are intentionally long-lived (reference docs, constants, etc.).
+
+Returns a confirmation message on success.`;
+
+export function createMemoryMaintainTool(backend: BackendProtocol) {
+	return tool(
+		async ({
+			action,
+			path,
+		}: {
+			action: "touch" | "archive" | "mark_permanent";
+			path: string;
+		}) => {
+			try {
+				if (action === "touch") {
+					const content = await readOrEmpty(backend, path);
+					if (content === "") {
+						return `Error: file not found: ${path}`;
+					}
+					await overwrite(backend, path, content);
+					return `Touched ${path} — mtime reset.`;
+				}
+
+				if (action === "archive") {
+					const content = await readOrEmpty(backend, path);
+					if (content === "") {
+						return `Error: file not found: ${path}`;
+					}
+					const archivedPath = `${path}.archived`;
+					await overwrite(backend, archivedPath, content);
+					return `Archived ${path} → ${archivedPath}.`;
+				}
+
+				if (action === "mark_permanent") {
+					const hasFile = await exists(backend, path);
+					if (!hasFile) {
+						return `Error: file not found: ${path}`;
+					}
+					const markerPath = `${path}.permanent`;
+					await overwrite(backend, markerPath, "");
+					return `Marked ${path} permanent — lint will skip it.`;
+				}
+
+				return "Error: unknown action";
+			} catch (error) {
+				const message = error instanceof Error ? error.message : String(error);
+				return `Error: ${message}`;
+			}
+		},
+		{
+			name: "memory_maintain",
+			description: MEMORY_MAINTAIN_PROMPT,
+			schema: z.object({
+				action: z
+					.enum(["touch", "archive", "mark_permanent"])
+					.describe("Maintenance action to perform."),
+				path: z
+					.string()
+					.describe("Full path of the file to maintain (e.g. /memory/notes/my-note.md)."),
 			}),
 		},
 	);
