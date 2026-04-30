@@ -76,8 +76,8 @@ Notes:
 - [x] Add tests for reconcile behavior if metadata should survive reconciliation.
 
 ### Task 5: Docs
-- [ ] Update the relevant feature doc or README for task metadata behavior.
-- [ ] Explain that this is foundation for prepared follow-ups, not a full nudge engine.
+- [x] Update the relevant feature doc or README for task metadata behavior.
+- [x] Explain that this is foundation for prepared follow-ups, not a full nudge engine.
 
 ## Acceptance Criteria
 - Existing task behavior remains compatible.
