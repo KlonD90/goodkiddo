@@ -17,6 +17,11 @@ embedded authenticated bot browser UI, and `landing/` for the public marketing
 site. Run workspace commands from the repository root.
 
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
+Database migrations use dbmate through Bun workspace scripts. From the
+repository root, run `bun run db:migrate`, `bun run db:status`,
+`bun run db:rollback`, or `bun run db:new -- <migration_name>`. The wrapper
+selects `bot/db/migrations/sqlite/` or `bot/db/migrations/postgres/` from
+`DATABASE_URL` and normalizes Bun-style relative SQLite URLs for dbmate.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
 endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
 Agent sampling uses `AI_TEMPERATURE=1.0` for the main agent and

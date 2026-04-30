@@ -39,13 +39,13 @@ bot/src/db/migrate.ts
 
 ### Task 2: Add migration command surface
 
-- [ ] Add package scripts for migration operations, e.g.:
+- [x] Add package scripts for migration operations, e.g.:
   - `db:migrate`
   - `db:status`
   - `db:rollback`
   - `db:new` if practical
-- [ ] Ensure scripts can choose dialect based on `DATABASE_URL` / app config.
-- [ ] Keep commands usable from repo root/Bun workspace conventions.
+- [x] Ensure scripts can choose dialect based on `DATABASE_URL` / app config.
+- [x] Keep commands usable from repo root/Bun workspace conventions.
 
 ### Task 3: Add baseline migrations
 
