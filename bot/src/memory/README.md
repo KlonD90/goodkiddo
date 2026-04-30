@@ -34,7 +34,28 @@ Memory note topics and skill names must slugify to at least one ASCII letter or 
 
 `USER.md` uses a fixed Markdown shape with `## Profile`, `## Preferences`, `## Environment`, `## Constraints`, and `## Open Questions`. New callers are bootstrapped with all five sections. Existing legacy profiles remain readable until `memory_write` with `target: "user"` updates them, at which point the tool normalizes the file into the fixed-section shape. Notes and skills still use `## Actuel` / `## Archive`.
 
-Proactive nudge preferences live in the `## Preferences` section of `USER.md`. The typed defaults are exported from [`user_profile.ts`](user_profile.ts) as `DEFAULT_PROACTIVE_PREFERENCES`: no assumed timezone, quiet hours from 21:00 to 09:00, digest time 09:00, at most one proactive nudge per day, and minimal pushiness. These defaults are code-level fallbacks and are not written into empty profiles, so an empty `USER.md` still means no durable user facts have been recorded.
+## Proactive nudge preferences
+
+Proactive nudge preferences live in the `## Preferences` section of `USER.md`. The typed defaults are exported from [`user_profile.ts`](user_profile.ts) as `DEFAULT_PROACTIVE_PREFERENCES` and are deliberately conservative for Telegram:
+
+- `timezone: null` — never assume the app or server timezone.
+- `quietHours.enabled: true`
+- `quietHours.startLocalTime: "21:00"`
+- `quietHours.endLocalTime: "09:00"`
+- `digestLocalTime: "09:00"`
+- `maxNudgesPerDay: 1`
+- `pushiness: "minimal"`
+- `feedback.lessLikeThis: []`
+
+These defaults are code-level fallbacks and are not written into empty profiles, so an empty `USER.md` still means no durable user facts have been recorded.
+
+The proactive fatigue guard in [`../capabilities/proactive/fatigue.ts`](../capabilities/proactive/fatigue.ts) turns those preferences into one of three outcomes:
+
+- `send` when a prepared follow-up is within the user's preferences.
+- `batch` during quiet hours, or when quiet hours are enabled but the timezone is unknown. Quiet-hour batches wait until the later of quiet-hours end and the explicit digest time.
+- `suppress` when the user has already reached `maxNudgesPerDay`, or when the follow-up topic matches a stored “less like this” signal.
+
+Explicit user-requested timers and reminders bypass quiet hours, daily nudge limits, and “less like this” suppression because those are direct user requests rather than unsolicited proactive follow-ups.
 
 “Less like this” feedback is stored as an additive proactive preference signal. Future prepared follow-ups with a matching topic can be suppressed by the fatigue guard without deleting or rewriting existing user profile facts.
 

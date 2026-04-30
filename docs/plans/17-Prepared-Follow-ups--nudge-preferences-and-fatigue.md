@@ -56,7 +56,7 @@ Out:
 - [x] Test less-like-this signal.
 
 ### Task 5: Docs
-- [ ] Document anti-spam behavior and defaults.
+- [x] Document anti-spam behavior and defaults.
 
 ## Acceptance Criteria
 - There is a tested fatigue guard function/module.
