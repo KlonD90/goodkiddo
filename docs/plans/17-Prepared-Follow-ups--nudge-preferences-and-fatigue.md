@@ -41,9 +41,9 @@ Out:
 - [x] Preserve existing profiles/memory behavior.
 
 ### Task 2: Fatigue decision helper
-- [ ] Implement send/batch/suppress decision from preferences and recent nudge count.
-- [ ] Respect quiet hours.
-- [ ] Exempt explicit user-requested timers/reminders if appropriate.
+- [x] Implement send/batch/suppress decision from preferences and recent nudge count.
+- [x] Respect quiet hours.
+- [x] Exempt explicit user-requested timers/reminders if appropriate.
 
 ### Task 3: Feedback handling
 - [ ] Store “less like this” as a preference signal.
