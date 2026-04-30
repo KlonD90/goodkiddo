@@ -70,9 +70,9 @@ bot/src/db/migrate.ts
 
 ### Task 5: Rework store startup contract
 
-- [ ] Remove any new `TaskStore` custom migration helper from PR #21.
-- [ ] Store constructors may keep defensive `CREATE TABLE IF NOT EXISTS` temporarily if existing repo pattern needs it, but new schema evolution should come from migrations.
-- [ ] Prefer docs/tests that make migrations the supported production path.
+- [x] Remove any new `TaskStore` custom migration helper from PR #21.
+- [x] Store constructors may keep defensive `CREATE TABLE IF NOT EXISTS` temporarily if existing repo pattern needs it, but new schema evolution should come from migrations.
+- [x] Prefer docs/tests that make migrations the supported production path.
 
 ### Task 6: Tests
 

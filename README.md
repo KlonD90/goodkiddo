@@ -22,6 +22,11 @@ repository root, run `bun run db:migrate`, `bun run db:status`,
 `bun run db:rollback`, or `bun run db:new -- <migration_name>`. The wrapper
 selects `bot/db/migrations/sqlite/` or `bot/db/migrations/postgres/` from
 `DATABASE_URL` and normalizes Bun-style relative SQLite URLs for dbmate.
+Production-like bot startup runs `db:migrate` before opening the application
+database and constructing stores. Store constructors may keep defensive
+`CREATE TABLE IF NOT EXISTS` setup for local development/bootstrap, but schema
+changes belong in versioned migrations instead of store-local migration
+helpers.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
 endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
 Agent sampling uses `AI_TEMPERATURE=1.0` for the main agent and

@@ -1,12 +1,15 @@
 import { runAppChannel } from "../channels";
 import { maskSecret, resolveConfig } from "../config";
 import { createDb, detectDialect } from "../db";
+import { migrateDatabase } from "../db/migrate";
 import { createLogger } from "../logger";
 import { startWebServer } from "../server/http";
 
 const log = createLogger("startup");
 
 const config = await resolveConfig();
+log.info("running database migrations");
+await migrateDatabase({ databaseUrl: config.databaseUrl });
 const db = createDb(config.databaseUrl);
 const dialect = detectDialect(config.databaseUrl);
 

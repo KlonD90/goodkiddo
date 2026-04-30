@@ -17,6 +17,10 @@ export interface DbmateInvocation {
 	env: Record<string, string>;
 }
 
+export type DbmateInvocationRunner = (
+	invocation: DbmateInvocation,
+) => Promise<number>;
+
 const DEFAULT_REPO_ROOT = join(
 	dirname(fileURLToPath(import.meta.url)),
 	"..",
@@ -95,11 +99,9 @@ export const buildDbmateInvocation = (
 	};
 };
 
-export const runDbmate = async (
-	dbmateCommand: DbmateCommand,
-	extraArgs = process.argv.slice(3),
-): Promise<number> => {
-	const invocation = buildDbmateInvocation(dbmateCommand, { extraArgs });
+export const spawnDbmateInvocation: DbmateInvocationRunner = async (
+	invocation,
+) => {
 	const proc = Bun.spawn(invocation.command, {
 		env: invocation.env,
 		stdout: "inherit",
@@ -108,6 +110,29 @@ export const runDbmate = async (
 	});
 
 	return await proc.exited;
+};
+
+export const runDbmate = async (
+	dbmateCommand: DbmateCommand,
+	extraArgs = process.argv.slice(3),
+): Promise<number> => {
+	const invocation = buildDbmateInvocation(dbmateCommand, { extraArgs });
+	return await spawnDbmateInvocation(invocation);
+};
+
+export const migrateDatabase = async (
+	options: {
+		databaseUrl?: string;
+		repoRoot?: string;
+		env?: Record<string, string | undefined>;
+		runner?: DbmateInvocationRunner;
+	} = {},
+): Promise<void> => {
+	const invocation = buildDbmateInvocation("up", options);
+	const exitCode = await (options.runner ?? spawnDbmateInvocation)(invocation);
+	if (exitCode !== 0) {
+		throw new Error(`Database migration failed with exit code ${exitCode}`);
+	}
 };
 
 if (import.meta.main) {

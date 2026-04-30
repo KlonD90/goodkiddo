@@ -3,6 +3,7 @@ import { join } from "node:path";
 import {
 	buildDbmateConfig,
 	buildDbmateInvocation,
+	migrateDatabase,
 	normalizeDbmateDatabaseUrl,
 	readMigrationDatabaseUrl,
 } from "./migrate";
@@ -112,5 +113,37 @@ describe("buildDbmateInvocation", () => {
 			"new",
 			"add_tasks",
 		]);
+	});
+});
+
+describe("migrateDatabase", () => {
+	test("runs dbmate up before application database use", async () => {
+		const invocations: ReturnType<typeof buildDbmateInvocation>[] = [];
+
+		await migrateDatabase({
+			env: { DATABASE_URL: "sqlite://./state.db" },
+			repoRoot: "/repo",
+			runner: async (invocation) => {
+				invocations.push(invocation);
+				return 0;
+			},
+		});
+
+		expect(invocations).toEqual([
+			buildDbmateInvocation("up", {
+				env: { DATABASE_URL: "sqlite://./state.db" },
+				repoRoot: "/repo",
+			}),
+		]);
+	});
+
+	test("fails startup when dbmate up fails", async () => {
+		await expect(
+			migrateDatabase({
+				env: { DATABASE_URL: "sqlite://./state.db" },
+				repoRoot: "/repo",
+				runner: async () => 1,
+			}),
+		).rejects.toThrow("Database migration failed with exit code 1");
 	});
 });

@@ -13,7 +13,7 @@ Source root for the harness.
 - `tools/` — LangChain tools (FS + sandbox execution)
 - `memory/` — per-caller memory wiki (notes, skills, log)
 - `tasks/` — SQL-backed active task storage, prompt snapshots, and boundary reconciliation helpers
-- `db/` — `Bun.SQL` factory (`createDb`), dialect detector (`detectDialect`), and dbmate migration config helpers
+- `db/` — `Bun.SQL` factory (`createDb`), dialect detector (`detectDialect`), and dbmate migration helpers used by `bin/bot.ts` before stores are constructed
 - `backends/` — virtual filesystem backend (SQLite or PostgreSQL via injected `Bun.SQL`)
 - `execution/` — sandbox-side manifest validation + orchestration
 - `sandbox/` — sandbox backend implementations (Docker/Firecracker)
