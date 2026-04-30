@@ -6,6 +6,13 @@ const log = createLogger("tasks.store");
 type SQL = InstanceType<typeof Bun.SQL>;
 
 export type TaskStatus = "active" | "completed" | "dismissed";
+export type TaskLoopType =
+	| "deadline"
+	| "client_followup"
+	| "decision"
+	| "watch"
+	| "continuation"
+	| "general";
 
 export interface TaskRecord {
 	id: number;
@@ -21,6 +28,15 @@ export interface TaskRecord {
 	updatedAt: number;
 	completedAt: number | null;
 	dismissedAt: number | null;
+	dueAt: number | null;
+	nextCheckAt: number | null;
+	priority: number;
+	loopType: TaskLoopType | null;
+	sourceContext: string | null;
+	sourceRef: string | null;
+	lastNudgedAt: number | null;
+	nudgeCount: number;
+	snoozedUntil: number | null;
 }
 
 type TaskRow = {
@@ -37,6 +53,15 @@ type TaskRow = {
 	updated_at: number;
 	completed_at: number | null;
 	dismissed_at: number | null;
+	due_at: number | null;
+	next_check_at: number | null;
+	priority: number;
+	loop_type: string | null;
+	source_context: string | null;
+	source_ref: string | null;
+	last_nudged_at: number | null;
+	nudge_count: number;
+	snoozed_until: number | null;
 };
 
 export interface TaskStoreOptions {
@@ -93,6 +118,15 @@ function rowToTask(row: TaskRow): TaskRecord {
 		updatedAt: row.updated_at,
 		completedAt: row.completed_at,
 		dismissedAt: row.dismissed_at,
+		dueAt: row.due_at,
+		nextCheckAt: row.next_check_at,
+		priority: row.priority,
+		loopType: row.loop_type as TaskLoopType | null,
+		sourceContext: row.source_context,
+		sourceRef: row.source_ref,
+		lastNudgedAt: row.last_nudged_at,
+		nudgeCount: row.nudge_count,
+		snoozedUntil: row.snoozed_until,
 	};
 }
 
@@ -160,7 +194,16 @@ export class TaskStore {
 					created_at BIGINT NOT NULL,
 					updated_at BIGINT NOT NULL,
 					completed_at BIGINT,
-					dismissed_at BIGINT
+					dismissed_at BIGINT,
+					due_at BIGINT,
+					next_check_at BIGINT,
+					priority INTEGER NOT NULL DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
+					loop_type TEXT CHECK(loop_type IS NULL OR loop_type IN ('deadline', 'client_followup', 'decision', 'watch', 'continuation', 'general')),
+					source_context TEXT,
+					source_ref TEXT,
+					last_nudged_at BIGINT,
+					nudge_count INTEGER NOT NULL DEFAULT 0 CHECK(nudge_count >= 0),
+					snoozed_until BIGINT
 				)
 			`;
 		} else {
@@ -178,10 +221,21 @@ export class TaskStore {
 					created_at INTEGER NOT NULL,
 					updated_at INTEGER NOT NULL,
 					completed_at INTEGER,
-					dismissed_at INTEGER
+					dismissed_at INTEGER,
+					due_at INTEGER,
+					next_check_at INTEGER,
+					priority INTEGER NOT NULL DEFAULT 0 CHECK(priority BETWEEN 0 AND 3),
+					loop_type TEXT CHECK(loop_type IS NULL OR loop_type IN ('deadline', 'client_followup', 'decision', 'watch', 'continuation', 'general')),
+					source_context TEXT,
+					source_ref TEXT,
+					last_nudged_at INTEGER,
+					nudge_count INTEGER NOT NULL DEFAULT 0 CHECK(nudge_count >= 0),
+					snoozed_until INTEGER
 				)
 			`;
 		}
+
+		await this.migrateTaskMetadataColumns();
 
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_tasks_user_status_updated_at
@@ -194,6 +248,87 @@ export class TaskStore {
 
 		if (this.dialect === "sqlite") {
 			await this.db`PRAGMA journal_mode = WAL`;
+		}
+	}
+
+	private async migrateTaskMetadataColumns(): Promise<void> {
+		if (this.dialect === "postgres") {
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS due_at BIGINT
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS next_check_at BIGINT
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0 CHECK(priority BETWEEN 0 AND 3)
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS loop_type TEXT CHECK(loop_type IS NULL OR loop_type IN ('deadline', 'client_followup', 'decision', 'watch', 'continuation', 'general'))
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS source_context TEXT
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS source_ref TEXT
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS last_nudged_at BIGINT
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS nudge_count INTEGER NOT NULL DEFAULT 0 CHECK(nudge_count >= 0)
+			`;
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN IF NOT EXISTS snoozed_until BIGINT
+			`;
+			return;
+		}
+
+		const columns = await this.db<Array<{ name: string }>>`PRAGMA table_info(tasks)`;
+		const columnNames = new Set(columns.map((column) => column.name));
+		if (!columnNames.has("due_at")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN due_at INTEGER`;
+		}
+		if (!columnNames.has("next_check_at")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN next_check_at INTEGER`;
+		}
+		if (!columnNames.has("priority")) {
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN priority INTEGER NOT NULL DEFAULT 0 CHECK(priority BETWEEN 0 AND 3)
+			`;
+		}
+		if (!columnNames.has("loop_type")) {
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN loop_type TEXT CHECK(loop_type IS NULL OR loop_type IN ('deadline', 'client_followup', 'decision', 'watch', 'continuation', 'general'))
+			`;
+		}
+		if (!columnNames.has("source_context")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN source_context TEXT`;
+		}
+		if (!columnNames.has("source_ref")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN source_ref TEXT`;
+		}
+		if (!columnNames.has("last_nudged_at")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN last_nudged_at INTEGER`;
+		}
+		if (!columnNames.has("nudge_count")) {
+			await this.db`
+				ALTER TABLE tasks
+				ADD COLUMN nudge_count INTEGER NOT NULL DEFAULT 0 CHECK(nudge_count >= 0)
+			`;
+		}
+		if (!columnNames.has("snoozed_until")) {
+			await this.db`ALTER TABLE tasks ADD COLUMN snoozed_until INTEGER`;
 		}
 	}
 
@@ -220,7 +355,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 			) VALUES (
 				${input.userId},
 				${input.threadIdCreated},
@@ -233,6 +377,15 @@ export class TaskStore {
 				${now},
 				${now},
 				NULL,
+				NULL,
+				NULL,
+				NULL,
+				0,
+				NULL,
+				NULL,
+				NULL,
+				NULL,
+				0,
 				NULL
 			)
 			RETURNING
@@ -248,7 +401,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 		`;
 		const row = rows[0];
 		if (!row) throw new Error("Failed to add task");
@@ -271,7 +433,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 			FROM tasks
 			WHERE id = ${taskId} AND user_id = ${userId}
 			LIMIT 1
@@ -304,7 +475,16 @@ export class TaskStore {
 					created_at,
 					updated_at,
 					completed_at,
-					dismissed_at
+					dismissed_at,
+					due_at,
+					next_check_at,
+					priority,
+					loop_type,
+					source_context,
+					source_ref,
+					last_nudged_at,
+					nudge_count,
+					snoozed_until
 				FROM tasks
 				WHERE user_id = ${userId}
 					AND status = ${options.status}
@@ -329,7 +509,16 @@ export class TaskStore {
 					created_at,
 					updated_at,
 					completed_at,
-					dismissed_at
+					dismissed_at,
+					due_at,
+					next_check_at,
+					priority,
+					loop_type,
+					source_context,
+					source_ref,
+					last_nudged_at,
+					nudge_count,
+					snoozed_until
 				FROM tasks
 				WHERE user_id = ${userId}
 					AND status = ${options.status}
@@ -353,7 +542,16 @@ export class TaskStore {
 					created_at,
 					updated_at,
 					completed_at,
-					dismissed_at
+					dismissed_at,
+					due_at,
+					next_check_at,
+					priority,
+					loop_type,
+					source_context,
+					source_ref,
+					last_nudged_at,
+					nudge_count,
+					snoozed_until
 				FROM tasks
 				WHERE user_id = ${userId}
 					AND list_name = ${options.listName}
@@ -376,7 +574,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 			FROM tasks
 			WHERE user_id = ${userId}
 			ORDER BY updated_at DESC, id DESC
@@ -453,7 +660,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 			FROM tasks
 			WHERE user_id = ${userId}
 				AND status = 'completed'
@@ -513,7 +729,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 		`;
 		return rows[0] ? rowToTask(rows[0]) : null;
 	}
@@ -550,7 +775,16 @@ export class TaskStore {
 				created_at,
 				updated_at,
 				completed_at,
-				dismissed_at
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
 		`;
 		return rows[0] ? rowToTask(rows[0]) : null;
 	}

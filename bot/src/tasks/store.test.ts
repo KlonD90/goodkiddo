@@ -61,6 +61,15 @@ describe("TaskStore", () => {
 			"updated_at",
 			"completed_at",
 			"dismissed_at",
+			"due_at",
+			"next_check_at",
+			"priority",
+			"loop_type",
+			"source_context",
+			"source_ref",
+			"last_nudged_at",
+			"nudge_count",
+			"snoozed_until",
 		]);
 
 		const indexes = await db<IndexListRow[]>`PRAGMA index_list(tasks)`;
@@ -85,6 +94,78 @@ describe("TaskStore", () => {
 			"list_name",
 			"status",
 		]);
+	});
+
+	test("migrates legacy task tables with metadata defaults", async () => {
+		const legacyDb = new Bun.SQL("sqlite://:memory:");
+		await legacyDb`
+			CREATE TABLE tasks (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				user_id TEXT NOT NULL,
+				thread_id_created TEXT NOT NULL,
+				thread_id_completed TEXT,
+				list_name TEXT NOT NULL,
+				title TEXT NOT NULL,
+				note TEXT,
+				status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'dismissed')),
+				status_reason TEXT,
+				created_at INTEGER NOT NULL,
+				updated_at INTEGER NOT NULL,
+				completed_at INTEGER,
+				dismissed_at INTEGER
+			)
+		`;
+		await legacyDb`
+			INSERT INTO tasks (
+				user_id,
+				thread_id_created,
+				thread_id_completed,
+				list_name,
+				title,
+				note,
+				status,
+				status_reason,
+				created_at,
+				updated_at,
+				completed_at,
+				dismissed_at
+			) VALUES (
+				'telegram:1',
+				'thread-a',
+				NULL,
+				'today',
+				'Legacy task',
+				NULL,
+				'active',
+				NULL,
+				100,
+				100,
+				NULL,
+				NULL
+			)
+		`;
+
+		const legacyStore = new TaskStore({
+			db: legacyDb,
+			dialect: "sqlite",
+			now: () => currentTime++,
+		});
+		await legacyStore.ready();
+
+		const migrated = await legacyStore.getTask(1, "telegram:1");
+		expect(migrated).toMatchObject({
+			title: "Legacy task",
+			dueAt: null,
+			nextCheckAt: null,
+			priority: 0,
+			loopType: null,
+			sourceContext: null,
+			sourceRef: null,
+			lastNudgedAt: null,
+			nudgeCount: 0,
+			snoozedUntil: null,
+		});
+		await legacyDb.close();
 	});
 
 	test("adds tasks and lists them per caller", async () => {
@@ -113,6 +194,17 @@ describe("TaskStore", () => {
 		expect(first.listName).toBe("today");
 		expect(first.note).toBe("Before lunch");
 		expect(first.status).toBe("active");
+		expect(first).toMatchObject({
+			dueAt: null,
+			nextCheckAt: null,
+			priority: 0,
+			loopType: null,
+			sourceContext: null,
+			sourceRef: null,
+			lastNudgedAt: null,
+			nudgeCount: 0,
+			snoozedUntil: null,
+		});
 
 		const userOneTasks = await store.listTasksForUser("telegram:1");
 		expect(userOneTasks.map((task) => task.id)).toEqual([second.id, first.id]);
