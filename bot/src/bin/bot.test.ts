@@ -94,7 +94,9 @@ describe("bot startup", () => {
 					publicBaseUrl: config.webPublicBaseUrl,
 					server: {},
 					sweepTimer: undefined,
-				} as Awaited<ReturnType<BotStartupDependencies["startWebServer"]>>;
+				} as unknown as Awaited<
+					ReturnType<BotStartupDependencies["startWebServer"]>
+				>;
 			},
 		});
 
