@@ -4,13 +4,13 @@ import {
 	DEFAULT_PROACTIVE_PREFERENCES,
 	isStructuredUserProfile,
 	normalizeUserProfile,
-	PROACTIVE_PREFERENCES_PROFILE_SECTION,
+	parseProactivePreferencesFromUserProfile,
+	upsertProactivePreferencesInUserProfile,
 	userProfileIsEmpty,
 } from "./user_profile";
 
 describe("user profile proactive preferences", () => {
 	test("keeps proactive preference defaults conservative for Telegram nudges", () => {
-		expect(PROACTIVE_PREFERENCES_PROFILE_SECTION).toBe("Preferences");
 		expect(DEFAULT_PROACTIVE_PREFERENCES).toEqual({
 			timezone: null,
 			quietHours: {
@@ -38,16 +38,18 @@ describe("user profile proactive preferences", () => {
 	});
 
 	test("preserves existing structured profile content during normalization", () => {
-		const profile = normalizeUserProfile([
-			"# USER.md",
-			"",
-			"## Preferences",
-			"Timezone: America/New_York.",
-			"Prefers quiet mornings.",
-			"",
-			"## Environment",
-			"Uses Telegram.",
-		].join("\n"));
+		const profile = normalizeUserProfile(
+			[
+				"# USER.md",
+				"",
+				"## Preferences",
+				"Timezone: America/New_York.",
+				"Prefers quiet mornings.",
+				"",
+				"## Environment",
+				"Uses Telegram.",
+			].join("\n"),
+		);
 
 		expect(profile).toContain("## Profile");
 		expect(profile).toContain("## Preferences");
@@ -57,5 +59,45 @@ describe("user profile proactive preferences", () => {
 		expect(profile).toContain("Uses Telegram.");
 		expect(profile).toContain("## Constraints");
 		expect(profile).toContain("## Open Questions");
+	});
+
+	test("persists proactive preferences in the USER.md Preferences section", () => {
+		const existing = composeUserProfile({
+			Preferences: "Prefers quiet mornings.",
+		});
+		const preferences = {
+			...DEFAULT_PROACTIVE_PREFERENCES,
+			timezone: "America/New_York",
+			feedback: {
+				lessLikeThis: [
+					{
+						topic: "invoice follow-up",
+						recordedAt: "2026-04-30T15:00:00.000Z",
+					},
+				],
+			},
+		};
+
+		const updated = upsertProactivePreferencesInUserProfile(
+			existing,
+			preferences,
+		);
+
+		expect(updated).toContain("## Preferences");
+		expect(updated).toContain("Prefers quiet mornings.");
+		expect(updated).toContain("proactive-preferences:start");
+		expect(parseProactivePreferencesFromUserProfile(updated)).toEqual(
+			preferences,
+		);
+	});
+
+	test("falls back to defaults when USER.md has no proactive preferences block", () => {
+		const profile = composeUserProfile({
+			Preferences: "Prefers quiet mornings.",
+		});
+
+		expect(parseProactivePreferencesFromUserProfile(profile)).toEqual(
+			DEFAULT_PROACTIVE_PREFERENCES,
+		);
 	});
 });

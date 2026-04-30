@@ -5,8 +5,15 @@ import {
 } from "../../memory/user_profile";
 import { decideProactiveFatigue, recordLessLikeThisSignal } from "./fatigue";
 
+type PreferenceOverrides = Partial<
+	Omit<ProactivePreferences, "quietHours" | "feedback">
+> & {
+	quietHours?: Partial<ProactivePreferences["quietHours"]>;
+	feedback?: Partial<ProactivePreferences["feedback"]>;
+};
+
 function preferences(
-	overrides: Partial<ProactivePreferences> = {},
+	overrides: PreferenceOverrides = {},
 ): ProactivePreferences {
 	return {
 		...DEFAULT_PROACTIVE_PREFERENCES,
@@ -72,6 +79,28 @@ describe("proactive fatigue decisions", () => {
 		}
 	});
 
+	test("batches daytime quiet-hour windows until quiet hours end", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({
+				quietHours: {
+					startLocalTime: "12:00",
+					endLocalTime: "13:00",
+				},
+				digestLocalTime: "12:30",
+			}),
+			now: new Date("2026-04-30T16:15:00.000Z"),
+			recentNudgeCountToday: 0,
+		});
+
+		expect(decision.action).toBe("batch");
+		expect(decision.reason).toBe("quiet_hours");
+		if (decision.action === "batch") {
+			expect(decision.batchAfterUtc?.toISOString()).toBe(
+				"2026-04-30T17:00:00.000Z",
+			);
+		}
+	});
+
 	test("suppresses proactive follow-ups after the daily nudge limit", () => {
 		const decision = decideProactiveFatigue({
 			preferences: preferences({ maxNudgesPerDay: 1 }),
@@ -85,23 +114,71 @@ describe("proactive fatigue decisions", () => {
 		});
 	});
 
-	test("sends explicit user-requested reminders despite quiet hours and limits", () => {
+	test("suppresses proactive follow-ups at the daily limit before batching", () => {
 		const decision = decideProactiveFatigue({
-			preferences: preferences({ maxNudgesPerDay: 1 }),
+			preferences: preferences({ maxNudgesPerDay: 1, timezone: null }),
 			now: new Date("2026-05-01T02:30:00.000Z"),
-			recentNudgeCountToday: 10,
-			source: "user_requested_reminder",
+			recentNudgeCountToday: 1,
+		});
+
+		expect(decision).toEqual({
+			action: "suppress",
+			reason: "daily_limit_reached",
+		});
+	});
+
+	test("sends when quiet hours are disabled and timezone is unknown", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({
+				timezone: null,
+				quietHours: { enabled: false },
+			}),
+			now: new Date("2026-04-30T15:00:00.000Z"),
+			recentNudgeCountToday: 0,
 		});
 
 		expect(decision).toEqual({
 			action: "send",
-			reason: "explicit_user_request",
+			reason: "within_preferences",
 		});
 	});
 
-	test("batches when quiet hours are enabled but timezone is unknown", () => {
+	test("sends explicit user-requested timers and reminders despite quiet hours and limits", () => {
+		for (const source of [
+			"user_requested_timer",
+			"user_requested_reminder",
+		] as const) {
+			const decision = decideProactiveFatigue({
+				preferences: preferences({ maxNudgesPerDay: 1 }),
+				now: new Date("2026-05-01T02:30:00.000Z"),
+				recentNudgeCountToday: 10,
+				source,
+			});
+
+			expect(decision).toEqual({
+				action: "send",
+				reason: "explicit_user_request",
+			});
+		}
+	});
+
+	test("batches when quiet hours are enabled but timezone is missing", () => {
 		const decision = decideProactiveFatigue({
 			preferences: preferences({ timezone: null }),
+			now: new Date("2026-04-30T15:00:00.000Z"),
+			recentNudgeCountToday: 0,
+		});
+
+		expect(decision).toEqual({
+			action: "batch",
+			reason: "timezone_unknown",
+			batchAfterUtc: null,
+		});
+	});
+
+	test("batches when quiet hours are enabled but timezone is invalid", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({ timezone: "Mars/Base" }),
 			now: new Date("2026-04-30T15:00:00.000Z"),
 			recentNudgeCountToday: 0,
 		});

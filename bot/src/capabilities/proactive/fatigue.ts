@@ -61,6 +61,10 @@ export function decideProactiveFatigue(
 		return { action: "suppress", reason: "less_like_this" };
 	}
 
+	if (input.recentNudgeCountToday >= preferences.maxNudgesPerDay) {
+		return { action: "suppress", reason: "daily_limit_reached" };
+	}
+
 	if (preferences.quietHours.enabled) {
 		if (!preferences.timezone || !isValidTimezone(preferences.timezone)) {
 			return {
@@ -85,10 +89,6 @@ export function decideProactiveFatigue(
 				),
 			};
 		}
-	}
-
-	if (input.recentNudgeCountToday >= preferences.maxNudgesPerDay) {
-		return { action: "suppress", reason: "daily_limit_reached" };
 	}
 
 	return { action: "send", reason: "within_preferences" };
@@ -118,7 +118,9 @@ export function recordLessLikeThisSignal(
 }
 
 function isExplicitUserRequest(source: ProactiveNudgeSource): boolean {
-	return source === "user_requested_timer" || source === "user_requested_reminder";
+	return (
+		source === "user_requested_timer" || source === "user_requested_reminder"
+	);
 }
 
 function hasLessLikeThisSignal(

@@ -49,6 +49,8 @@ Proactive nudge preferences live in the `## Preferences` section of `USER.md`. T
 
 These defaults are code-level fallbacks and are not written into empty profiles, so an empty `USER.md` still means no durable user facts have been recorded.
 
+When callers need durable structured preferences, `user_profile.ts` provides helpers to parse and upsert a guarded proactive-preferences block inside the `## Preferences` section while preserving any existing freeform preference notes.
+
 The proactive fatigue guard in [`../capabilities/proactive/fatigue.ts`](../capabilities/proactive/fatigue.ts) turns those preferences into one of three outcomes:
 
 - `send` when a prepared follow-up is within the user's preferences.

@@ -24,7 +24,6 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
 | [Tabular Read](feature-tabular-read.md) | [RALPHEX plan](../plans/tabular-read.md) |
 | [Research Sub-Agent](feature-research-subagent.md) | [RALPHEX plan](../plans/research-subagent.md) |
-| [Prepared Follow-ups Roadmap](feature-prepared-followups-roadmap.md) | [RALPHEX plan](../plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md) |
 
 ## Completed
 
@@ -39,6 +38,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [CSV and Excel Spreadsheets](feature-csv-excel.md) | [RALPHEX plan](../plans/csv-excel.md) |
 | [Scheduled Timers](feature-scheduled-timers.md) | [RALPHEX plan](../plans/scheduled-timers.md) |
 | [Tool Activity Status Messages](feature-tool-activity-status.md) | [RALPHEX plan](../plans/tool-activity-status.md) |
+| [Prepared Follow-ups Roadmap](feature-prepared-followups-roadmap.md) | [RALPHEX plan](../plans/completed/9-Prepared-Follow-ups--product-doctrine-and-capabili.md) |
 
 ---
 

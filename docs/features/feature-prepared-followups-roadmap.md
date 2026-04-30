@@ -86,7 +86,12 @@ Each slice should be independently shippable and should preserve the capability 
    - Provide handoff artifacts the user can copy, send, approve, buy, publish, or submit themselves.
    - Add tests for email, payment, ordering, publishing, deletion, cancellation, invitation, and approval requests.
 
-6. Telegram-native follow-up presentation
+6. Nudge preferences and fatigue guard
+   - Add user-level proactive preferences for timezone, quiet hours, digest time, max nudges per day, and pushiness.
+   - Store less-like-this feedback as an additive preference signal.
+   - Return send, batch, or suppress decisions while exempting explicit user-requested timers and reminders.
+
+7. Telegram-native follow-up presentation
    - Format follow-ups for compact Telegram reading.
    - Include the prepared artifact first, followed by the decision or missing detail needed from the user.
    - Avoid long status narration unless it carries evidence or a useful artifact.
@@ -99,4 +104,5 @@ Each slice should be independently shippable and should preserve the capability 
 - Future execution plans should keep slices small enough to validate with prompt/tool tests plus any affected integration tests.
 
 ## Related
-- Execution plan: `docs/plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Product doctrine execution plan: `docs/plans/completed/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Nudge preferences execution plan: `docs/plans/17-Prepared-Follow-ups--nudge-preferences-and-fatigue.md`.
