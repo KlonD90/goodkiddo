@@ -607,4 +607,22 @@ describe("recall candidate sources", () => {
 		);
 		expect(context).toContain("High confidence: proceed");
 	});
+
+	test("formats targeted clarification fallback when recall has no evidence", () => {
+		const ranked = rankRecallCandidates({
+			input: "what we discussed",
+			candidates: [],
+			now: NOW,
+		});
+
+		const context = formatRecallRuntimeContext(ranked);
+
+		expect(context).toContain("## Recall-on-Ambiguity");
+		expect(context).toContain(
+			"Recall search found no source-backed candidates",
+		);
+		expect(context).toContain("Ask one targeted clarification");
+		expect(context).toContain("do not invent missing context");
+		expect(context).not.toContain("Candidates:");
+	});
 });

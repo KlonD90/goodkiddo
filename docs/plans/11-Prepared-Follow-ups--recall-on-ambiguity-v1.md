@@ -73,10 +73,10 @@ Expected decision behavior:
 - [x] Keep Telegram-facing wording concise.
 
 ### Task 5: Tests
-- [ ] Add tests for ambiguous phrase detection.
-- [ ] Add tests for high-confidence single candidate.
-- [ ] Add tests for medium/low confidence multiple candidates.
-- [ ] Add tests proving the behavior falls back to targeted clarification instead of hallucinating.
+- [x] Add tests for ambiguous phrase detection.
+- [x] Add tests for high-confidence single candidate.
+- [x] Add tests for medium/low confidence multiple candidates.
+- [x] Add tests proving the behavior falls back to targeted clarification instead of hallucinating.
 
 ### Task 6: Docs
 - [ ] Update relevant docs to describe Recall-on-Ambiguity v1.
