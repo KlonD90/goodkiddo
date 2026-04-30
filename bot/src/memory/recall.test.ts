@@ -12,12 +12,13 @@ import {
 	checkpointRecallCandidates,
 	collectRecallCandidates,
 	detectAmbiguousContinuation,
+	formatRecallRuntimeContext,
 	memoryRecallCandidates,
-	rankRecallCandidates,
 	RECALL_CONFIDENCE_POLICY,
+	type RecallCandidateInput,
+	rankRecallCandidates,
 	recallConfidence,
 	taskRecallCandidates,
-	type RecallCandidateInput,
 } from "./recall";
 
 const NOW = Date.UTC(2026, 3, 30, 12, 0, 0);
@@ -83,17 +84,23 @@ describe("detectAmbiguousContinuation", () => {
 		expect(detection.matchedPhrases.length).toBeGreaterThan(0);
 	});
 
-	test("does not treat a specific request as ambiguous", () => {
-		const detection = detectAmbiguousContinuation(
-			"Create a new invoice template for March retainers",
-		);
+	test.each([
+		"Create a new invoice template for March retainers",
+		"send the invoice to Acme",
+		"open the March report",
+		"fix the failing test",
+		"update the README",
+	])("does not treat a specific request as ambiguous: %s", (input) => {
+		const detection = detectAmbiguousContinuation(input);
 
 		expect(detection.isAmbiguous).toBe(false);
 		expect(detection.matchedPhrases).toEqual([]);
 	});
 
 	test("extracts useful search terms from ambiguous requests", () => {
-		const detection = detectAmbiguousContinuation("continue the sales proposal");
+		const detection = detectAmbiguousContinuation(
+			"continue the sales proposal",
+		);
 
 		expect(detection.searchTerms).toEqual(["sales", "proposal"]);
 	});
@@ -206,13 +213,27 @@ describe("rankRecallCandidates", () => {
 		).toBe(true);
 	});
 
-	test("assigns medium confidence to a single explicit match", () => {
+	test("assigns medium confidence to one matching explicit candidate", () => {
 		const result = rankRecallCandidates({
 			input: "the proposal",
-			candidates,
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Draft sales proposal for Acme",
+					updatedAt: NOW - 60_000,
+				},
+				{
+					id: "memory-1",
+					source: "memory",
+					summary: "Brand voice notes for website copy",
+					updatedAt: NOW - 60_000,
+				},
+			],
 			now: NOW,
 		});
 
+		expect(result.candidates).toHaveLength(1);
 		expect(result.candidates[0]?.id).toBe("task-1");
 		expect(result.candidates[0]?.confidence).toBe("medium");
 		expect(result.candidates[0]?.rationale).toContain("confidence: medium");
@@ -232,9 +253,9 @@ describe("rankRecallCandidates", () => {
 
 	test("keeps recency-only matches low confidence", () => {
 		expect(recallConfidence(4, 0)).toBe("low");
-		expect(recallConfidence(RECALL_CONFIDENCE_POLICY.high.minimumScore, 0)).toBe(
-			"low",
-		);
+		expect(
+			recallConfidence(RECALL_CONFIDENCE_POLICY.high.minimumScore, 0),
+		).toBe("low");
 	});
 
 	test("documents threshold policy for high and medium confidence", () => {
@@ -275,7 +296,9 @@ describe("recall candidate sources", () => {
 		const candidates = checkpointRecallCandidates([makeCheckpoint({})]);
 
 		expect(candidates[0]?.source).toBe("checkpoint");
-		expect(candidates[0]?.summary).toContain("Prepare the Acme launch proposal");
+		expect(candidates[0]?.summary).toContain(
+			"Prepare the Acme launch proposal",
+		);
 		expect(candidates[0]?.snippet).toContain("Add pricing options");
 		expect(candidates[0]?.updatedAt).toBe(NOW);
 	});
@@ -300,7 +323,9 @@ describe("recall candidate sources", () => {
 		);
 
 		const candidates = await memoryRecallCandidates(backend);
-		const acme = candidates.find((candidate) => candidate.id === "memory:acme-proposal");
+		const acme = candidates.find(
+			(candidate) => candidate.id === "memory:acme-proposal",
+		);
 		const profile = candidates.find(
 			(candidate) => candidate.id === "memory:user-profile",
 		);
@@ -316,6 +341,53 @@ describe("recall candidate sources", () => {
 		);
 	});
 
+	test("honors memory and log limits while keeping newest log entries", async () => {
+		const backend = createBackend("recall-memory-limits");
+		await ensureMemoryBootstrapped(backend);
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "alpha-note",
+			path: "/memory/notes/alpha-note.md",
+			hook: "Alpha note",
+		});
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "beta-note",
+			path: "/memory/notes/beta-note.md",
+			hook: "Beta note",
+		});
+		await overwrite(backend, "/memory/notes/alpha-note.md", "Alpha body");
+		await overwrite(backend, "/memory/notes/beta-note.md", "Beta body");
+		await overwrite(
+			backend,
+			MEMORY_LOG_PATH,
+			[
+				"# Log",
+				"",
+				"## [2026-04-28] old_event | Old context",
+				"## [2026-04-30] new_event | New context",
+			].join("\n"),
+		);
+
+		const candidates = await memoryRecallCandidates(backend, {
+			memoryEntries: 1,
+			logEntries: 1,
+		});
+
+		expect(candidates.map((candidate) => candidate.id)).toContain(
+			"memory:alpha-note",
+		);
+		expect(candidates.map((candidate) => candidate.id)).not.toContain(
+			"memory:beta-note",
+		);
+		expect(
+			candidates.filter((candidate) => candidate.source === "log"),
+		).toEqual([
+			expect.objectContaining({
+				id: "log:2026-04-30:2",
+				summary: "new_event: New context",
+			}),
+		]);
+	});
+
 	test("collects configured sources and only accepts supplied virtual file candidates", async () => {
 		const backend = createBackend("recall-collect-sources");
 		await ensureMemoryBootstrapped(backend);
@@ -329,9 +401,9 @@ describe("recall candidate sources", () => {
 				},
 			},
 			checkpointStore: {
-				listRecentForCaller: async (caller, options) => {
+				listRecentForCaller: async (caller, limit) => {
 					expect(caller).toBe("telegram:1");
-					expect(options?.limit).toBe(1);
+					expect(limit).toBe(1);
 					return [makeCheckpoint({ id: "checkpoint-3" })];
 				},
 			},
@@ -364,5 +436,28 @@ describe("recall candidate sources", () => {
 		expect(result.map((candidate) => candidate.id)).not.toContain(
 			"memory:wrong-source",
 		);
+	});
+
+	test("formats concise one-turn runtime recall context", () => {
+		const ranked = rankRecallCandidates({
+			input: "continue the sales proposal",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Draft sales proposal for Acme",
+					snippet: "Use the March pricing notes",
+					updatedAt: NOW,
+				},
+			],
+			now: NOW,
+		});
+
+		const context = formatRecallRuntimeContext(ranked);
+
+		expect(context).toContain("## Recall-on-Ambiguity");
+		expect(context).toContain("[high] task: Draft sales proposal for Acme");
+		expect(context).toContain("Snippet: Use the March pricing notes");
+		expect(context).toContain("High confidence: proceed");
 	});
 });

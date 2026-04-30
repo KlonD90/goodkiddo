@@ -12,9 +12,11 @@ import type { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
 import { maybeHandleSessionCommand } from "../session_commands";
 import {
+	clearPendingRecallContext,
 	clearPendingTaskCheckContext,
 	extractAgentReply,
 	extractTextFromContent,
+	maybeRunRecallOnAmbiguity,
 	refreshAgentIfPromptDirty,
 } from "../shared";
 import type { ChannelRunOptions } from "../types";
@@ -387,7 +389,15 @@ async function runAgentTurn(
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
-		if (preparedTurn.compacted || taskCheck.needsRefresh) {
+		const recall = await maybeRunRecallOnAmbiguity(
+			session,
+			queuedTurn.currentUserText ?? queuedTurn.content,
+		);
+		if (
+			preparedTurn.compacted ||
+			taskCheck.needsRefresh ||
+			recall.needsRefresh
+		) {
 			await session.refreshAgent();
 		}
 		if (queuedTurn.attachmentBudget) {
@@ -511,6 +521,7 @@ async function runAgentTurn(
 		);
 	} finally {
 		clearPendingTaskCheckContext(session);
+		clearPendingRecallContext(session);
 		session.currentUserText = undefined;
 		session.currentTurnContext = undefined;
 		await refreshAgentIfPromptDirty(session);

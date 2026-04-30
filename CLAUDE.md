@@ -35,6 +35,7 @@ When adding a new tool, author a status template alongside it so users see what 
 - Full LangGraph history stays in SQL for audit and recovery.
 - Model-facing runtime context is rebuilt from the latest forced checkpoint summary, recent turns, active tasks, and the current user input.
 - Compaction boundaries are coordinated by `bot/src/checkpoints/compaction_trigger.ts`.
+- Ambiguous continuations such as "continue", "that proposal", or "what we discussed" are handled by `bot/src/memory/recall.ts` before the agent asks the user to repeat themselves. Recall checks active tasks, recent forced checkpoints, memory index/note snippets, `USER.md`, `log.md`, and already-safe supplied virtual file candidates. High confidence can proceed with a brief source mention; medium confidence asks confirmation; low confidence offers likely candidates or one targeted clarification.
 
 ## Validation
 

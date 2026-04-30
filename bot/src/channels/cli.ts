@@ -18,10 +18,12 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	clearPendingRecallContext,
 	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeRunPendingTaskCheck,
+	maybeRunRecallOnAmbiguity,
 	prepareSessionForIncomingTurn,
 	refreshAgentIfPromptDirty,
 } from "./shared";
@@ -211,7 +213,12 @@ export const cliChannel: AppChannel = {
 					console.log(`${taskCheck.reply ?? ""}\n`);
 					continue;
 				}
-				if (preparedTurn.compacted || taskCheck.needsRefresh) {
+				const recall = await maybeRunRecallOnAmbiguity(session, userInput);
+				if (
+					preparedTurn.compacted ||
+					taskCheck.needsRefresh ||
+					recall.needsRefresh
+				) {
 					await session.refreshAgent();
 				}
 				const invokeMessages = buildInvokeMessages(session, {
@@ -238,6 +245,7 @@ export const cliChannel: AppChannel = {
 				console.log(`Request failed: ${message}\n`);
 			} finally {
 				clearPendingTaskCheckContext(session);
+				clearPendingRecallContext(session);
 				session.currentUserText = undefined;
 				session.currentTurnContext = undefined;
 				await refreshAgentIfPromptDirty(session);

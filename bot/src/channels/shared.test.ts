@@ -4,10 +4,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
+import { SqliteStateBackend } from "../backends";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import type { AppConfig } from "../config";
-import { createDb } from "../db/index";
-import type { CheckpointSummary } from "../memory/checkpoint_compaction";
+import { createDb, detectDialect } from "../db/index";
+import { ensureMemoryBootstrapped } from "../memory/bootstrap";
+import {
+	type CheckpointSummary,
+	serializeCheckpointSummary,
+} from "../memory/checkpoint_compaction";
 import type { ThreadMessage } from "../memory/summarize";
 import type { ApprovalBroker } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -16,6 +21,7 @@ import type { ChannelAgentSession } from "./shared";
 import {
 	buildInvokeMessages,
 	clearPendingCompactionSeed,
+	clearPendingRecallContext,
 	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
@@ -23,6 +29,7 @@ import {
 	maybeAutoCompactAndSeed,
 	maybeResumeCompactAndSeed,
 	maybeRunPendingTaskCheck,
+	maybeRunRecallOnAmbiguity,
 	recoverPendingSeedForEmptyThread,
 	refreshAgentIfPromptDirty,
 	seedFromCheckpoint,
@@ -88,6 +95,7 @@ const TEST_CONFIG: AppConfig = {
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
 	enableBrowserOnParent: false,
+	enableTabular: true,
 	defaultStatusLocale: "en",
 	enableVoiceMessages: true,
 	transcriptionProvider: "openai",
@@ -442,6 +450,67 @@ describe("channel task-check state", () => {
 				id: task.id,
 				status: "active",
 			});
+		} finally {
+			await db.close();
+		}
+	});
+});
+
+describe("channel recall-on-ambiguity state", () => {
+	test("injects one-turn recall context for ambiguous continuations", async () => {
+		const db = createDb("sqlite://:memory:");
+		try {
+			const taskStore = new TaskStore({ db, dialect: "sqlite" });
+			const checkpointStore = new ForcedCheckpointStore(db);
+			const workspace = new SqliteStateBackend({
+				db,
+				dialect: detectDialect("sqlite://:memory:"),
+				namespace: "cli:tester",
+			});
+			await ensureMemoryBootstrapped(workspace);
+			await taskStore.addTask({
+				userId: "cli:tester",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Draft sales proposal",
+				note: "Use Acme pricing.",
+			});
+			await checkpointStore.create({
+				caller: "cli:tester",
+				threadId: "thread-a",
+				sourceBoundary: "new_thread",
+				summaryPayload: serializeCheckpointSummary({
+					current_goal: "Prepare the Acme sales proposal",
+					decisions: ["Use three package options"],
+					constraints: [],
+					unfinished_work: ["Add pricing"],
+					pending_approvals: [],
+					important_artifacts: [],
+				}),
+			});
+			const session = stubSession({
+				workspace,
+				recallConfig: {
+					caller: "cli:tester",
+					taskStore,
+					checkpointStore,
+				},
+			});
+
+			const result = await maybeRunRecallOnAmbiguity(
+				session,
+				"continue the sales proposal",
+			);
+
+			expect(result.needsRefresh).toBe(true);
+			expect(session.pendingRecallContext).toContain("## Recall-on-Ambiguity");
+			expect(session.pendingRecallContext).toContain("Draft sales proposal");
+			expect(session.pendingRecallContext).toContain(
+				"Prepare the Acme sales proposal",
+			);
+
+			clearPendingRecallContext(session);
+			expect(session.pendingRecallContext).toBeUndefined();
 		} finally {
 			await db.close();
 		}

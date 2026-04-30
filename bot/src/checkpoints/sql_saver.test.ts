@@ -246,7 +246,7 @@ describe("ForcedCheckpointStore", () => {
 			summaryPayload: "bob",
 		});
 
-		const records = await store.listRecentForCaller("alice", { limit: 1 });
+		const records = await store.listRecentForCaller("alice", 1);
 
 		expect(records).toHaveLength(1);
 		expect(records[0]?.id).toBe(recent.id);

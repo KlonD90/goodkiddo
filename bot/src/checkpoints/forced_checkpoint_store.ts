@@ -164,10 +164,9 @@ export class ForcedCheckpointStore {
 
 	async listRecentForCaller(
 		caller: string,
-		options: { limit?: number } = {},
+		limit = 5,
 	): Promise<ForcedCheckpoint[]> {
 		await this._ready;
-		const limit = options.limit ?? 5;
 		const rows = await this.db<RawRow[]>`
 			SELECT
 				id,

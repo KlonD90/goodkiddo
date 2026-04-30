@@ -20,6 +20,12 @@ import {
 	type CheckpointSummary,
 	deserializeCheckpointSummary,
 } from "../memory/checkpoint_compaction";
+import {
+	collectRecallCandidates,
+	detectAmbiguousContinuation,
+	formatRecallRuntimeContext,
+	rankRecallCandidates,
+} from "../memory/recall";
 
 const log = createLogger("compaction.seed");
 
@@ -64,6 +70,12 @@ export type TaskCheckSessionConfig = {
 	store: TaskStore;
 };
 
+export type RecallSessionConfig = {
+	caller: string;
+	taskStore: TaskStore;
+	checkpointStore: ForcedCheckpointStore;
+};
+
 export type ChannelCurrentTurnContext = {
 	now: Date;
 	source: "cli" | "telegram_message" | "scheduler" | "system_clock";
@@ -85,12 +97,16 @@ export type ChannelAgentSession = {
 	pendingTaskCheck?: boolean;
 	/** One-turn runtime context emitted by boundary-based task reconciliation. */
 	pendingTaskCheckContext?: string;
+	/** One-turn runtime context emitted for ambiguous continuation recall. */
+	pendingRecallContext?: string;
 	/** True for the first turn after a persisted thread is resumed. */
 	needsResumeCompaction?: boolean;
 	/** When set, auto-compaction is checked before each turn. */
 	compactionConfig?: CompactionSessionConfig;
 	/** When set, boundary task reconciliation is checked before the next turn. */
 	taskCheckConfig?: TaskCheckSessionConfig;
+	/** When set, ambiguous continuation recall can inject one-turn context. */
+	recallConfig?: RecallSessionConfig;
 	/** Emits status messages to the active channel. */
 	statusEmitter?: StatusEmitter;
 	/** Resolved locale for status message rendering. */
@@ -185,6 +201,11 @@ export async function createChannelAgentSession(
 			caller: options.caller.id,
 			store: taskStore,
 		},
+		recallConfig: {
+			caller: options.caller.id,
+			taskStore,
+			checkpointStore: forcedCheckpointStore,
+		},
 		statusEmitter: options.statusEmitter,
 		locale: options.locale,
 		recursionLimit: config.recursionLimit,
@@ -277,6 +298,10 @@ export function clearPendingTaskCheckContext(
 	session: ChannelAgentSession,
 ): void {
 	session.pendingTaskCheckContext = undefined;
+}
+
+export function clearPendingRecallContext(session: ChannelAgentSession): void {
+	session.pendingRecallContext = undefined;
 }
 
 export async function refreshAgentIfPromptDirty(
@@ -592,6 +617,45 @@ export async function maybeRunPendingTaskCheck(
 	return { handled: false, needsRefresh: false };
 }
 
+export async function maybeRunRecallOnAmbiguity(
+	session: ChannelAgentSession,
+	currentUserContent: unknown,
+): Promise<{ needsRefresh: boolean }> {
+	if (!session.recallConfig) return { needsRefresh: false };
+
+	const messageText = extractTextFromContent(currentUserContent).trim();
+	if (messageText === "") {
+		session.pendingRecallContext = undefined;
+		return { needsRefresh: false };
+	}
+	if (!detectAmbiguousContinuation(messageText).isAmbiguous) {
+		session.pendingRecallContext = undefined;
+		return { needsRefresh: false };
+	}
+
+	const candidates = await collectRecallCandidates({
+		userId: session.recallConfig.caller,
+		taskStore: session.recallConfig.taskStore,
+		checkpointStore: session.recallConfig.checkpointStore,
+		backend: session.workspace,
+		limits: {
+			activeTasks: 20,
+			checkpoints: 5,
+			memoryEntries: 20,
+			logEntries: 20,
+		},
+	});
+	const ranked = rankRecallCandidates({
+		input: messageText,
+		candidates,
+		limit: 3,
+	});
+	const recallContext = formatRecallRuntimeContext(ranked);
+	session.pendingRecallContext = recallContext;
+
+	return { needsRefresh: recallContext !== undefined };
+}
+
 export const extractTextFromContent = (content: unknown): string => {
 	if (typeof content === "string") return content;
 	if (Array.isArray(content)) {
@@ -606,7 +670,7 @@ export const extractTextFromContent = (content: unknown): string => {
 export function buildSessionRuntimeMessages(
 	session: Pick<
 		ChannelAgentSession,
-		"pendingCompactionSeed" | "pendingTaskCheckContext"
+		"pendingCompactionSeed" | "pendingTaskCheckContext" | "pendingRecallContext"
 	>,
 	allMessages: ThreadMessage[],
 ): ThreadMessage[] {
@@ -628,7 +692,7 @@ export function buildSessionRuntimeMessages(
 export function estimateSessionRuntimeTokens(
 	session: Pick<
 		ChannelAgentSession,
-		"pendingCompactionSeed" | "pendingTaskCheckContext"
+		"pendingCompactionSeed" | "pendingTaskCheckContext" | "pendingRecallContext"
 	>,
 	allMessages: ThreadMessage[],
 ): number {
@@ -639,7 +703,9 @@ function renderSessionRuntimeContext(
 	session:
 		| Pick<
 				ChannelAgentSession,
-				"pendingCompactionSeed" | "pendingTaskCheckContext"
+				| "pendingCompactionSeed"
+				| "pendingTaskCheckContext"
+				| "pendingRecallContext"
 		  >
 		| undefined,
 ): string | undefined {
@@ -660,6 +726,9 @@ function renderSessionRuntimeContext(
 	}
 	if (session.pendingTaskCheckContext) {
 		blocks.push(session.pendingTaskCheckContext.trim());
+	}
+	if (session.pendingRecallContext) {
+		blocks.push(session.pendingRecallContext.trim());
 	}
 	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }

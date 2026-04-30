@@ -5,7 +5,11 @@ import { compactInline } from "../utils/text";
 import { deserializeCheckpointSummary } from "./checkpoint_compaction";
 import { readModifiedAt, readOrEmpty } from "./fs";
 import { parseIndex } from "./index_manager";
-import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH, USER_PROFILE_PATH } from "./layout";
+import {
+	MEMORY_INDEX_PATH,
+	MEMORY_LOG_PATH,
+	USER_PROFILE_PATH,
+} from "./layout";
 
 export type RecallSource =
 	| "task"
@@ -56,7 +60,7 @@ export type RecallTaskStore = {
 export type RecallCheckpointStore = {
 	listRecentForCaller(
 		caller: string,
-		options?: { limit?: number },
+		limit?: number,
 	): Promise<ForcedCheckpoint[]>;
 };
 
@@ -107,7 +111,8 @@ const AMBIGUOUS_PATTERNS: Array<{ phrase: string; pattern: RegExp }> = [
 	},
 	{
 		phrase: "that reference",
-		pattern: /\b(?:that|the)\s+[\p{L}\p{N}][\p{L}\p{N}-]*/iu,
+		pattern:
+			/^(?:that|the)\s+[\p{L}\p{N}][\p{L}\p{N}-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}-]*){0,2}$/iu,
 	},
 	{
 		phrase: "relative prior time",
@@ -259,12 +264,10 @@ export function checkpointRecallCandidates(
 
 export async function memoryRecallCandidates(
 	backend: BackendProtocol,
-	options: MemoryRecallCandidateOptions | number = {},
+	options: MemoryRecallCandidateOptions = {},
 ): Promise<RecallCandidateInput[]> {
-	const memoryEntryLimit =
-		typeof options === "number" ? options : (options.memoryEntries ?? 20);
-	const logEntryLimit =
-		typeof options === "number" ? options : (options.logEntries ?? 20);
+	const memoryEntryLimit = options.memoryEntries ?? 20;
+	const logEntryLimit = options.logEntries ?? 20;
 	const candidates: RecallCandidateInput[] = [];
 	const [memoryIndexRaw, userProfileRaw, logRaw] = await Promise.all([
 		readOrEmpty(backend, MEMORY_INDEX_PATH),
@@ -298,7 +301,7 @@ export async function memoryRecallCandidates(
 		});
 	}
 
-	candidates.push(...parseMemoryLog(logRaw).slice(0, logEntryLimit));
+	candidates.push(...parseMemoryLog(logRaw).slice(-logEntryLimit).reverse());
 	return candidates;
 }
 
@@ -314,9 +317,7 @@ export async function collectRecallCandidates(
 			: Promise.resolve([]),
 		options.checkpointStore
 			? options.checkpointStore
-					.listRecentForCaller(options.userId, {
-						limit: limits.checkpoints ?? 5,
-					})
+					.listRecentForCaller(options.userId, limits.checkpoints ?? 5)
 					.then(checkpointRecallCandidates)
 			: Promise.resolve([]),
 		options.backend
@@ -333,6 +334,51 @@ export async function collectRecallCandidates(
 	]);
 
 	return batches.flat();
+}
+
+function truncateForRuntimeContext(value: string, maxLength: number): string {
+	const normalized = compactInline(value);
+	if (normalized.length <= maxLength) return normalized;
+	return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+
+export function formatRecallRuntimeContext(
+	result: RecallRankingResult,
+): string | undefined {
+	if (!result.detection.isAmbiguous) return undefined;
+
+	const lines = [
+		"## Recall-on-Ambiguity",
+		"The current user message looks like an ambiguous continuation. Use this source-backed recall evidence before asking the user to repeat themselves.",
+		`Matched phrases: ${result.detection.matchedPhrases.join(", ")}`,
+	];
+
+	if (result.candidates.length === 0) {
+		lines.push(
+			"Recall search found no source-backed candidates. Ask one targeted clarification and do not invent missing context.",
+		);
+		return lines.join("\n");
+	}
+
+	lines.push(
+		"High confidence: proceed with a brief source mention. Medium confidence: ask confirmation. Low confidence: offer likely candidates or ask one targeted clarification.",
+		"Candidates:",
+	);
+	for (const [index, candidate] of result.candidates.entries()) {
+		lines.push(
+			`${index + 1}. [${candidate.confidence}] ${candidate.source}: ${truncateForRuntimeContext(candidate.summary, 180)}`,
+		);
+		if (candidate.snippet) {
+			lines.push(
+				`   Snippet: ${truncateForRuntimeContext(candidate.snippet, 220)}`,
+			);
+		}
+		lines.push(
+			`   Rationale: ${truncateForRuntimeContext(candidate.rationale.join("; "), 180)}`,
+		);
+	}
+
+	return lines.join("\n");
 }
 
 export function rankRecallCandidates(options: {
