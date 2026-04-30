@@ -60,7 +60,7 @@ Expected decision behavior:
 - [x] Search active tasks / task titles / source context where available.
 - [x] Search recent checkpoint summaries.
 - [x] Search memory notes/index/log entries through existing memory abstractions.
-- [x] Include virtual files only if an existing safe abstraction already exists; otherwise document as future work. Documented: recall accepts only already-safe virtual file candidates and does not globally scan the virtual filesystem in v1.
+- [x] Include virtual files only if an existing safe abstraction already exists; otherwise document as future work.
 
 ### Task 3: Confidence and output shape
 - [x] Return candidates with source, summary/snippet, and confidence/rationale.
