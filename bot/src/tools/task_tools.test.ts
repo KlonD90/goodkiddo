@@ -28,6 +28,29 @@ function createTaskContext(
 	};
 }
 
+function getSchemaKeys(tool: { schema: unknown }): string[] {
+	return Object.keys((tool.schema as { shape: Record<string, unknown> }).shape);
+}
+
+function expectNoPreparedFollowUpMetadata(value: string): void {
+	for (const token of [
+		"dueAt",
+		"nextCheckAt",
+		"priority",
+		"loopType",
+		"sourceContext",
+		"sourceRef",
+		"lastNudgedAt",
+		"nudgeCount",
+		"snoozedUntil",
+		"client_followup",
+		"metadata-source-context",
+		"metadata-source-ref",
+	]) {
+		expect(value).not.toContain(token);
+	}
+}
+
 describe("task tools", () => {
 	test("task_add creates caller-scoped active tasks", async () => {
 		const ctx = createTaskContext("task-add");
@@ -48,6 +71,61 @@ describe("task tools", () => {
 			note: "Before lunch",
 			threadIdCreated: "thread-active",
 		});
+		await ctx.db.close();
+	});
+
+	test("task tools keep prepared-follow-up metadata internal", async () => {
+		const ctx = createTaskContext("task-metadata-internal");
+		const addTool = createTaskAddTool(ctx);
+		expect(getSchemaKeys(addTool).sort()).toEqual([
+			"listName",
+			"note",
+			"title",
+		]);
+
+		const completeTask = await ctx.store.addTask({
+			userId: ctx.callerId,
+			threadIdCreated: "thread-old",
+			listName: "today",
+			title: "Close hidden loop",
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 3,
+			loopType: "client_followup",
+			sourceContext: "metadata-source-context",
+			sourceRef: "metadata-source-ref",
+			lastNudgedAt: 1_250,
+			nudgeCount: 2,
+			snoozedUntil: 1_400,
+		});
+		const dismissTask = await ctx.store.addTask({
+			userId: ctx.callerId,
+			threadIdCreated: "thread-old",
+			listName: "backlog",
+			title: "Drop hidden loop",
+			dueAt: 4_000,
+			nextCheckAt: 3_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "metadata-source-context",
+			sourceRef: "metadata-source-ref",
+			lastNudgedAt: 3_250,
+			nudgeCount: 1,
+			snoozedUntil: 3_400,
+		});
+
+		expectNoPreparedFollowUpMetadata(
+			await createTaskListActiveTool(ctx).invoke({}),
+		);
+		expectNoPreparedFollowUpMetadata(
+			await createTaskCompleteTool(ctx).invoke({ taskId: completeTask.id }),
+		);
+		expectNoPreparedFollowUpMetadata(
+			await createTaskDismissTool({
+				...ctx,
+				currentUserText: `yes, dismiss task ${dismissTask.id}`,
+			}).invoke({ taskId: dismissTask.id }),
+		);
 		await ctx.db.close();
 	});
 

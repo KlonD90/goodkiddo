@@ -5,7 +5,7 @@ Add structured active task tracking on top of the existing per-caller memory sys
 
 The task store also carries prepared-follow-up metadata so future workers can decide when a task deserves another look without changing today's simple task UX.
 
-Related execution plan: [`../plans/db-active-tasks-and-notes.md`](../plans/db-active-tasks-and-notes.md).
+Related execution plans: [`../plans/db-active-tasks-and-notes.md`](../plans/db-active-tasks-and-notes.md) and [`../plans/10-Prepared-Follow-ups--nudgeable-tasks-v1.md`](../plans/10-Prepared-Follow-ups--nudgeable-tasks-v1.md).
 
 ## User cases
 - A user tells the bot to remember a fact or decision so that it stays in durable notes and can be reused later.

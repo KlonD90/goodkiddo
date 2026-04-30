@@ -12,7 +12,7 @@ Source root for the harness.
 - `server/` — HTTP routes and browser virtual filesystem explorer; text previews are transported as base64 bytes and decoded as UTF-8 in the `web/` workspace frontend served from `web/dist`
 - `tools/` — LangChain tools (FS + sandbox execution)
 - `memory/` — per-caller memory wiki (notes, skills, log)
-- `tasks/` — SQL-backed active task storage, prompt snapshots, and boundary reconciliation helpers
+- `tasks/` — SQL-backed active task storage, prepared-follow-up metadata, prompt snapshots, and boundary reconciliation helpers
 - `db/` — `Bun.SQL` factory (`createDb`) and dialect detector (`detectDialect`)
 - `backends/` — virtual filesystem backend (SQLite or PostgreSQL via injected `Bun.SQL`)
 - `execution/` — sandbox-side manifest validation + orchestration

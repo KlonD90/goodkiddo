@@ -26,6 +26,7 @@ When adding a new tool, author a status template alongside it so users see what 
 
 - Durable facts, preferences, and reusable procedures belong in `/memory/` and `/skills/`.
 - Actionable work belongs in the SQL task store under `bot/src/tasks/`.
+- Prepared-follow-up metadata lives on task rows in `bot/src/tasks/store.ts`. Internal code may set `dueAt`, `nextCheckAt`, `priority`, `loopType`, `sourceContext`, `sourceRef`, `lastNudgedAt`, `nudgeCount`, and `snoozedUntil` through `TaskStore.addTask` or `TaskStore.updateTaskMetadata`; Telegram-facing task tools intentionally stay limited to simple task capture and status changes.
 - Use task tools for open work. Use memory files for durable knowledge.
 - `task_dismiss` is confirmation-gated: only dismiss after the user explicitly confirms in the current turn.
 

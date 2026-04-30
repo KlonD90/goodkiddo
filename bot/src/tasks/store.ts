@@ -361,7 +361,9 @@ export class TaskStore {
 			return;
 		}
 
-		const columns = await this.db<Array<{ name: string }>>`PRAGMA table_info(tasks)`;
+		const columns = await this.db<
+			Array<{ name: string }>
+		>`PRAGMA table_info(tasks)`;
 		const columnNames = new Set(columns.map((column) => column.name));
 		if (!columnNames.has("due_at")) {
 			await this.db`ALTER TABLE tasks ADD COLUMN due_at INTEGER`;
@@ -410,7 +412,8 @@ export class TaskStore {
 		const listName = requireCompactField(input.listName, "Task list name");
 		const title = requireCompactField(input.title, "Task title");
 		const note = compactOptionalField(input.note);
-		const dueAt = normalizeOptionalTimestamp(input.dueAt, "Task due time") ?? null;
+		const dueAt =
+			normalizeOptionalTimestamp(input.dueAt, "Task due time") ?? null;
 		const nextCheckAt =
 			normalizeOptionalTimestamp(input.nextCheckAt, "Task next check time") ??
 			null;
@@ -423,8 +426,10 @@ export class TaskStore {
 			null;
 		const nudgeCount = normalizeNudgeCount(input.nudgeCount) ?? 0;
 		const snoozedUntil =
-			normalizeOptionalTimestamp(input.snoozedUntil, "Task snoozed until time") ??
-			null;
+			normalizeOptionalTimestamp(
+				input.snoozedUntil,
+				"Task snoozed until time",
+			) ?? null;
 		const now = this.now();
 		const rows = await this.db<TaskRow[]>`
 			INSERT INTO tasks (
@@ -505,69 +510,78 @@ export class TaskStore {
 		input: UpdateTaskMetadataInput,
 	): Promise<TaskRecord | null> {
 		await this._ready;
-		const existing = await this.getTask(input.taskId, input.userId);
-		if (!existing) return null;
+		const shouldUpdateDueAt = input.dueAt !== undefined;
+		const shouldUpdateNextCheckAt = input.nextCheckAt !== undefined;
+		const shouldUpdatePriority = input.priority !== undefined;
+		const shouldUpdateLoopType = input.loopType !== undefined;
+		const shouldUpdateSourceContext = input.sourceContext !== undefined;
+		const shouldUpdateSourceRef = input.sourceRef !== undefined;
+		const shouldUpdateLastNudgedAt = input.lastNudgedAt !== undefined;
+		const shouldUpdateNudgeCount = input.nudgeCount !== undefined;
+		const shouldUpdateSnoozedUntil = input.snoozedUntil !== undefined;
 
 		const hasUpdates = [
-			"dueAt",
-			"nextCheckAt",
-			"priority",
-			"loopType",
-			"sourceContext",
-			"sourceRef",
-			"lastNudgedAt",
-			"nudgeCount",
-			"snoozedUntil",
-		].some((key) => Object.hasOwn(input, key));
-		if (!hasUpdates) return existing;
+			shouldUpdateDueAt,
+			shouldUpdateNextCheckAt,
+			shouldUpdatePriority,
+			shouldUpdateLoopType,
+			shouldUpdateSourceContext,
+			shouldUpdateSourceRef,
+			shouldUpdateLastNudgedAt,
+			shouldUpdateNudgeCount,
+			shouldUpdateSnoozedUntil,
+		].some(Boolean);
+		if (!hasUpdates) return this.getTask(input.taskId, input.userId);
 
-		const dueAt = Object.hasOwn(input, "dueAt")
+		const dueAt = shouldUpdateDueAt
 			? (normalizeOptionalTimestamp(input.dueAt, "Task due time") ?? null)
-			: existing.dueAt;
-		const nextCheckAt = Object.hasOwn(input, "nextCheckAt")
-			? (normalizeOptionalTimestamp(input.nextCheckAt, "Task next check time") ??
-				null)
-			: existing.nextCheckAt;
-		const priority = Object.hasOwn(input, "priority")
-			? (normalizePriority(input.priority) ?? existing.priority)
-			: existing.priority;
-		const loopType = Object.hasOwn(input, "loopType")
+			: null;
+		const nextCheckAt = shouldUpdateNextCheckAt
+			? (normalizeOptionalTimestamp(
+					input.nextCheckAt,
+					"Task next check time",
+				) ?? null)
+			: null;
+		const priority = shouldUpdatePriority
+			? (normalizePriority(input.priority) ?? 0)
+			: 0;
+		const loopType = shouldUpdateLoopType
 			? (normalizeLoopType(input.loopType) ?? null)
-			: existing.loopType;
-		const sourceContext = Object.hasOwn(input, "sourceContext")
+			: null;
+		const sourceContext = shouldUpdateSourceContext
 			? compactOptionalField(input.sourceContext)
-			: existing.sourceContext;
-		const sourceRef = Object.hasOwn(input, "sourceRef")
+			: null;
+		const sourceRef = shouldUpdateSourceRef
 			? compactOptionalField(input.sourceRef)
-			: existing.sourceRef;
-		const lastNudgedAt = Object.hasOwn(input, "lastNudgedAt")
+			: null;
+		const lastNudgedAt = shouldUpdateLastNudgedAt
 			? (normalizeOptionalTimestamp(
 					input.lastNudgedAt,
 					"Task last nudged time",
 				) ?? null)
-			: existing.lastNudgedAt;
-		const nudgeCount = Object.hasOwn(input, "nudgeCount")
-			? (normalizeNudgeCount(input.nudgeCount) ?? existing.nudgeCount)
-			: existing.nudgeCount;
-		const snoozedUntil = Object.hasOwn(input, "snoozedUntil")
+			: null;
+		const nudgeCount = shouldUpdateNudgeCount
+			? (normalizeNudgeCount(input.nudgeCount) ?? 0)
+			: 0;
+		const snoozedUntil = shouldUpdateSnoozedUntil
 			? (normalizeOptionalTimestamp(
 					input.snoozedUntil,
 					"Task snoozed until time",
 				) ?? null)
-			: existing.snoozedUntil;
+			: null;
 		const now = this.now();
 		const rows = await this.db<TaskRow[]>`
 			UPDATE tasks
 			SET
-				due_at = ${dueAt},
-				next_check_at = ${nextCheckAt},
-				priority = ${priority},
-				loop_type = ${loopType},
-				source_context = ${sourceContext},
-				source_ref = ${sourceRef},
-				last_nudged_at = ${lastNudgedAt},
-				nudge_count = ${nudgeCount},
-				snoozed_until = ${snoozedUntil},
+				due_at = CASE WHEN ${shouldUpdateDueAt} THEN ${dueAt} ELSE due_at END,
+				next_check_at = CASE WHEN ${shouldUpdateNextCheckAt} THEN ${nextCheckAt} ELSE next_check_at END,
+				priority = CASE WHEN ${shouldUpdatePriority} THEN ${priority} ELSE priority END,
+				loop_type = CASE WHEN ${shouldUpdateLoopType} THEN ${loopType} ELSE loop_type END,
+				source_context = CASE WHEN ${shouldUpdateSourceContext} THEN ${sourceContext} ELSE source_context END,
+				source_ref = CASE WHEN ${shouldUpdateSourceRef} THEN ${sourceRef} ELSE source_ref END,
+				last_nudged_at = CASE WHEN ${shouldUpdateLastNudgedAt} THEN ${lastNudgedAt} ELSE last_nudged_at END,
+				nudge_count = CASE WHEN ${shouldUpdateNudgeCount} THEN ${nudgeCount} ELSE nudge_count END,
+				snoozed_until = CASE WHEN ${shouldUpdateSnoozedUntil} THEN ${snoozedUntil} ELSE snoozed_until END,
 				updated_at = ${now}
 			WHERE id = ${input.taskId}
 				AND user_id = ${input.userId}

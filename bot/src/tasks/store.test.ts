@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { formatActiveTaskSnapshot, TaskStore } from "./store";
+import {
+	type AddTaskInput,
+	formatActiveTaskSnapshot,
+	TaskStore,
+	type UpdateTaskMetadataInput,
+} from "./store";
 
 type IndexListRow = {
 	seq: number;
@@ -23,6 +28,18 @@ type TableInfoRow = {
 	dflt_value: string | null;
 	pk: 0 | 1;
 };
+
+function createRecordingDb(): {
+	db: InstanceType<typeof Bun.SQL>;
+	statements: string[];
+} {
+	const statements: string[] = [];
+	const db = ((strings: TemplateStringsArray) => {
+		statements.push(strings.join(" ").replace(/\s+/g, " ").trim());
+		return Promise.resolve([]);
+	}) as unknown as InstanceType<typeof Bun.SQL>;
+	return { db, statements };
+}
 
 let db: InstanceType<typeof Bun.SQL>;
 let store: TaskStore;
@@ -94,6 +111,44 @@ describe("TaskStore", () => {
 			"list_name",
 			"status",
 		]);
+	});
+
+	test("runs postgres metadata migration statements", async () => {
+		const recording = createRecordingDb();
+		const postgresStore = new TaskStore({
+			db: recording.db,
+			dialect: "postgres",
+		});
+
+		await postgresStore.ready();
+
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS due_at BIGINT",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS next_check_at BIGINT",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS priority INTEGER NOT NULL DEFAULT 0 CHECK(priority BETWEEN 0 AND 3)",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS loop_type TEXT CHECK(loop_type IS NULL OR loop_type IN ('deadline', 'client_followup', 'decision', 'watch', 'continuation', 'general'))",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_context TEXT",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_ref TEXT",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_nudged_at BIGINT",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS nudge_count INTEGER NOT NULL DEFAULT 0 CHECK(nudge_count >= 0)",
+		);
+		expect(recording.statements).toContain(
+			"ALTER TABLE tasks ADD COLUMN IF NOT EXISTS snoozed_until BIGINT",
+		);
 	});
 
 	test("migrates legacy task tables with metadata defaults", async () => {
@@ -292,16 +347,21 @@ describe("TaskStore", () => {
 		});
 	});
 
-	test("updates task metadata without exposing it through chat tools", async () => {
+	test("updates task metadata with partial updates and explicit clears", async () => {
 		const task = await store.addTask({
 			userId: "telegram:1",
 			threadIdCreated: "thread-a",
 			listName: "watch",
 			title: "Watch contract status",
 			dueAt: 2_000,
+			nextCheckAt: 2_200,
 			priority: 1,
 			loopType: "watch",
 			sourceContext: "contract tracker",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_800,
+			nudgeCount: 1,
+			snoozedUntil: 2_400,
 		});
 
 		const updated = await store.updateTaskMetadata({
@@ -310,7 +370,9 @@ describe("TaskStore", () => {
 			dueAt: null,
 			nextCheckAt: 3_000,
 			priority: 3,
+			loopType: "decision",
 			sourceContext: "  updated tracker row  ",
+			sourceRef: "  msg:456  ",
 			lastNudgedAt: 2_500,
 			nudgeCount: 2,
 			snoozedUntil: null,
@@ -320,13 +382,58 @@ describe("TaskStore", () => {
 			dueAt: null,
 			nextCheckAt: 3_000,
 			priority: 3,
-			loopType: "watch",
+			loopType: "decision",
 			sourceContext: "updated tracker row",
+			sourceRef: "msg:456",
 			lastNudgedAt: 2_500,
 			nudgeCount: 2,
 			snoozedUntil: null,
 		});
 		expect(updated?.updatedAt).toBeGreaterThan(task.updatedAt);
+		expect(await store.getTask(task.id, "telegram:1")).toMatchObject({
+			dueAt: null,
+			nextCheckAt: 3_000,
+			priority: 3,
+			loopType: "decision",
+			sourceContext: "updated tracker row",
+			sourceRef: "msg:456",
+			lastNudgedAt: 2_500,
+			nudgeCount: 2,
+			snoozedUntil: null,
+		});
+
+		const partialInput: UpdateTaskMetadataInput = {
+			taskId: task.id,
+			userId: "telegram:1",
+			priority: 2,
+		};
+		Object.assign(partialInput, {
+			dueAt: undefined,
+			sourceContext: undefined,
+		});
+		expect(await store.updateTaskMetadata(partialInput)).toMatchObject({
+			dueAt: null,
+			nextCheckAt: 3_000,
+			priority: 2,
+			loopType: "decision",
+			sourceContext: "updated tracker row",
+			sourceRef: "msg:456",
+			lastNudgedAt: 2_500,
+			nudgeCount: 2,
+			snoozedUntil: null,
+		});
+
+		expect(
+			await store.updateTaskMetadata({
+				taskId: task.id,
+				userId: "telegram:1",
+				loopType: null,
+				sourceRef: null,
+			}),
+		).toMatchObject({
+			loopType: null,
+			sourceRef: null,
+		});
 		expect(
 			await store.updateTaskMetadata({
 				taskId: task.id,
@@ -337,15 +444,64 @@ describe("TaskStore", () => {
 	});
 
 	test("rejects invalid task metadata values", async () => {
-		await expect(
-			store.addTask({
-				userId: "telegram:1",
-				threadIdCreated: "thread-a",
-				listName: "today",
-				title: "Invalid priority",
-				priority: 4,
-			}),
-		).rejects.toThrow("Task priority must be an integer from 0 to 3.");
+		const invalidLoopType =
+			"unsupported" as unknown as AddTaskInput["loopType"];
+		const invalidCreateCases: Array<{
+			name: string;
+			input: Partial<AddTaskInput>;
+			message: string;
+		}> = [
+			{
+				name: "dueAt",
+				input: { dueAt: -1 },
+				message: "Task due time must be a non-negative integer timestamp.",
+			},
+			{
+				name: "nextCheckAt",
+				input: { nextCheckAt: -1 },
+				message:
+					"Task next check time must be a non-negative integer timestamp.",
+			},
+			{
+				name: "priority",
+				input: { priority: 4 },
+				message: "Task priority must be an integer from 0 to 3.",
+			},
+			{
+				name: "loopType",
+				input: { loopType: invalidLoopType },
+				message: "Task loop type is not supported.",
+			},
+			{
+				name: "lastNudgedAt",
+				input: { lastNudgedAt: -1 },
+				message:
+					"Task last nudged time must be a non-negative integer timestamp.",
+			},
+			{
+				name: "nudgeCount",
+				input: { nudgeCount: -1 },
+				message: "Task nudge count must be a non-negative integer.",
+			},
+			{
+				name: "snoozedUntil",
+				input: { snoozedUntil: -1 },
+				message:
+					"Task snoozed until time must be a non-negative integer timestamp.",
+			},
+		];
+
+		for (const invalidCase of invalidCreateCases) {
+			await expect(
+				store.addTask({
+					userId: "telegram:1",
+					threadIdCreated: "thread-a",
+					listName: "today",
+					title: `Invalid ${invalidCase.name}`,
+					...invalidCase.input,
+				}),
+			).rejects.toThrow(invalidCase.message);
+		}
 
 		const task = await store.addTask({
 			userId: "telegram:1",
@@ -353,15 +509,55 @@ describe("TaskStore", () => {
 			listName: "today",
 			title: "Invalid update",
 		});
-		await expect(
-			store.updateTaskMetadata({
-				taskId: task.id,
-				userId: "telegram:1",
-				nextCheckAt: -1,
-			}),
-		).rejects.toThrow(
-			"Task next check time must be a non-negative integer timestamp.",
-		);
+		const invalidUpdateCases: Array<{
+			input: Omit<UpdateTaskMetadataInput, "taskId" | "userId">;
+			message: string;
+		}> = [
+			{
+				input: { dueAt: -1 },
+				message: "Task due time must be a non-negative integer timestamp.",
+			},
+			{
+				input: { nextCheckAt: -1 },
+				message:
+					"Task next check time must be a non-negative integer timestamp.",
+			},
+			{
+				input: { priority: 4 },
+				message: "Task priority must be an integer from 0 to 3.",
+			},
+			{
+				input: {
+					loopType:
+						"unsupported" as unknown as UpdateTaskMetadataInput["loopType"],
+				},
+				message: "Task loop type is not supported.",
+			},
+			{
+				input: { lastNudgedAt: -1 },
+				message:
+					"Task last nudged time must be a non-negative integer timestamp.",
+			},
+			{
+				input: { nudgeCount: -1 },
+				message: "Task nudge count must be a non-negative integer.",
+			},
+			{
+				input: { snoozedUntil: -1 },
+				message:
+					"Task snoozed until time must be a non-negative integer timestamp.",
+			},
+		];
+
+		for (const invalidCase of invalidUpdateCases) {
+			await expect(
+				store.updateTaskMetadata({
+					taskId: task.id,
+					userId: "telegram:1",
+					...invalidCase.input,
+				}),
+			).rejects.toThrow(invalidCase.message);
+		}
 	});
 
 	test("completes active tasks for the owning caller only", async () => {
