@@ -1207,7 +1207,7 @@ const parseEnvAssignmentValue = (rawValue: string): string => {
 	return trimmed;
 };
 
-const readPersistedEnvFile = (
+export const readPersistedEnvFile = (
 	envFilePath = DEFAULT_ENV_FILE_PATH,
 ): PersistedEnvValues => {
 	if (!existsSync(envFilePath)) {

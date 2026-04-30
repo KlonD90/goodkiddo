@@ -1,4 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	buildDbmateConfig,
@@ -7,6 +9,20 @@ import {
 	normalizeDbmateDatabaseUrl,
 	readMigrationDatabaseUrl,
 } from "./migrate";
+
+const tempDirs: string[] = [];
+
+afterEach(async () => {
+	await Promise.all(
+		tempDirs.splice(0).map((dir) => rm(dir, { force: true, recursive: true })),
+	);
+});
+
+const createTempDir = async (): Promise<string> => {
+	const dir = await mkdtemp(join(tmpdir(), "goodkiddo-migrate-"));
+	tempDirs.push(dir);
+	return dir;
+};
 
 describe("normalizeDbmateDatabaseUrl", () => {
 	test("normalizes Bun relative sqlite URLs for dbmate", () => {
@@ -69,6 +85,38 @@ describe("readMigrationDatabaseUrl", () => {
 	test("uses app config default when DATABASE_URL is unset", () => {
 		expect(readMigrationDatabaseUrl({})).toBe("sqlite://./state.db");
 	});
+
+	test("uses explicit env over process env", () => {
+		const previousDatabaseUrl = process.env.DATABASE_URL;
+		process.env.DATABASE_URL = "postgres://localhost/prod";
+		try {
+			expect(
+				readMigrationDatabaseUrl({
+					DATABASE_URL: "sqlite://./state.db",
+				}),
+			).toBe("sqlite://./state.db");
+		} finally {
+			if (previousDatabaseUrl === undefined) {
+				delete process.env.DATABASE_URL;
+			} else {
+				process.env.DATABASE_URL = previousDatabaseUrl;
+			}
+		}
+	});
+
+	test("uses persisted app config when DATABASE_URL is not in env", async () => {
+		const dir = await createTempDir();
+		const envFilePath = join(dir, ".env");
+		await writeFile(
+			envFilePath,
+			'DATABASE_URL="postgres://localhost/goodkiddo"\n',
+			"utf8",
+		);
+
+		expect(readMigrationDatabaseUrl({}, { envFilePath })).toBe(
+			"postgres://localhost/goodkiddo",
+		);
+	});
 });
 
 describe("buildDbmateInvocation", () => {
@@ -80,9 +128,8 @@ describe("buildDbmateInvocation", () => {
 			}),
 		).toEqual({
 			command: [
-				"bunx",
-				"--bun",
-				"dbmate",
+				"bun",
+				join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
 				"--url",
 				"sqlite:./state.db",
 				"--migrations-dir",
@@ -103,9 +150,8 @@ describe("buildDbmateInvocation", () => {
 				repoRoot: "/repo",
 			}).command,
 		).toEqual([
-			"bunx",
-			"--bun",
-			"dbmate",
+			"bun",
+			join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
 			"--url",
 			"postgres://localhost/goodkiddo",
 			"--migrations-dir",
@@ -139,9 +185,8 @@ describe("buildDbmateInvocation", () => {
 			}),
 		).toEqual({
 			command: [
-				"bunx",
-				"--bun",
-				"dbmate",
+				"bun",
+				join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
 				"--url",
 				"postgresql://localhost/goodkiddo",
 				"--migrations-dir",

@@ -29,18 +29,20 @@ const createTempDir = async (): Promise<string> => {
 	return dir;
 };
 
-const runSqliteMigrations = async (databasePath: string): Promise<void> => {
+const runSqliteDbmate = async (
+	databasePath: string,
+	command: "up" | "rollback",
+): Promise<void> => {
 	const config = buildDbmateConfig(`sqlite:${databasePath}`);
 	const proc = Bun.spawn(
 		[
-			"bunx",
-			"--bun",
-			"dbmate",
+			"bun",
+			join(process.cwd(), "node_modules", "dbmate", "dist", "cli.js"),
 			"--url",
 			config.databaseUrl,
 			"--migrations-dir",
 			config.migrationsDir,
-			"up",
+			command,
 		],
 		{
 			stderr: "pipe",
@@ -56,6 +58,9 @@ const runSqliteMigrations = async (databasePath: string): Promise<void> => {
 	expect(stderr).toBe("");
 	expect(exitCode).toBe(0);
 };
+
+const runSqliteMigrations = async (databasePath: string): Promise<void> =>
+	runSqliteDbmate(databasePath, "up");
 
 describe("baseline migrations", () => {
 	test("sqlite migrations create current task and timer baseline schemas", async () => {
@@ -217,6 +222,44 @@ describe("baseline migrations", () => {
 			});
 			expect(completed?.status).toBe("completed");
 			expect(await store.listActiveTasks("telegram:1")).toEqual([]);
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("sqlite rollback reverts the latest task metadata migration", async () => {
+		const dir = await createTempDir();
+		const databasePath = join(dir, "state.db");
+		await runSqliteMigrations(databasePath);
+		await runSqliteDbmate(databasePath, "rollback");
+
+		const db = new Bun.SQL(`sqlite:${databasePath}`);
+		try {
+			const tables = await db<TableListRow[]>`
+				SELECT name
+				FROM sqlite_master
+				WHERE type = 'table'
+				ORDER BY name
+			`;
+			expect(tables.map((table) => table.name)).toContain("tasks");
+			expect(tables.map((table) => table.name)).toContain("timers");
+
+			const taskColumns = await db<TableInfoRow[]>`PRAGMA table_info(tasks)`;
+			expect(taskColumns.map((column) => column.name)).toEqual([
+				"id",
+				"user_id",
+				"thread_id_created",
+				"thread_id_completed",
+				"list_name",
+				"title",
+				"note",
+				"status",
+				"status_reason",
+				"created_at",
+				"updated_at",
+				"completed_at",
+				"dismissed_at",
+			]);
 		} finally {
 			await db.close();
 		}

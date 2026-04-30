@@ -140,6 +140,9 @@ Vault file and installs `uvx` so the runtime can launch
   `DATABASE_URL` from `/etc/goodkiddo/bot.env`. For manual maintenance from the
   deployed checkout, run `bun run db:status` or `bun run db:migrate` from the
   repository root with the same environment file loaded.
+- The dbmate CLI is a runtime dependency of the bot package because startup
+  migrations run after the playbook installs production dependencies with
+  `bun install --frozen-lockfile --production`.
 - MiniMax image understanding is controlled by `enable_image_understanding`,
   `minimax_api_key`, and `minimax_api_host`; these render to
   `ENABLE_IMAGE_UNDERSTANDING`, `MINIMAX_API_KEY`, and `MINIMAX_API_HOST`.

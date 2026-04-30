@@ -1,6 +1,6 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { readConfigFromEnv } from "../config";
+import { readPersistedEnvFile } from "../config";
 import { detectDialect } from "./index";
 
 export type MigrationDialect = "sqlite" | "postgres";
@@ -27,6 +27,7 @@ const DEFAULT_REPO_ROOT = join(
 	"..",
 	"..",
 );
+const DEFAULT_DATABASE_URL = "sqlite://./state.db";
 
 export const normalizeDbmateDatabaseUrl = (databaseUrl: string): string => {
 	const dialect = detectDialect(databaseUrl);
@@ -60,7 +61,18 @@ export const buildDbmateConfig = (
 
 export const readMigrationDatabaseUrl = (
 	env: Record<string, string | undefined> = process.env,
-): string => readConfigFromEnv(env).databaseUrl ?? "sqlite://./state.db";
+	options: { envFilePath?: string } = {},
+): string => {
+	const envDatabaseUrl = env.DATABASE_URL?.trim();
+	if (envDatabaseUrl) {
+		return envDatabaseUrl;
+	}
+
+	return (
+		readPersistedEnvFile(options.envFilePath).DATABASE_URL ??
+		DEFAULT_DATABASE_URL
+	);
+};
 
 export const buildDbmateInvocation = (
 	dbmateCommand: DbmateCommand,
@@ -78,9 +90,15 @@ export const buildDbmateInvocation = (
 
 	return {
 		command: [
-			"bunx",
-			"--bun",
-			"dbmate",
+			"bun",
+			join(
+				options.repoRoot ?? DEFAULT_REPO_ROOT,
+				"bot",
+				"node_modules",
+				"dbmate",
+				"dist",
+				"cli.js",
+			),
 			"--url",
 			config.databaseUrl,
 			"--migrations-dir",

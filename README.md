@@ -92,9 +92,10 @@ expects. Use `bun run db:status` before and after local schema work when you
 need to inspect applied versions.
 
 Production-like bot startup runs migrations before opening the application
-database and constructing stores, so deploys should boot the bot through the
-normal `bun src/bin/bot.ts` entrypoint or run `bun run db:migrate` explicitly
-before any custom startup flow. Store constructors may keep defensive
+database and constructing stores, so deploys should boot through
+`bun run start` or `bun run start:telegram` from the repository root, or
+`bun src/bin/bot.ts` from `bot/`. Run `bun run db:migrate` explicitly before
+any custom startup flow. Store constructors may keep defensive
 `CREATE TABLE IF NOT EXISTS` setup for local bootstrap, but schema changes
 belong in versioned SQL migrations under `bot/db/migrations/`, not in
 store-local migration helpers or inline `ALTER TABLE` logic.
