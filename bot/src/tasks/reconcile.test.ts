@@ -122,6 +122,62 @@ describe("reconcileActiveTasksAtBoundary", () => {
 		expect(await store.listActiveTasks("telegram:1")).toHaveLength(0);
 	});
 
+	test("preserves task metadata when auto-completing at a boundary", async () => {
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "follow-up",
+			title: "Send client recap",
+			note: "after kickoff",
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "kickoff transcript",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+
+		const result = await reconcileActiveTasksAtBoundary({
+			store,
+			userId: "telegram:1",
+			threadId: "thread-b",
+			messageText: "I finished send client recap.",
+		});
+
+		expect(result.kind).toBe("completed");
+		if (result.kind !== "completed") {
+			throw new Error("Expected auto-complete result");
+		}
+		expect(result.task).toMatchObject({
+			id: task.id,
+			status: "completed",
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "kickoff transcript",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+		expect(await store.getTask(task.id, "telegram:1")).toMatchObject({
+			status: "completed",
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "kickoff transcript",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+	});
+
 	test("auto-completes a note-based phrase match", async () => {
 		const task = await store.addTask({
 			userId: "telegram:1",

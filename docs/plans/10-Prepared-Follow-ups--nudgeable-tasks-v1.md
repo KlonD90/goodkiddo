@@ -70,10 +70,10 @@ Notes:
 - [x] Keep direct task use simple for Telegram users.
 
 ### Task 4: Tests
-- [ ] Add tests for creating old/simple tasks with defaults.
-- [ ] Add tests for creating/updating tasks with due/check/priority/loop metadata.
-- [ ] Add tests for migration/backward compatibility if the repo has migration tests.
-- [ ] Add tests for reconcile behavior if metadata should survive reconciliation.
+- [x] Add tests for creating old/simple tasks with defaults.
+- [x] Add tests for creating/updating tasks with due/check/priority/loop metadata.
+- [x] Add tests for migration/backward compatibility if the repo has migration tests.
+- [x] Add tests for reconcile behavior if metadata should survive reconciliation.
 
 ### Task 5: Docs
 - [ ] Update the relevant feature doc or README for task metadata behavior.
