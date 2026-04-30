@@ -130,8 +130,6 @@ describe("buildDbmateInvocation", () => {
 			command: [
 				"bun",
 				join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
-				"--url",
-				"sqlite:./state.db",
 				"--migrations-dir",
 				join("/repo", "bot", "db", "migrations", "sqlite"),
 				"up",
@@ -152,8 +150,6 @@ describe("buildDbmateInvocation", () => {
 		).toEqual([
 			"bun",
 			join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
-			"--url",
-			"postgres://localhost/goodkiddo",
 			"--migrations-dir",
 			join("/repo", "bot", "db", "migrations", "postgres"),
 			"new",
@@ -187,8 +183,6 @@ describe("buildDbmateInvocation", () => {
 			command: [
 				"bun",
 				join("/repo", "bot", "node_modules", "dbmate", "dist", "cli.js"),
-				"--url",
-				"postgresql://localhost/goodkiddo",
 				"--migrations-dir",
 				join("/repo", "bot", "db", "migrations", "postgres"),
 				"rollback",

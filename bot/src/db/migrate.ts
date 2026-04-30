@@ -99,8 +99,6 @@ export const buildDbmateInvocation = (
 				"dist",
 				"cli.js",
 			),
-			"--url",
-			config.databaseUrl,
 			"--migrations-dir",
 			config.migrationsDir,
 			dbmateCommand,
