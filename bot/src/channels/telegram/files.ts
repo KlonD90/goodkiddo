@@ -177,6 +177,8 @@ export async function processTelegramFile(
 		currentMessageDate?: Date;
 		/** Optional context block (reply/forward) prepended to the capability output. */
 		contextPrefix?: string;
+		/** True when the context prefix represents forwarded source material. */
+		contextIsForwarded?: boolean;
 	},
 	helpers: ProcessTelegramFileHelpers = {},
 ): Promise<void> {
@@ -200,14 +202,14 @@ export async function processTelegramFile(
 
 	// For forwarded files, suppress command text so slash commands in captions
 	// are not executed — they are source material only.
-	const commandText = params.contextPrefix
+	const commandText = params.contextIsForwarded
 		? ""
 		: (result.value.commandText ?? "");
-	const currentUserText = params.contextPrefix
+	const currentUserText = params.contextIsForwarded
 		? undefined
 		: result.value.currentUserText;
 	const recallUserText =
-		!params.contextPrefix && capability?.name === "voice"
+		!params.contextIsForwarded && capability?.name === "voice"
 			? result.value.currentUserText
 			: null;
 

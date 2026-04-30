@@ -329,6 +329,7 @@ export const telegramChannel: AppChannel = {
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			const msgCtx = extractTelegramMessageContext(ctx.message);
 			const contextBlock = renderTelegramContextBlock(msgCtx);
+			const isForwarded = msgCtx.forward !== undefined;
 
 			log.info("voice message received", {
 				chatId: resolved.chatIdString,
@@ -356,6 +357,7 @@ export const telegramChannel: AppChannel = {
 					download: downloadTelegramFile(() => ctx.getFile()),
 					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
 					contextPrefix: contextBlock || undefined,
+					contextIsForwarded: isForwarded,
 				},
 			);
 		});
@@ -462,6 +464,7 @@ export const telegramChannel: AppChannel = {
 						download: downloadTelegramFile(() => ctx.getFile()),
 						currentMessageDate: dateFromTelegramMessage(ctx.message.date),
 						contextPrefix: contextBlock || undefined,
+						contextIsForwarded: isForwarded,
 					},
 				);
 			}

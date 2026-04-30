@@ -211,6 +211,7 @@ describe("processTelegramFile", () => {
 				},
 				download: async () => Uint8Array.from([1]),
 				contextPrefix: "[Telegram forwarded context]",
+				contextIsForwarded: true,
 			},
 			{ queueTurn: queued },
 		);
@@ -218,5 +219,57 @@ describe("processTelegramFile", () => {
 		expect(queued).toHaveBeenCalledTimes(1);
 		expect(queued.mock.calls[0]?.[8]).toBeUndefined();
 		expect(queued.mock.calls[0]?.[11]).toBeNull();
+	});
+
+	test("preserves recall text for replied voice messages", async () => {
+		const capability = {
+			name: "voice",
+			canHandle: () => true,
+			process: async () => ({
+				ok: true as const,
+				value: {
+					content: "continue the sales proposal",
+					currentUserText: "continue the sales proposal",
+				},
+			}),
+		} satisfies FileCapability;
+		const registry = {
+			match: () => capability,
+			handle: async () => ({
+				ok: true as const,
+				value: {
+					content: "continue the sales proposal",
+					currentUserText: "continue the sales proposal",
+				},
+			}),
+		} as unknown as CapabilityRegistry;
+		const queued = vi.fn().mockResolvedValue(undefined);
+
+		await processTelegramFile(
+			BASE_CONFIG,
+			registry,
+			{ workspace: {} as never } as never,
+			{} as never,
+			"123",
+			{ id: "telegram:123", entrypoint: "telegram", externalId: "123" },
+			{} as never,
+			undefined,
+			{
+				metadata: {
+					mimeType: "audio/ogg",
+					filename: "voice.ogg",
+				},
+				download: async () => Uint8Array.from([1]),
+				contextPrefix: "[Telegram reply context]",
+				contextIsForwarded: false,
+			},
+			{ queueTurn: queued },
+		);
+
+		expect(queued).toHaveBeenCalledTimes(1);
+		expect(queued.mock.calls[0]?.[3]).toBe("");
+		expect(queued.mock.calls[0]?.[4]).toContain("[Telegram reply context]");
+		expect(queued.mock.calls[0]?.[8]).toBe("continue the sales proposal");
+		expect(queued.mock.calls[0]?.[11]).toBe("continue the sales proposal");
 	});
 });
