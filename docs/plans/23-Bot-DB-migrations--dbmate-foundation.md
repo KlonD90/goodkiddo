@@ -79,10 +79,10 @@ bot/src/db/migrate.ts
 Follow TDD for new migration wrapper behavior.
 
 Add tests for:
-- [ ] Migration URL/dialect selection.
-- [ ] SQLite URL normalization if implemented.
-- [ ] Generated command/env behavior without shelling into real external services where avoidable.
-- [ ] Task store compatibility with migrated schema.
+- [x] Migration URL/dialect selection.
+- [x] SQLite URL normalization if implemented.
+- [x] Generated command/env behavior without shelling into real external services where avoidable.
+- [x] Task store compatibility with migrated schema.
 
 Existing #10 tests for task metadata should keep passing after rework.
 

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { TaskStore } from "../tasks/store";
 import { buildDbmateConfig } from "./migrate";
 
 type TableInfoRow = {
@@ -28,35 +29,39 @@ const createTempDir = async (): Promise<string> => {
 	return dir;
 };
 
+const runSqliteMigrations = async (databasePath: string): Promise<void> => {
+	const config = buildDbmateConfig(`sqlite:${databasePath}`);
+	const proc = Bun.spawn(
+		[
+			"bunx",
+			"--bun",
+			"dbmate",
+			"--url",
+			config.databaseUrl,
+			"--migrations-dir",
+			config.migrationsDir,
+			"up",
+		],
+		{
+			stderr: "pipe",
+			stdout: "pipe",
+		},
+	);
+
+	const [exitCode, stderr] = await Promise.all([
+		proc.exited,
+		new Response(proc.stderr).text(),
+	]);
+
+	expect(stderr).toBe("");
+	expect(exitCode).toBe(0);
+};
+
 describe("baseline migrations", () => {
 	test("sqlite migrations create current task and timer baseline schemas", async () => {
 		const dir = await createTempDir();
 		const databasePath = join(dir, "state.db");
-		const config = buildDbmateConfig(`sqlite:${databasePath}`);
-		const proc = Bun.spawn(
-			[
-				"bunx",
-				"--bun",
-				"dbmate",
-				"--url",
-				config.databaseUrl,
-				"--migrations-dir",
-				config.migrationsDir,
-				"up",
-			],
-			{
-				stderr: "pipe",
-				stdout: "pipe",
-			},
-		);
-
-		const [exitCode, stderr] = await Promise.all([
-			proc.exited,
-			new Response(proc.stderr).text(),
-		]);
-
-		expect(stderr).toBe("");
-		expect(exitCode).toBe(0);
+		await runSqliteMigrations(databasePath);
 
 		const db = new Bun.SQL(`sqlite:${databasePath}`);
 		try {
@@ -161,6 +166,57 @@ describe("baseline migrations", () => {
 				"next_run_at",
 				"created_at",
 			]);
+		} finally {
+			await db.close();
+		}
+	});
+
+	test("task store remains compatible with the migrated task schema", async () => {
+		const dir = await createTempDir();
+		const databasePath = join(dir, "state.db");
+		await runSqliteMigrations(databasePath);
+
+		const db = new Bun.SQL(`sqlite:${databasePath}`);
+		try {
+			let now = 10_000;
+			const store = new TaskStore({
+				db,
+				dialect: "sqlite",
+				now: () => now++,
+			});
+			await store.ready();
+
+			const task = await store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Use migrated task table",
+				note: "metadata columns exist",
+			});
+			expect(task.status).toBe("active");
+			expect(task.note).toBe("metadata columns exist");
+
+			const activeTasks = await store.listActiveTasks("telegram:1");
+			expect(activeTasks.map((item) => item.id)).toEqual([task.id]);
+
+			const metadataRows = await db<
+				{ due_at: number | null; nudge_count: number; priority: number }[]
+			>`
+				SELECT due_at, priority, nudge_count
+				FROM tasks
+				WHERE id = ${task.id}
+			`;
+			expect(metadataRows).toEqual([
+				{ due_at: null, nudge_count: 0, priority: 0 },
+			]);
+
+			const completed = await store.completeTask({
+				taskId: task.id,
+				userId: "telegram:1",
+				threadIdCompleted: "thread-done",
+			});
+			expect(completed?.status).toBe("completed");
+			expect(await store.listActiveTasks("telegram:1")).toEqual([]);
 		} finally {
 			await db.close();
 		}

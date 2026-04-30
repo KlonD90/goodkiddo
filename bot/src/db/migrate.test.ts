@@ -114,6 +114,45 @@ describe("buildDbmateInvocation", () => {
 			"add_tasks",
 		]);
 	});
+
+	test("sets normalized DATABASE_URL and preserves defined env values", () => {
+		expect(
+			buildDbmateInvocation("status", {
+				env: {
+					DATABASE_URL: "sqlite://../state.db",
+					GOODKIDDO_ENV: "test",
+					UNSET_VALUE: undefined,
+				},
+				repoRoot: "/repo",
+			}).env,
+		).toEqual({
+			DATABASE_URL: "sqlite:../state.db",
+			GOODKIDDO_ENV: "test",
+		});
+	});
+
+	test("builds rollback without shelling out", () => {
+		expect(
+			buildDbmateInvocation("rollback", {
+				env: { DATABASE_URL: "postgresql://localhost/goodkiddo" },
+				repoRoot: "/repo",
+			}),
+		).toEqual({
+			command: [
+				"bunx",
+				"--bun",
+				"dbmate",
+				"--url",
+				"postgresql://localhost/goodkiddo",
+				"--migrations-dir",
+				join("/repo", "bot", "db", "migrations", "postgres"),
+				"rollback",
+			],
+			env: {
+				DATABASE_URL: "postgresql://localhost/goodkiddo",
+			},
+		});
+	});
 });
 
 describe("migrateDatabase", () => {
