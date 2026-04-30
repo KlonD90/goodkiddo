@@ -39,6 +39,14 @@ import {
 
 const log = createLogger("telegram");
 
+export function getDirectTelegramCaptionText(
+	caption: string,
+	isForwarded: boolean,
+): string | undefined {
+	const trimmed = caption.trim();
+	return !isForwarded && trimmed !== "" ? trimmed : undefined;
+}
+
 async function syncTelegramCommands(bot: Bot): Promise<void> {
 	await bot.api.setMyCommands([...TELEGRAM_COMMANDS]);
 }
@@ -291,6 +299,10 @@ export const telegramChannel: AppChannel = {
 						contextPrefix: contextBlock || undefined,
 					},
 				);
+				const captionTurnText = getDirectTelegramCaptionText(
+					caption,
+					isForwarded,
+				);
 
 				await handleTelegramQueuedTurn(
 					resolved.session,
@@ -301,9 +313,10 @@ export const telegramChannel: AppChannel = {
 					resolved.caller,
 					store,
 					webShare,
-					undefined,
+					captionTurnText,
 					undefined,
 					dateFromTelegramMessage(ctx.message.date),
+					captionTurnText ?? null,
 				);
 			} catch (error) {
 				const message =

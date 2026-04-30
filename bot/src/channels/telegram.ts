@@ -23,7 +23,10 @@ export {
 	processTelegramFile,
 } from "./telegram/files";
 // Re-export handlers (telegramChannel)
-export { telegramChannel } from "./telegram/handlers";
+export {
+	getDirectTelegramCaptionText,
+	telegramChannel,
+} from "./telegram/handlers";
 // Re-export markdown
 export {
 	escapeTelegramHtml,

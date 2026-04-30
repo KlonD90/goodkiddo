@@ -22,6 +22,7 @@ import {
 	extractTelegramReplyFromAgentState,
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
+	getDirectTelegramCaptionText,
 	getTelegramCaller,
 	handleTelegramQueuedTurn,
 	isTelegramStartCommand,
@@ -856,6 +857,98 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(session.pendingRecallContext).toBeUndefined();
 	});
 
+	test("direct photo caption text triggers recall", async () => {
+		const listActiveTasks = vi.fn().mockResolvedValue([
+			{
+				id: 1,
+				userId: "telegram:123",
+				threadIdCreated: "thread-a",
+				threadIdCompleted: null,
+				listName: "today",
+				title: "Draft sales proposal",
+				note: "Use Acme pricing.",
+				status: "active",
+				statusReason: null,
+				createdAt: Date.parse("2026-04-28T00:00:00.000Z"),
+				updatedAt: Date.parse("2026-04-28T00:00:00.000Z"),
+				completedAt: null,
+				dismissedAt: null,
+			},
+		]);
+		const streamInputs: Array<{ messages?: Array<{ content?: unknown }> }> = [];
+		const refreshedRecallContexts: Array<string | undefined> = [];
+		const agent = {
+			getState: async () => ({ values: { messages: [] } }),
+			stream: async (input: { messages?: Array<{ content?: unknown }> }) => {
+				streamInputs.push(input);
+				return (async function* () {
+					yield [{ getType: () => "ai", content: "reply" }];
+				})();
+			},
+		};
+		const session = {
+			agent,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {
+				refreshedRecallContexts.push(session.pendingRecallContext);
+			},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+			recallConfig: {
+				caller: "telegram:123",
+				taskStore: { listActiveTasks },
+				checkpointStore: {
+					listRecentForCaller: vi.fn().mockResolvedValue([]),
+				},
+			},
+		} as unknown as TelegramAgentSession;
+		const bot = {
+			api: {
+				sendChatAction: vi.fn().mockResolvedValue(undefined),
+				sendMessage: vi.fn().mockResolvedValue(undefined),
+			},
+		} as unknown as Bot;
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+		const captionText = getDirectTelegramCaptionText(
+			"continue the sales proposal",
+			false,
+		);
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			buildTelegramPhotoContent(new Uint8Array([1, 2, 3]), {
+				caption: "continue the sales proposal",
+			}),
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			captionText,
+			undefined,
+			new Date("2026-04-28T00:00:00.000Z"),
+			captionText,
+		);
+		for (let i = 0; i < 20 && streamInputs.length < 1; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(listActiveTasks).toHaveBeenCalledWith("telegram:123", 20);
+		expect(streamInputs).toHaveLength(1);
+		expect(refreshedRecallContexts).toContainEqual(
+			expect.stringContaining("## Recall-on-Ambiguity"),
+		);
+	});
+
 	test("merged forwarded context-only text does not trigger recall", async () => {
 		let releaseFirstStream!: () => void;
 		const firstStreamReleased = new Promise<void>((resolve) => {
@@ -1590,6 +1683,18 @@ describe("renderTelegramContextBlock", () => {
 		expect(block).toContain("[Telegram forwarded context]");
 		expect(block).toContain("/new_thread");
 		// The slash command is inside the block — caller must use commandText="" separately
+	});
+});
+
+describe("Telegram caption recall input", () => {
+	test("uses only direct non-empty captions as recall text", () => {
+		expect(getDirectTelegramCaptionText(" continue the proposal ", false)).toBe(
+			"continue the proposal",
+		);
+		expect(getDirectTelegramCaptionText("continue the proposal", true)).toBe(
+			undefined,
+		);
+		expect(getDirectTelegramCaptionText("   ", false)).toBeUndefined();
 	});
 });
 
