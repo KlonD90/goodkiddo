@@ -1,4 +1,5 @@
 import { normalizePath, SqliteStateBackend } from "../backends";
+import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import { detectMimeType } from "../utils/filesystem";
 import {
 	type AccessStore,
@@ -112,6 +113,9 @@ async function handleBoot(
 		}
 		initialPath = normalized;
 	}
+	if (isDraftArtifactPath(initialPath) || isDraftArtifactPath(grant.scopePath)) {
+		return errorResponse("not_found", 404);
+	}
 
 	const boot = {
 		bearer: grant.bearerToken,
@@ -147,6 +151,9 @@ async function handleDownload(
 	if (!normalized) return errorResponse("invalid_path", 400);
 	if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 		return errorResponse("out_of_scope", 403);
+	}
+	if (isDraftArtifactPath(normalized)) {
+		return errorResponse("not_found", 404);
 	}
 
 	const workspace = openWorkspace(db, dialect, grant.userId);
@@ -206,8 +213,13 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
+		if (isDraftArtifactPath(normalized)) {
+			return errorResponse("not_found", 404);
+		}
 		const workspace = openWorkspace(db, dialect, grant.userId);
-		const entries = await workspace.lsInfo(normalized);
+		const entries = (await workspace.lsInfo(normalized)).filter(
+			(entry) => !isDraftArtifactPath(entry.path),
+		);
 		return jsonResponse({ path: normalized, entries });
 	}
 
@@ -217,6 +229,9 @@ async function handleApi(
 		if (!normalized) return errorResponse("invalid_path", 400);
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
+		}
+		if (isDraftArtifactPath(normalized)) {
+			return errorResponse("not_found", 404);
 		}
 		const workspace = openWorkspace(db, dialect, grant.userId);
 		if (kind === "dir") {
@@ -248,6 +263,9 @@ async function handleApi(
 		if (!normalized) return errorResponse("invalid_path", 400);
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
+		}
+		if (isDraftArtifactPath(normalized)) {
+			return errorResponse("not_found", 404);
 		}
 		const workspace = openWorkspace(db, dialect, grant.userId);
 		const [download] = await workspace.downloadFiles([normalized]);

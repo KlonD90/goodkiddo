@@ -1,6 +1,7 @@
 import { context, tool } from "langchain";
 import { z } from "zod";
 import type { WorkspaceBackend } from "../backends/types";
+import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import type { OutboundChannel } from "../channels/outbound";
 import { basenameFromPath, detectMimeType } from "../utils/filesystem.js";
 
@@ -34,6 +35,9 @@ export function createSendFileTool(options: CreateSendFileToolOptions) {
 	return tool(
 		async ({ file_path, caption }: { file_path: string; caption?: string }) => {
 			const resolvedPath = toBackendPath(file_path);
+			if (isDraftArtifactPath(resolvedPath)) {
+				return `Error: '${resolvedPath}' is an internal prepared follow-up draft and cannot be sent as a file.`;
+			}
 
 			if (
 				caption !== undefined &&

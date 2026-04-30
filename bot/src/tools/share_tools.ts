@@ -2,6 +2,7 @@ import { context, tool } from "langchain";
 import { z } from "zod";
 import { normalizePath } from "../backends";
 import type { WorkspaceBackend } from "../backends/types";
+import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import type { AccessStore, ScopeKind } from "../server/access_store";
 
 const SHARE_TOOL_PROMPT = context`Create a time-limited web link that lets the user browse or download files from their
@@ -36,6 +37,12 @@ async function classifyScopePath(
 > {
 	if (rawPath === "/" || rawPath === "") {
 		return { ok: true, scopePath: "/", scopeKind: "root" };
+	}
+	if (isDraftArtifactPath(rawPath)) {
+		return {
+			ok: false,
+			error: "prepared follow-up drafts are internal and cannot be shared",
+		};
 	}
 	const looksLikeDir = rawPath.endsWith("/");
 	if (looksLikeDir) {

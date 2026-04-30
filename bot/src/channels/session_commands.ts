@@ -1,5 +1,6 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
+import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import {
 	type CompactionContext,
 	runCompaction,
@@ -110,6 +111,9 @@ async function handleOpenFs(
 ): Promise<string> {
 	const raw = args.trim();
 	const scopePath = raw === "" ? "/" : raw;
+	if (isDraftArtifactPath(scopePath)) {
+		return "Prepared follow-up drafts are internal and cannot be shared.";
+	}
 
 	let kind: ScopeKind;
 	let normalizedPath = scopePath;

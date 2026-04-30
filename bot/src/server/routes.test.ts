@@ -132,7 +132,8 @@ describe("GET /_boot", () => {
 describe("POST /api/fs/*", () => {
 	test("ls returns directory entries for valid bearer", async () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
-		await seedWorkspace("u1");
+		const ws = await seedWorkspace("u1");
+		await ws.write("/prepared-followups/d-123.md", "# internal draft");
 		const grant = await access.issue("u1");
 		const res = await handler(
 			new Request("http://localhost/api/fs/ls", {
@@ -150,6 +151,7 @@ describe("POST /api/fs/*", () => {
 		expect(paths).toContain("/notes.txt");
 		expect(paths).toContain("/image.png");
 		expect(paths).toContain("/reports/");
+		expect(paths).not.toContain("/prepared-followups/");
 		cleanup();
 	});
 
@@ -188,6 +190,44 @@ describe("POST /api/fs/*", () => {
 		expect(body.mime).toBe("text/markdown");
 		const text = Buffer.from(body.content_base64, "base64").toString("utf8");
 		expect(text).toContain("Q1 report");
+		cleanup();
+	});
+
+	test("root-scoped grants cannot preview internal prepared follow-up drafts", async () => {
+		const { access, handler, seedWorkspace, cleanup } = createHarness();
+		const ws = await seedWorkspace("u1");
+		await ws.write("/prepared-followups/d-123.md", "# internal draft");
+		const grant = await access.issue("u1");
+		const res = await handler(
+			new Request("http://localhost/api/fs/preview", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					authorization: `Bearer ${grant.bearerToken}`,
+				},
+				body: JSON.stringify({ path: "/prepared-followups/d-123.md" }),
+			}),
+		);
+		expect(res.status).toBe(404);
+		cleanup();
+	});
+
+	test("root-scoped grants cannot list internal prepared follow-up drafts", async () => {
+		const { access, handler, seedWorkspace, cleanup } = createHarness();
+		const ws = await seedWorkspace("u1");
+		await ws.write("/prepared-followups/d-123.md", "# internal draft");
+		const grant = await access.issue("u1");
+		const res = await handler(
+			new Request("http://localhost/api/fs/ls", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					authorization: `Bearer ${grant.bearerToken}`,
+				},
+				body: JSON.stringify({ path: "/prepared-followups/" }),
+			}),
+		);
+		expect(res.status).toBe(404);
 		cleanup();
 	});
 
@@ -333,6 +373,20 @@ describe("GET /_dl", () => {
 		expect(res.headers.get("content-disposition")).toContain("q1.md");
 		const text = await res.text();
 		expect(text).toContain("Q1 report");
+		cleanup();
+	});
+
+	test("root-scoped grants cannot download internal prepared follow-up drafts", async () => {
+		const { access, handler, seedWorkspace, cleanup } = createHarness();
+		const ws = await seedWorkspace("u1");
+		await ws.write("/prepared-followups/d-123.md", "# internal draft");
+		const grant = await access.issue("u1");
+		const res = await handler(
+			new Request(
+				`http://localhost/_dl?uuid=${grant.linkUuid}&path=/prepared-followups/d-123.md`,
+			),
+		);
+		expect(res.status).toBe(404);
 		cleanup();
 	});
 

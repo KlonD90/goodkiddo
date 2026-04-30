@@ -49,6 +49,14 @@ export function buildDraftArtifactPath(id: string, title: string): string {
 	return `${DRAFT_ARTIFACTS_DIR}/${safeId}-${safeTitle}.md`;
 }
 
+export function isDraftArtifactPath(path: string): boolean {
+	const normalized = path.startsWith("/") ? path : `/${path}`;
+	return (
+		normalized === DRAFT_ARTIFACTS_DIR ||
+		normalized.startsWith(`${DRAFT_ARTIFACTS_DIR}/`)
+	);
+}
+
 export function buildDraftArtifactMetadata(
 	artifact: DraftArtifact,
 ): DraftArtifactMetadata {
