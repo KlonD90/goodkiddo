@@ -649,6 +649,7 @@ export async function maybeRunRecallOnAmbiguity(
 		input: messageText,
 		candidates,
 		limit: 3,
+		now: session.currentTurnContext?.now.getTime(),
 	});
 	const recallContext = formatRecallRuntimeContext(ranked);
 	session.pendingRecallContext = recallContext;

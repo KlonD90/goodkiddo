@@ -526,6 +526,65 @@ describe("channel recall-on-ambiguity state", () => {
 			await db.close();
 		}
 	});
+
+	test("ranks relative-time recall against the current turn timestamp", async () => {
+		const db = createDb("sqlite://:memory:");
+		try {
+			const taskStore = new TaskStore({ db, dialect: "sqlite" });
+			const checkpointStore = new ForcedCheckpointStore(db);
+			await checkpointStore.ready();
+			await db`
+				INSERT INTO forced_checkpoints (
+					id,
+					caller,
+					thread_id,
+					created_at,
+					created_order,
+					source_boundary,
+					summary_payload
+				) VALUES (
+					${"yesterday-checkpoint"},
+					${"cli:tester"},
+					${"thread-a"},
+					${"2026-04-23T12:00:00.000Z"},
+					${"000001"},
+					${"new_thread"},
+					${serializeCheckpointSummary({
+						current_goal: "Continue the April launch proposal",
+						decisions: [],
+						constraints: [],
+						unfinished_work: ["Draft the follow-up section"],
+						pending_approvals: [],
+						important_artifacts: [],
+					})}
+				)
+			`;
+			const session = stubSession({
+				currentTurnContext: {
+					now: new Date("2026-04-24T12:30:00.000Z"),
+					source: "telegram_message",
+				},
+				recallConfig: {
+					caller: "cli:tester",
+					taskStore,
+					checkpointStore,
+				},
+			});
+
+			const result = await maybeRunRecallOnAmbiguity(
+				session,
+				"continue the thing from yesterday",
+			);
+
+			expect(result.needsRefresh).toBe(true);
+			expect(session.pendingRecallContext).toContain("yesterday-checkpoint");
+			expect(session.pendingRecallContext).toContain(
+				"matches requested yesterday window",
+			);
+		} finally {
+			await db.close();
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------

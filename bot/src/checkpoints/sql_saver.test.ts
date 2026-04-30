@@ -255,7 +255,93 @@ describe("ForcedCheckpointStore", () => {
 		await db.close();
 	});
 
-	test("listRecentForCaller uses stable ordering when timestamps tie", async () => {
+	test("create gives same-millisecond checkpoints deterministic recent ordering", async () => {
+		const dbUrl = createTempDbUrl();
+		const db = createDb(dbUrl);
+		const store = new ForcedCheckpointStore(db);
+		const originalDateNow = Date.now;
+		Date.now = () => Date.parse("2026-04-30T12:00:00.000Z");
+		try {
+			const first = await store.create({
+				caller: "alice",
+				threadId: "thread-a",
+				sourceBoundary: "new_thread",
+				summaryPayload: "a",
+			});
+			const second = await store.create({
+				caller: "alice",
+				threadId: "thread-b",
+				sourceBoundary: "session_resume",
+				summaryPayload: "b",
+			});
+
+			const records = await store.listRecentForCaller("alice", 2);
+
+			expect(first.createdAt).toBe(second.createdAt);
+			expect(records.map((record) => record.id)).toEqual([second.id, first.id]);
+		} finally {
+			Date.now = originalDateNow;
+			await db.close();
+		}
+	});
+
+	test("listRecentForCaller uses stable ordering when stored timestamps tie", async () => {
+		const dbUrl = createTempDbUrl();
+		const db = createDb(dbUrl);
+		const store = new ForcedCheckpointStore(db);
+		await store.ready();
+		const createdAt = "2026-04-30T12:00:00.000Z";
+
+		await db`
+			INSERT INTO forced_checkpoints (
+				id,
+				caller,
+				thread_id,
+				created_at,
+				created_order,
+				source_boundary,
+				summary_payload
+			) VALUES (
+				${"checkpoint-a"},
+				${"alice"},
+				${"thread-a"},
+				${createdAt},
+				${"000001"},
+				${"new_thread"},
+				${"a"}
+			)
+		`;
+		await db`
+			INSERT INTO forced_checkpoints (
+				id,
+				caller,
+				thread_id,
+				created_at,
+				created_order,
+				source_boundary,
+				summary_payload
+			) VALUES (
+				${"checkpoint-b"},
+				${"alice"},
+				${"thread-b"},
+				${createdAt},
+				${"000002"},
+				${"session_resume"},
+				${"b"}
+			)
+		`;
+
+		const records = await store.listRecentForCaller("alice", 2);
+
+		expect(records.map((record) => record.id)).toEqual([
+			"checkpoint-b",
+			"checkpoint-a",
+		]);
+
+		await db.close();
+	});
+
+	test("listRecentForCaller keeps migrated timestamp ties deterministic", async () => {
 		const dbUrl = createTempDbUrl();
 		const db = createDb(dbUrl);
 		const store = new ForcedCheckpointStore(db);

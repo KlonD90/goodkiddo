@@ -54,6 +54,27 @@ function toForcedCheckpoint(row: RawRow): ForcedCheckpoint {
 	};
 }
 
+let lastCreatedOrderMs = 0;
+let createdOrderSequence = 0;
+
+function nextCreatedOrder(): { createdAt: string; createdOrder: string } {
+	const wallMs = Date.now();
+	const orderedMs = wallMs < lastCreatedOrderMs ? lastCreatedOrderMs : wallMs;
+	if (orderedMs === lastCreatedOrderMs) {
+		createdOrderSequence += 1;
+	} else {
+		lastCreatedOrderMs = orderedMs;
+		createdOrderSequence = 0;
+	}
+
+	return {
+		createdAt: new Date(orderedMs).toISOString(),
+		createdOrder: `${String(orderedMs).padStart(13, "0")}:${String(
+			createdOrderSequence,
+		).padStart(6, "0")}`,
+	};
+}
+
 export class ForcedCheckpointStore {
 	private readonly db: SQL;
 	private readonly _ready: Promise<void>;
@@ -71,17 +92,29 @@ export class ForcedCheckpointStore {
 				caller TEXT NOT NULL,
 				thread_id TEXT NOT NULL,
 				created_at TEXT NOT NULL,
+				created_order TEXT,
 				source_boundary TEXT NOT NULL,
 				summary_payload TEXT NOT NULL
 			)
 		`;
+		try {
+			await this.db`
+				ALTER TABLE forced_checkpoints
+				ADD COLUMN created_order TEXT
+			`;
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			if (!/duplicate column|already exists/i.test(message)) {
+				throw error;
+			}
+		}
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_thread
-			ON forced_checkpoints(caller, thread_id, created_at DESC)
+			ON forced_checkpoints(caller, thread_id, created_at DESC, created_order DESC, id DESC)
 		`;
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_created_at
-			ON forced_checkpoints(caller, created_at DESC, id DESC)
+			ON forced_checkpoints(caller, created_at DESC, created_order DESC, id DESC)
 		`;
 	}
 
@@ -92,7 +125,7 @@ export class ForcedCheckpointStore {
 	async create(input: CreateForcedCheckpointInput): Promise<ForcedCheckpoint> {
 		await this._ready;
 		const id = randomUUID();
-		const createdAt = new Date().toISOString();
+		const { createdAt, createdOrder } = nextCreatedOrder();
 
 		await this.db`
 			INSERT INTO forced_checkpoints (
@@ -100,6 +133,7 @@ export class ForcedCheckpointStore {
 				caller,
 				thread_id,
 				created_at,
+				created_order,
 				source_boundary,
 				summary_payload
 			) VALUES (
@@ -107,6 +141,7 @@ export class ForcedCheckpointStore {
 				${input.caller},
 				${input.threadId},
 				${createdAt},
+				${createdOrder},
 				${input.sourceBoundary},
 				${input.summaryPayload}
 			)
@@ -138,7 +173,7 @@ export class ForcedCheckpointStore {
 			FROM forced_checkpoints
 			WHERE caller = ${caller}
 				AND thread_id = ${threadId}
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, COALESCE(created_order, '') DESC, id DESC
 			LIMIT 1
 		`;
 		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
@@ -156,7 +191,7 @@ export class ForcedCheckpointStore {
 				summary_payload
 			FROM forced_checkpoints
 			WHERE caller = ${caller}
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, COALESCE(created_order, '') DESC, id DESC
 			LIMIT 1
 		`;
 		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
@@ -177,7 +212,7 @@ export class ForcedCheckpointStore {
 				summary_payload
 			FROM forced_checkpoints
 			WHERE caller = ${caller}
-			ORDER BY created_at DESC, id DESC
+			ORDER BY created_at DESC, COALESCE(created_order, '') DESC, id DESC
 			LIMIT ${limit}
 		`;
 		return rows.map(toForcedCheckpoint);
@@ -199,7 +234,7 @@ export class ForcedCheckpointStore {
 			FROM forced_checkpoints
 			WHERE caller = ${caller}
 				AND thread_id = ${threadId}
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, COALESCE(created_order, '') DESC, id DESC
 		`;
 		return rows.map(toForcedCheckpoint);
 	}
