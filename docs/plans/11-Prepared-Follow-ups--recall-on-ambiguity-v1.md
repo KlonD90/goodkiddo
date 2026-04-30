@@ -57,10 +57,10 @@ Expected decision behavior:
 - [x] Keep it deterministic/simple for v1; do not add heavy infra.
 
 ### Task 2: Candidate sources
-- [ ] Search active tasks / task titles / source context where available.
-- [ ] Search recent checkpoint summaries.
-- [ ] Search memory notes/index/log entries through existing memory abstractions.
-- [ ] Include virtual files only if an existing safe abstraction already exists; otherwise document as future work.
+- [x] Search active tasks / task titles / source context where available.
+- [x] Search recent checkpoint summaries.
+- [x] Search memory notes/index/log entries through existing memory abstractions.
+- [x] Include virtual files only if an existing safe abstraction already exists; otherwise document as future work.
 
 ### Task 3: Confidence and output shape
 - [ ] Return candidates with source, summary/snippet, and confidence/rationale.
