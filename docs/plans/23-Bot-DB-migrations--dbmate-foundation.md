@@ -33,29 +33,29 @@ bot/src/db/migrate.ts
 
 ### Task 1: Verify tooling fit
 
-- Confirm dbmate can be used from Bun scripts for SQLite + PostgreSQL.
-- Verify SQLite URL normalization need and implement a safe wrapper if needed.
-- Document any chosen alternative if dbmate cannot fit.
+- [x] Confirm dbmate can be used from Bun scripts for SQLite + PostgreSQL (`dbmate` npm CLI added as a bot dev dependency).
+- [x] Verify SQLite URL normalization need and implement a safe wrapper if needed (`sqlite://./...` normalizes to dbmate-compatible `sqlite:./...`).
+- [x] Document any chosen alternative if dbmate cannot fit (not needed; dbmate fits).
 
 ### Task 2: Add migration command surface
 
-- Add package scripts for migration operations, e.g.:
+- [ ] Add package scripts for migration operations, e.g.:
   - `db:migrate`
   - `db:status`
   - `db:rollback`
   - `db:new` if practical
-- Ensure scripts can choose dialect based on `DATABASE_URL` / app config.
-- Keep commands usable from repo root/Bun workspace conventions.
+- [ ] Ensure scripts can choose dialect based on `DATABASE_URL` / app config.
+- [ ] Keep commands usable from repo root/Bun workspace conventions.
 
 ### Task 3: Add baseline migrations
 
-- Add initial/baseline migration files for existing bot tables that are relevant to stores already managing schema.
-- At minimum cover the `tasks` table so PR #21 can be reworked on top of the migration foundation.
-- If practical, include existing timer metadata migration debt in a separate migration, but do not expand scope too far.
+- [ ] Add initial/baseline migration files for existing bot tables that are relevant to stores already managing schema.
+- [ ] At minimum cover the `tasks` table so PR #21 can be reworked on top of the migration foundation.
+- [ ] If practical, include existing timer metadata migration debt in a separate migration, but do not expand scope too far.
 
 ### Task 4: Add task metadata migration
 
-- Add a proper versioned migration for the Prepared Follow-ups task metadata columns from #10:
+- [ ] Add a proper versioned migration for the Prepared Follow-ups task metadata columns from #10:
   - `due_at`
   - `next_check_at`
   - `priority`
@@ -65,33 +65,33 @@ bot/src/db/migrate.ts
   - `last_nudged_at`
   - `nudge_count`
   - `snoozed_until`
-- Use dialect-appropriate SQL.
-- Keep old rows valid with defaults/nullability.
+- [ ] Use dialect-appropriate SQL.
+- [ ] Keep old rows valid with defaults/nullability.
 
 ### Task 5: Rework store startup contract
 
-- Remove any new `TaskStore` custom migration helper from PR #21.
-- Store constructors may keep defensive `CREATE TABLE IF NOT EXISTS` temporarily if existing repo pattern needs it, but new schema evolution should come from migrations.
-- Prefer docs/tests that make migrations the supported production path.
+- [ ] Remove any new `TaskStore` custom migration helper from PR #21.
+- [ ] Store constructors may keep defensive `CREATE TABLE IF NOT EXISTS` temporarily if existing repo pattern needs it, but new schema evolution should come from migrations.
+- [ ] Prefer docs/tests that make migrations the supported production path.
 
 ### Task 6: Tests
 
 Follow TDD for new migration wrapper behavior.
 
 Add tests for:
-- Migration URL/dialect selection.
-- SQLite URL normalization if implemented.
-- Generated command/env behavior without shelling into real external services where avoidable.
-- Task store compatibility with migrated schema.
+- [ ] Migration URL/dialect selection.
+- [ ] SQLite URL normalization if implemented.
+- [ ] Generated command/env behavior without shelling into real external services where avoidable.
+- [ ] Task store compatibility with migrated schema.
 
 Existing #10 tests for task metadata should keep passing after rework.
 
 ### Task 7: Docs
 
 Update relevant docs/README with:
-- How to run migrations locally.
-- How deployment/startup should run migrations before bot boot.
-- Why schema changes belong in migrations, not store-local helpers.
+- [ ] How to run migrations locally.
+- [ ] How deployment/startup should run migrations before bot boot.
+- [ ] Why schema changes belong in migrations, not store-local helpers.
 
 ## Validation Commands
 
