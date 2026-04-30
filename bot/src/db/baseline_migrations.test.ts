@@ -63,7 +63,7 @@ const runSqliteMigrations = async (databasePath: string): Promise<void> =>
 	runSqliteDbmate(databasePath, "up");
 
 describe("baseline migrations", () => {
-	test("sqlite migrations create current task and timer baseline schemas", async () => {
+	test("sqlite migrations create current task baseline schema", async () => {
 		const dir = await createTempDir();
 		const databasePath = join(dir, "state.db");
 		await runSqliteMigrations(databasePath);
@@ -78,7 +78,7 @@ describe("baseline migrations", () => {
 			`;
 			expect(tables.map((table) => table.name)).toContain("schema_migrations");
 			expect(tables.map((table) => table.name)).toContain("tasks");
-			expect(tables.map((table) => table.name)).toContain("timers");
+			expect(tables.map((table) => table.name)).not.toContain("timers");
 
 			const taskColumns = await db<TableInfoRow[]>`PRAGMA table_info(tasks)`;
 			expect(taskColumns.map((column) => column.name)).toEqual([
@@ -153,24 +153,6 @@ describe("baseline migrations", () => {
 					source_context: null,
 				},
 			]);
-
-			const timerColumns = await db<TableInfoRow[]>`PRAGMA table_info(timers)`;
-			expect(timerColumns.map((column) => column.name)).toEqual([
-				"id",
-				"user_id",
-				"chat_id",
-				"md_file_path",
-				"cron_expression",
-				"kind",
-				"message",
-				"timezone",
-				"enabled",
-				"last_run_at",
-				"last_error",
-				"consecutive_failures",
-				"next_run_at",
-				"created_at",
-			]);
 		} finally {
 			await db.close();
 		}
@@ -242,7 +224,7 @@ describe("baseline migrations", () => {
 				ORDER BY name
 			`;
 			expect(tables.map((table) => table.name)).toContain("tasks");
-			expect(tables.map((table) => table.name)).toContain("timers");
+			expect(tables.map((table) => table.name)).not.toContain("timers");
 
 			const taskColumns = await db<TableInfoRow[]>`PRAGMA table_info(tasks)`;
 			expect(taskColumns.map((column) => column.name)).toEqual([

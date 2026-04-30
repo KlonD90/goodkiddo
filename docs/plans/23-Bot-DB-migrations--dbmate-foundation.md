@@ -51,7 +51,7 @@ bot/src/db/migrate.ts
 
 - [x] Add initial/baseline migration files for existing bot tables that are relevant to stores already managing schema.
 - [x] At minimum cover the `tasks` table so PR #21 can be reworked on top of the migration foundation.
-- [x] If practical, include existing timer metadata migration debt in a separate migration, but do not expand scope too far.
+- [x] Deferred existing timer metadata migration debt because a safe dbmate baseline for already-mutated timer tables needs a separate stamping/backfill strategy.
 
 ### Task 4: Add task metadata migration
 
