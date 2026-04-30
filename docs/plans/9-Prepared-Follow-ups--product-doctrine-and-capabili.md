@@ -35,8 +35,8 @@ Implement documentation/spec only. No runtime behavior change required in this i
 - [x] Include independent feature slices for implementation follow-up issues.
 
 ### Task 2: Link from feature docs index
-- [ ] Add the roadmap/spec to the active feature list in `docs/features/README.md`.
-- [ ] Keep the table/list formatting consistent with the file.
+- [x] Add the roadmap/spec to the active feature list in `docs/features/README.md`.
+- [x] Keep the table/list formatting consistent with the file.
 
 ### Task 3: Check docs consistency
 - [ ] Ensure wording does not frame GoodKiddo as a permission-gated powerful agent.
