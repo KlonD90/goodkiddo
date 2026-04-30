@@ -4,6 +4,7 @@
 
 - `docs/features/` holds high-level feature documents.
 - `docs/plans/` holds execution-ready RALPHEX plans with ordered task sections and runnable validation commands.
+- Prepared Follow-ups doctrine is documented in `docs/features/feature-prepared-followups-roadmap.md`: proactive work stays inside GoodKiddo-controlled safe space, outside-world final effects are unavailable by capability design, approval prompts must not unlock those effects, the user remains the final decider, and follow-ups should include prepared context, evidence, an artifact, a recommendation, or one specific missing detail after recall-before-asking.
 - `bot/src/capabilities/` holds reusable capability modules; voice transcription lives in `bot/src/capabilities/voice/`, PDF document parsing lives in `bot/src/capabilities/pdf/`, and CSV/Excel spreadsheet parsing lives in `bot/src/capabilities/spreadsheet/`.
 - `bot/src/capabilities/attachment_budget.ts` is the shared code for deciding whether attachment output fits, requires compaction, or must be rejected before injection.
 - Telegram channel behavior, including voice-message, PDF-document, and spreadsheet handling and limits, is documented in `bot/src/channels/README.md`.
