@@ -24,12 +24,12 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
 | [Tabular Read](feature-tabular-read.md) | [RALPHEX plan](../plans/tabular-read.md) |
 | [Research Sub-Agent](feature-research-subagent.md) | [RALPHEX plan](../plans/research-subagent.md) |
-| [Prepared Follow-ups Roadmap](feature-prepared-followups-roadmap.md) | [RALPHEX plan](../plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md) |
 
 ## Completed
 
 | Feature | Execution |
 |---------|-----------|
+| [Prepared Follow-ups Roadmap](feature-prepared-followups-roadmap.md) | [RALPHEX plan](../plans/completed/9-Prepared-Follow-ups--product-doctrine-and-capabili.md) |
 | [Interchangeable Databases](feature-interchangeable-databases.md) | Legacy task lists in `docs/features/` |
 | [DB-Backed Active Tasks and Notes](feature-db-active-tasks-and-notes.md) | [RALPHEX plan](../plans/db-active-tasks-and-notes.md) |
 | [Forced Checkpoints and Conversation Compaction](feature-forced-checkpoints-and-conversation-compaction.md) | [RALPHEX plan](../plans/forced-checkpoints-and-conversation-compaction.md) |

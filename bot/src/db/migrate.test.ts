@@ -85,9 +85,9 @@ describe("readMigrationDatabaseUrl", () => {
 	test("uses app config default when DATABASE_URL and persisted config are unset", async () => {
 		const dir = await createTempDir();
 
-		expect(readMigrationDatabaseUrl({}, { envFilePath: join(dir, ".env") })).toBe(
-			"sqlite://./state.db",
-		);
+		expect(
+			readMigrationDatabaseUrl({}, { envFilePath: join(dir, ".env") }),
+		).toBe("sqlite://./state.db");
 	});
 
 	test("uses explicit env over process env", () => {

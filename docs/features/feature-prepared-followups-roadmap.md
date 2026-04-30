@@ -99,4 +99,4 @@ Each slice should be independently shippable and should preserve the capability 
 - Future execution plans should keep slices small enough to validate with prompt/tool tests plus any affected integration tests.
 
 ## Related
-- Execution plan: `docs/plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Execution plan: `docs/plans/completed/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.

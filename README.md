@@ -91,6 +91,12 @@ Bun-style relative SQLite URLs such as `sqlite://./state.db` to the form dbmate
 expects. Use `bun run db:status` before and after local schema work when you
 need to inspect applied versions.
 
+For every schema change, add equivalent migrations under both
+`bot/db/migrations/sqlite/` and `bot/db/migrations/postgres/`. The
+`bun run db:new -- <migration_name>` command creates a file only in the
+currently selected dialect directory, so create or copy the paired migration for
+the other dialect and keep the version/name aligned.
+
 Production-like bot startup runs migrations before opening the application
 database and constructing stores, so deploys should boot through
 `bun run start` or `bun run start:telegram` from the repository root, or
