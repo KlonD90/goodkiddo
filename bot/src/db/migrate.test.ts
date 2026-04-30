@@ -82,8 +82,12 @@ describe("readMigrationDatabaseUrl", () => {
 		).toBe("postgres://localhost/goodkiddo");
 	});
 
-	test("uses app config default when DATABASE_URL is unset", () => {
-		expect(readMigrationDatabaseUrl({})).toBe("sqlite://./state.db");
+	test("uses app config default when DATABASE_URL and persisted config are unset", async () => {
+		const dir = await createTempDir();
+
+		expect(readMigrationDatabaseUrl({}, { envFilePath: join(dir, ".env") })).toBe(
+			"sqlite://./state.db",
+		);
 	});
 
 	test("uses explicit env over process env", () => {
