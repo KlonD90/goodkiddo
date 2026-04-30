@@ -24,6 +24,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
 | [Tabular Read](feature-tabular-read.md) | [RALPHEX plan](../plans/tabular-read.md) |
 | [Research Sub-Agent](feature-research-subagent.md) | [RALPHEX plan](../plans/research-subagent.md) |
+| [Prepared Follow-ups Recall-on-Ambiguity](feature-prepared-follow-ups-recall-on-ambiguity.md) | [RALPHEX plan](../plans/11-Prepared-Follow-ups--recall-on-ambiguity-v1.md) |
 
 ## Completed
 
