@@ -101,6 +101,28 @@ describe("proactive fatigue decisions", () => {
 		}
 	});
 
+	test("does not delay to tomorrow when digest time is before a daytime quiet window ends", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({
+				quietHours: {
+					startLocalTime: "12:00",
+					endLocalTime: "13:00",
+				},
+				digestLocalTime: "11:00",
+			}),
+			now: new Date("2026-04-30T16:15:00.000Z"),
+			recentNudgeCountToday: 0,
+		});
+
+		expect(decision.action).toBe("batch");
+		expect(decision.reason).toBe("quiet_hours");
+		if (decision.action === "batch") {
+			expect(decision.batchAfterUtc?.toISOString()).toBe(
+				"2026-04-30T17:00:00.000Z",
+			);
+		}
+	});
+
 	test("suppresses proactive follow-ups after the daily nudge limit", () => {
 		const decision = decideProactiveFatigue({
 			preferences: preferences({ maxNudgesPerDay: 1 }),

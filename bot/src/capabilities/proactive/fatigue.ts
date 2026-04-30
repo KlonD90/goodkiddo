@@ -202,8 +202,15 @@ function nextDigestTimeAfterQuietHoursUtc(
 	digestLocalTime: string,
 ): Date | null {
 	const quietEnd = nextLocalTimeUtc(now, timezone, quietEndLocalTime);
+	if (!quietEnd) return nextLocalTimeUtc(now, timezone, digestLocalTime);
+
+	const quietEndParts = parseLocalTime(quietEndLocalTime);
+	const digestParts = parseLocalTime(digestLocalTime);
+	if (localTimeToMinutes(digestParts) < localTimeToMinutes(quietEndParts)) {
+		return quietEnd;
+	}
+
 	const digest = nextLocalTimeUtc(now, timezone, digestLocalTime);
-	if (!quietEnd) return digest;
 	if (!digest) return quietEnd;
 	return digest.getTime() >= quietEnd.getTime() ? digest : quietEnd;
 }
