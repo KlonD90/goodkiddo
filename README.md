@@ -5,6 +5,7 @@ Security-aware AI agent harness built with TypeScript and Bun.
 - Agent with file tools, sandboxed execution, and per-user state
 - Per-caller memory wiki (notes, skills, log) plus SQL-backed active tasks, with `/new_thread` rotation and boundary-based task reconciliation
 - Persistent conversation state in `DATABASE_URL`: full LangGraph history for audit/recovery, plus forced checkpoints that compact runtime context at `/new_thread`, session-resume, and prompt-budget boundaries and stay in the rebuilt system prompt until replaced
+- Source-backed recall for vague follow-ups such as "continue" or "what we discussed", using active tasks, checkpoints, and memory before asking the user to repeat themselves
 - Docker sandbox today, Firecracker path where supported
 - CLI and Telegram entrypoints, including Telegram photo, voice, PDF document handling, spreadsheets, scheduled timers, and one-time reminders
 

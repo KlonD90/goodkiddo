@@ -79,8 +79,8 @@ Expected decision behavior:
 - [x] Add tests proving the behavior falls back to targeted clarification instead of hallucinating.
 
 ### Task 6: Docs
-- [ ] Update relevant docs to describe Recall-on-Ambiguity v1.
-- [ ] Link it to Prepared Follow-ups / compaction behavior.
+- [x] Update relevant docs to describe Recall-on-Ambiguity v1.
+- [x] Link it to Prepared Follow-ups / compaction behavior.
 
 ## Acceptance Criteria
 - GoodKiddo has a tested v1 recall path for ambiguous continuation requests.
