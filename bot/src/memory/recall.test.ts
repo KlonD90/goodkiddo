@@ -73,6 +73,7 @@ describe("detectAmbiguousContinuation", () => {
 		"continue",
 		"same thing as before",
 		"what we discussed",
+		"that client",
 		"the proposal",
 		"the thing from yesterday",
 	])("detects ambiguous continuation phrasing: %s", (input) => {
@@ -170,6 +171,41 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].confidence).toBe("low");
 	});
 
+	test("returns multiple medium and low confidence candidates without certainty", () => {
+		const result = rankRecallCandidates({
+			input: "the proposal",
+			candidates,
+			now: NOW,
+		});
+
+		expect(result.candidates.map((candidate) => candidate.id)).toEqual([
+			"task-1",
+			"checkpoint-1",
+		]);
+		expect(result.candidates.map((candidate) => candidate.confidence)).toEqual([
+			"medium",
+			"medium",
+		]);
+		for (const candidate of result.candidates) {
+			expect(candidate.rationale).toContain("matched terms: proposal");
+			expect(candidate.rationale).not.toContain("confidence: high");
+		}
+
+		const lowConfidence = rankRecallCandidates({
+			input: "continue",
+			candidates,
+			now: NOW,
+			limit: 3,
+		});
+
+		expect(lowConfidence.candidates).toHaveLength(3);
+		expect(
+			lowConfidence.candidates.every(
+				(candidate) => candidate.confidence === "low",
+			),
+		).toBe(true);
+	});
+
 	test("assigns medium confidence to a single explicit match", () => {
 		const result = rankRecallCandidates({
 			input: "the proposal",
@@ -180,6 +216,18 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0]?.id).toBe("task-1");
 		expect(result.candidates[0]?.confidence).toBe("medium");
 		expect(result.candidates[0]?.rationale).toContain("confidence: medium");
+	});
+
+	test("falls back to targeted clarification data instead of hallucinating", () => {
+		const result = rankRecallCandidates({
+			input: "what we discussed",
+			candidates: [],
+			now: NOW,
+		});
+
+		expect(result.detection.isAmbiguous).toBe(true);
+		expect(result.detection.matchedPhrases).toContain("what we discussed");
+		expect(result.candidates).toEqual([]);
 	});
 
 	test("keeps recency-only matches low confidence", () => {

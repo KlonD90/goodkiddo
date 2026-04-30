@@ -71,6 +71,8 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("For high-confidence recall");
 		expect(prompt).toContain("For medium confidence");
 		expect(prompt).toContain("For low confidence");
+		expect(prompt).toContain("ask one targeted clarification");
+		expect(prompt).toContain("Do not treat a recalled candidate as");
 		expect(prompt).toContain("Keep the user-facing recall wording concise");
 	});
 
