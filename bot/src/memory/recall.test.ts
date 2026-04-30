@@ -1,11 +1,70 @@
 import { describe, expect, test } from "bun:test";
+import { SqliteStateBackend } from "../backends";
+import type { ForcedCheckpoint } from "../checkpoints/forced_checkpoint_store";
+import { createDb, detectDialect } from "../db";
+import type { TaskRecord } from "../tasks/store";
+import { ensureMemoryBootstrapped } from "./bootstrap";
+import { serializeCheckpointSummary } from "./checkpoint_compaction";
+import { overwrite } from "./fs";
+import { upsertIndexFile } from "./index_manager";
+import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH } from "./layout";
 import {
+	checkpointRecallCandidates,
+	collectRecallCandidates,
 	detectAmbiguousContinuation,
+	memoryRecallCandidates,
 	rankRecallCandidates,
+	taskRecallCandidates,
 	type RecallCandidateInput,
 } from "./recall";
 
 const NOW = Date.UTC(2026, 3, 30, 12, 0, 0);
+
+function createBackend(namespace: string) {
+	const db = createDb("sqlite://:memory:");
+	const dialect = detectDialect("sqlite://:memory:");
+	return new SqliteStateBackend({ db, dialect, namespace });
+}
+
+function makeTask(overrides: Partial<TaskRecord>): TaskRecord {
+	return {
+		id: 1,
+		userId: "telegram:1",
+		threadIdCreated: "thread-a",
+		threadIdCompleted: null,
+		listName: "today",
+		title: "Draft sales proposal",
+		note: null,
+		status: "active",
+		statusReason: null,
+		createdAt: NOW - 1_000,
+		updatedAt: NOW,
+		completedAt: null,
+		dismissedAt: null,
+		...overrides,
+	};
+}
+
+function makeCheckpoint(
+	overrides: Partial<ForcedCheckpoint>,
+): ForcedCheckpoint {
+	return {
+		id: "checkpoint-1",
+		caller: "telegram:1",
+		threadId: "thread-a",
+		createdAt: new Date(NOW).toISOString(),
+		sourceBoundary: "new_thread",
+		summaryPayload: serializeCheckpointSummary({
+			current_goal: "Prepare the Acme launch proposal",
+			decisions: ["Use a concise scope table"],
+			constraints: [],
+			unfinished_work: ["Add pricing options"],
+			pending_approvals: [],
+			important_artifacts: ["/memory/notes/acme.md"],
+		}),
+		...overrides,
+	};
+}
 
 describe("detectAmbiguousContinuation", () => {
 	test.each([
@@ -104,6 +163,124 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates).toHaveLength(2);
 		expect(result.candidates[0].rationale).toContain(
 			"available context for vague continuation",
+		);
+	});
+});
+
+describe("recall candidate sources", () => {
+	test("builds candidates from active task titles and source context", () => {
+		const candidates = taskRecallCandidates([
+			makeTask({
+				id: 7,
+				listName: "client",
+				title: "Prepare Acme launch proposal",
+				note: "Use the March pricing notes",
+			}),
+		]);
+
+		expect(candidates).toEqual([
+			{
+				id: "task:7",
+				source: "task",
+				summary: "client: Prepare Acme launch proposal",
+				snippet: "Use the March pricing notes",
+				updatedAt: NOW,
+			},
+		]);
+	});
+
+	test("builds candidates from recent checkpoint summaries", () => {
+		const candidates = checkpointRecallCandidates([makeCheckpoint({})]);
+
+		expect(candidates[0]?.source).toBe("checkpoint");
+		expect(candidates[0]?.summary).toContain("Prepare the Acme launch proposal");
+		expect(candidates[0]?.snippet).toContain("Add pricing options");
+		expect(candidates[0]?.updatedAt).toBe(NOW);
+	});
+
+	test("builds candidates from memory index entries, note bodies, profile, and log", async () => {
+		const backend = createBackend("recall-memory-sources");
+		await ensureMemoryBootstrapped(backend);
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "acme-proposal",
+			path: "/memory/notes/acme-proposal.md",
+			hook: "Launch proposal and pricing notes",
+		});
+		await overwrite(
+			backend,
+			"/memory/notes/acme-proposal.md",
+			"# Acme Proposal\n\n## Actuel\nUse the three-package pricing table.\n",
+		);
+		await overwrite(
+			backend,
+			MEMORY_LOG_PATH,
+			"# Log\n\n## [2026-04-29] rotate_thread | Discussed Acme follow-up proposal\n",
+		);
+
+		const candidates = await memoryRecallCandidates(backend);
+		const acme = candidates.find((candidate) => candidate.id === "memory:acme-proposal");
+		const profile = candidates.find(
+			(candidate) => candidate.id === "memory:user-profile",
+		);
+		const log = candidates.find((candidate) => candidate.source === "log");
+
+		expect(acme?.summary).toBe(
+			"acme-proposal: Launch proposal and pricing notes",
+		);
+		expect(acme?.snippet).toContain("three-package pricing table");
+		expect(profile?.summary).toBe("User profile");
+		expect(log?.summary).toBe(
+			"rotate_thread: Discussed Acme follow-up proposal",
+		);
+	});
+
+	test("collects configured sources and only accepts supplied virtual file candidates", async () => {
+		const backend = createBackend("recall-collect-sources");
+		await ensureMemoryBootstrapped(backend);
+		const result = await collectRecallCandidates({
+			userId: "telegram:1",
+			taskStore: {
+				listActiveTasks: async (userId, limit) => {
+					expect(userId).toBe("telegram:1");
+					expect(limit).toBe(1);
+					return [makeTask({ id: 3, title: "Review sales proposal" })];
+				},
+			},
+			checkpointStore: {
+				listRecentForCaller: async (caller, options) => {
+					expect(caller).toBe("telegram:1");
+					expect(options?.limit).toBe(1);
+					return [makeCheckpoint({ id: "checkpoint-3" })];
+				},
+			},
+			backend,
+			virtualFiles: [
+				{
+					id: "virtual:/proposal.md",
+					source: "virtual_file",
+					summary: "proposal.md draft",
+				},
+				{
+					id: "memory:wrong-source",
+					source: "memory",
+					summary: "Should not pass as virtual file",
+				},
+			],
+			limits: {
+				activeTasks: 1,
+				checkpoints: 1,
+				virtualFiles: 5,
+			},
+		});
+
+		expect(result.map((candidate) => candidate.source)).toContain("task");
+		expect(result.map((candidate) => candidate.source)).toContain("checkpoint");
+		expect(result.map((candidate) => candidate.source)).toContain("memory");
+		expect(result.map((candidate) => candidate.id)).toContain(
+			"virtual:/proposal.md",
+		);
+		expect(result.map((candidate) => candidate.id)).not.toContain(
+			"memory:wrong-source",
 		);
 	});
 });

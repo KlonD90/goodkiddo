@@ -79,6 +79,10 @@ export class ForcedCheckpointStore {
 			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_thread
 			ON forced_checkpoints(caller, thread_id, created_at DESC)
 		`;
+		await this.db`
+			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_created_at
+			ON forced_checkpoints(caller, created_at DESC)
+		`;
 	}
 
 	async ready(): Promise<void> {
@@ -156,6 +160,28 @@ export class ForcedCheckpointStore {
 			LIMIT 1
 		`;
 		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
+	}
+
+	async listRecentForCaller(
+		caller: string,
+		options: { limit?: number } = {},
+	): Promise<ForcedCheckpoint[]> {
+		await this._ready;
+		const limit = options.limit ?? 5;
+		const rows = await this.db<RawRow[]>`
+			SELECT
+				id,
+				caller,
+				thread_id,
+				created_at,
+				source_boundary,
+				summary_payload
+			FROM forced_checkpoints
+			WHERE caller = ${caller}
+			ORDER BY created_at DESC
+			LIMIT ${limit}
+		`;
+		return rows.map(toForcedCheckpoint);
 	}
 
 	async listForThread(

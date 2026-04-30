@@ -1,4 +1,11 @@
+import type { BackendProtocol } from "deepagents";
+import type { ForcedCheckpoint } from "../checkpoints/forced_checkpoint_store";
+import type { TaskRecord } from "../tasks/store";
 import { compactInline } from "../utils/text";
+import { deserializeCheckpointSummary } from "./checkpoint_compaction";
+import { readModifiedAt, readOrEmpty } from "./fs";
+import { parseIndex } from "./index_manager";
+import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH, USER_PROFILE_PATH } from "./layout";
 
 export type RecallSource =
 	| "task"
@@ -29,6 +36,39 @@ export type RankedRecallCandidate = RecallCandidateInput & {
 export type RecallRankingResult = {
 	detection: AmbiguousContinuationDetection;
 	candidates: RankedRecallCandidate[];
+};
+
+export type RecallCandidateLimits = {
+	activeTasks?: number;
+	checkpoints?: number;
+	memoryEntries?: number;
+	logEntries?: number;
+	virtualFiles?: number;
+};
+
+export type RecallTaskStore = {
+	listActiveTasks(userId: string, limit?: number): Promise<TaskRecord[]>;
+};
+
+export type RecallCheckpointStore = {
+	listRecentForCaller(
+		caller: string,
+		options?: { limit?: number },
+	): Promise<ForcedCheckpoint[]>;
+};
+
+export type CollectRecallCandidatesOptions = {
+	userId: string;
+	taskStore?: RecallTaskStore;
+	checkpointStore?: RecallCheckpointStore;
+	backend?: BackendProtocol;
+	virtualFiles?: RecallCandidateInput[];
+	limits?: RecallCandidateLimits;
+};
+
+type MemoryRecallCandidateOptions = {
+	memoryEntries?: number;
+	logEntries?: number;
 };
 
 const AMBIGUOUS_PATTERNS: Array<{ phrase: string; pattern: RegExp }> = [
@@ -90,6 +130,61 @@ function unique(values: string[]): string[] {
 	return [...new Set(values)];
 }
 
+function pushIfUseful(
+	candidates: RecallCandidateInput[],
+	candidate: RecallCandidateInput,
+): void {
+	if (candidate.summary.trim().length === 0) return;
+	candidates.push({
+		...candidate,
+		summary: compactInline(candidate.summary),
+		snippet: candidate.snippet ? compactInline(candidate.snippet) : undefined,
+	});
+}
+
+function parseModifiedAt(value: string | null): number | undefined {
+	if (!value) return undefined;
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function parseCheckpointCreatedAt(value: string): number | undefined {
+	const parsed = Date.parse(value);
+	return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+function checkpointSnippet(checkpoint: ForcedCheckpoint): string {
+	const summary = deserializeCheckpointSummary(checkpoint.summaryPayload);
+	const parts = [
+		summary.current_goal,
+		...summary.decisions,
+		...summary.constraints,
+		...summary.unfinished_work,
+		...summary.pending_approvals,
+		...summary.important_artifacts,
+	].filter((part) => part.trim().length > 0);
+	return parts.join(" ");
+}
+
+function parseMemoryLog(content: string): RecallCandidateInput[] {
+	const candidates: RecallCandidateInput[] = [];
+	const entryPattern = /^## \[(\d{4}-\d{2}-\d{2})\]\s+([^|]+)\|\s*(.*)$/gm;
+	let match = entryPattern.exec(content);
+
+	while (match !== null) {
+		const [, date = "", op = "", detail = ""] = match;
+		pushIfUseful(candidates, {
+			id: `log:${date}:${candidates.length + 1}`,
+			source: "log",
+			summary: `${op.trim()}: ${detail.trim()}`,
+			updatedAt: parseCheckpointCreatedAt(date),
+		});
+		match = entryPattern.exec(content);
+	}
+
+	return candidates;
+}
+
 export function detectAmbiguousContinuation(
 	input: string,
 ): AmbiguousContinuationDetection {
@@ -103,6 +198,117 @@ export function detectAmbiguousContinuation(
 		matchedPhrases,
 		searchTerms: unique(tokenize(normalized)),
 	};
+}
+
+export function taskRecallCandidates(
+	tasks: TaskRecord[],
+): RecallCandidateInput[] {
+	const candidates: RecallCandidateInput[] = [];
+	for (const task of tasks) {
+		pushIfUseful(candidates, {
+			id: `task:${task.id}`,
+			source: "task",
+			summary: `${task.listName}: ${task.title}`,
+			snippet: task.note ?? undefined,
+			updatedAt: task.updatedAt,
+		});
+	}
+	return candidates;
+}
+
+export function checkpointRecallCandidates(
+	checkpoints: ForcedCheckpoint[],
+): RecallCandidateInput[] {
+	const candidates: RecallCandidateInput[] = [];
+	for (const checkpoint of checkpoints) {
+		const snippet = checkpointSnippet(checkpoint);
+		pushIfUseful(candidates, {
+			id: `checkpoint:${checkpoint.id}`,
+			source: "checkpoint",
+			summary: snippet || `${checkpoint.sourceBoundary} checkpoint`,
+			snippet,
+			updatedAt: parseCheckpointCreatedAt(checkpoint.createdAt),
+		});
+	}
+	return candidates;
+}
+
+export async function memoryRecallCandidates(
+	backend: BackendProtocol,
+	options: MemoryRecallCandidateOptions | number = {},
+): Promise<RecallCandidateInput[]> {
+	const memoryEntryLimit =
+		typeof options === "number" ? options : (options.memoryEntries ?? 20);
+	const logEntryLimit =
+		typeof options === "number" ? options : (options.logEntries ?? 20);
+	const candidates: RecallCandidateInput[] = [];
+	const [memoryIndexRaw, userProfileRaw, logRaw] = await Promise.all([
+		readOrEmpty(backend, MEMORY_INDEX_PATH),
+		readOrEmpty(backend, USER_PROFILE_PATH),
+		readOrEmpty(backend, MEMORY_LOG_PATH),
+	]);
+
+	const memoryIndex = parseIndex(memoryIndexRaw);
+	for (const entry of memoryIndex.entries.slice(0, memoryEntryLimit)) {
+		const [note, modifiedAt] = await Promise.all([
+			readOrEmpty(backend, entry.path),
+			readModifiedAt(backend, entry.path),
+		]);
+		pushIfUseful(candidates, {
+			id: `memory:${entry.slug}`,
+			source: "memory",
+			summary: `${entry.slug}: ${entry.hook}`,
+			snippet: note,
+			updatedAt: parseModifiedAt(modifiedAt),
+		});
+	}
+
+	if (userProfileRaw.trim().length > 0) {
+		const modifiedAt = await readModifiedAt(backend, USER_PROFILE_PATH);
+		pushIfUseful(candidates, {
+			id: "memory:user-profile",
+			source: "memory",
+			summary: "User profile",
+			snippet: userProfileRaw,
+			updatedAt: parseModifiedAt(modifiedAt),
+		});
+	}
+
+	candidates.push(...parseMemoryLog(logRaw).slice(0, logEntryLimit));
+	return candidates;
+}
+
+export async function collectRecallCandidates(
+	options: CollectRecallCandidatesOptions,
+): Promise<RecallCandidateInput[]> {
+	const limits = options.limits ?? {};
+	const batches = await Promise.all([
+		options.taskStore
+			? options.taskStore
+					.listActiveTasks(options.userId, limits.activeTasks ?? 20)
+					.then(taskRecallCandidates)
+			: Promise.resolve([]),
+		options.checkpointStore
+			? options.checkpointStore
+					.listRecentForCaller(options.userId, {
+						limit: limits.checkpoints ?? 5,
+					})
+					.then(checkpointRecallCandidates)
+			: Promise.resolve([]),
+		options.backend
+			? memoryRecallCandidates(options.backend, {
+					memoryEntries: limits.memoryEntries,
+					logEntries: limits.logEntries,
+				})
+			: Promise.resolve([]),
+		Promise.resolve(
+			(options.virtualFiles ?? [])
+				.filter((candidate) => candidate.source === "virtual_file")
+				.slice(0, limits.virtualFiles ?? 10),
+		),
+	]);
+
+	return batches.flat();
 }
 
 export function rankRecallCandidates(options: {

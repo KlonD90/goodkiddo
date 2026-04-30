@@ -73,3 +73,7 @@ That appendix is injected through each rebuilt system prompt until another compa
 Writes to prompt-injected memory files (`USER.md`, `MEMORY.md`, and `SKILLS.md`) mark the channel session prompt as dirty. Channel cleanup refreshes the agent after the turn, preserving the thread id and checkpoint state while rebuilding the system prompt from the latest memory snapshot.
 
 When no checkpoint exists yet, the builder falls back to replaying full stored history. `RuntimeContext.hasCompaction` indicates which path was taken.
+
+## Recall-on-ambiguity
+
+`recall.ts` provides the deterministic v1 recall helpers used when a user sends an ambiguous continuation such as "continue", "same thing", or "what we discussed". Candidate collection is source-backed: active SQL tasks, recent forced checkpoint summaries, memory index entries with note snippets, `USER.md`, and `log.md`. Virtual filesystem files are not scanned globally by this layer; callers may pass already-safe virtual file candidates when another abstraction has selected them.

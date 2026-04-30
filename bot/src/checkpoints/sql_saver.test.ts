@@ -220,4 +220,38 @@ describe("ForcedCheckpointStore", () => {
 
 		await db.close();
 	});
+
+	test("listRecentForCaller returns recent checkpoints across threads for one caller", async () => {
+		const dbUrl = createTempDbUrl();
+		const db = createDb(dbUrl);
+		const store = new ForcedCheckpointStore(db);
+
+		await store.create({
+			caller: "alice",
+			threadId: "old-thread",
+			sourceBoundary: "new_thread",
+			summaryPayload: "old",
+		});
+		await Bun.sleep(5);
+		const recent = await store.create({
+			caller: "alice",
+			threadId: "new-thread",
+			sourceBoundary: "session_resume",
+			summaryPayload: "recent",
+		});
+		await store.create({
+			caller: "bob",
+			threadId: "bob-thread",
+			sourceBoundary: "new_thread",
+			summaryPayload: "bob",
+		});
+
+		const records = await store.listRecentForCaller("alice", { limit: 1 });
+
+		expect(records).toHaveLength(1);
+		expect(records[0]?.id).toBe(recent.id);
+		expect(records[0]?.summaryPayload).toBe("recent");
+
+		await db.close();
+	});
 });
