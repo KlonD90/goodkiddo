@@ -77,10 +77,11 @@ export function decideProactiveFatigue(
 			return {
 				action: "batch",
 				reason: "quiet_hours",
-				batchAfterUtc: nextLocalTimeUtc(
+				batchAfterUtc: nextDigestTimeAfterQuietHoursUtc(
 					now,
 					preferences.timezone,
 					preferences.quietHours.endLocalTime,
+					preferences.digestLocalTime,
 				),
 			};
 		}
@@ -190,4 +191,17 @@ function nextLocalTimeUtc(
 		}
 	}
 	return null;
+}
+
+function nextDigestTimeAfterQuietHoursUtc(
+	now: Date,
+	timezone: string,
+	quietEndLocalTime: string,
+	digestLocalTime: string,
+): Date | null {
+	const quietEnd = nextLocalTimeUtc(now, timezone, quietEndLocalTime);
+	const digest = nextLocalTimeUtc(now, timezone, digestLocalTime);
+	if (!quietEnd) return digest;
+	if (!digest) return quietEnd;
+	return digest.getTime() >= quietEnd.getTime() ? digest : quietEnd;
 }

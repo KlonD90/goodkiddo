@@ -56,6 +56,22 @@ describe("proactive fatigue decisions", () => {
 		}
 	});
 
+	test("batches quiet-hour prepared follow-ups to the explicit digest time", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({ digestLocalTime: "10:30" }),
+			now: new Date("2026-05-01T02:30:00.000Z"),
+			recentNudgeCountToday: 0,
+		});
+
+		expect(decision.action).toBe("batch");
+		expect(decision.reason).toBe("quiet_hours");
+		if (decision.action === "batch") {
+			expect(decision.batchAfterUtc?.toISOString()).toBe(
+				"2026-05-01T14:30:00.000Z",
+			);
+		}
+	});
+
 	test("suppresses proactive follow-ups after the daily nudge limit", () => {
 		const decision = decideProactiveFatigue({
 			preferences: preferences({ maxNudgesPerDay: 1 }),

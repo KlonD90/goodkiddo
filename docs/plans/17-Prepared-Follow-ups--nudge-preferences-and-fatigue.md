@@ -50,10 +50,10 @@ Out:
 - [x] Ensure it affects future proactive sends without deleting user data.
 
 ### Task 4: Tests
-- [ ] Test quiet hours suppression/batching.
-- [ ] Test max nudges/day.
-- [ ] Test explicit digest time.
-- [ ] Test less-like-this signal.
+- [x] Test quiet hours suppression/batching.
+- [x] Test max nudges/day.
+- [x] Test explicit digest time.
+- [x] Test less-like-this signal.
 
 ### Task 5: Docs
 - [ ] Document anti-spam behavior and defaults.
