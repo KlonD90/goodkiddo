@@ -52,7 +52,7 @@ Out:
 - [x] Test source context is preserved.
 
 ### Task 4: Docs
-- [ ] Document artifact types and safe boundary.
+- [x] Document artifact types and safe boundary.
 
 ## Acceptance Criteria
 - GoodKiddo can prepare and store useful draft artifacts.

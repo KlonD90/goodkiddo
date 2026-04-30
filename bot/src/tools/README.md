@@ -95,4 +95,5 @@ When a tool has no entry in `ALLOWLISTED_ARGS`, `renderStatus` returns `null` an
 - `execute_tools.ts` — `execute_workspace`, `execute_script` (sandbox-backed)
 - `memory_tools.ts` — `memory_write`, `skill_write`, `memory_append_log` (see [`src/memory/`](../memory))
 - `task_tools.ts` — `task_add`, `task_complete`, `task_dismiss`, `task_list_active` backed by the shared SQL task store (`task_dismiss` requires explicit confirmation in the current user turn)
+- `prepare_draft_artifact` — creates private prepared follow-up artifacts (`follow_up_message`, `proposal_outline`, `checklist`, `decision_memo`, `content_social_draft`) under `/prepared-followups/`; it returns an internal path and preview only, and never sends, publishes, submits, or shares externally
 - `guard.ts` — `wrapToolWithGuard` — checks per-user policy, asks the broker, returns a denial string when blocked

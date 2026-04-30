@@ -80,6 +80,7 @@ Each slice should be independently shippable and should preserve the capability 
    - Allow direct internal preparation such as drafting, task updates, timers, file organization, and research notes.
    - Keep all effects inside GoodKiddo-controlled state.
    - Add audit-friendly summaries so users can see what was prepared.
+   - Draft artifact types are follow-up messages, proposal outlines, checklists, decision memos, and content/social drafts. They are stored as internal `/prepared-followups/*.md` virtual files with source context and a draft-only notice.
 
 5. Outside-world refusal and handoff patterns
    - Make unsupported final effects explicit in tool and prompt behavior.
@@ -100,3 +101,4 @@ Each slice should be independently shippable and should preserve the capability 
 
 ## Related
 - Execution plan: `docs/plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Prepared follow-up artifact docs: `bot/src/capabilities/prepared_followups/README.md`.
