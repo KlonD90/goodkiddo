@@ -406,7 +406,7 @@ async function runAgentTurn(
 		}
 		const recall = await maybeRunRecallOnAmbiguity(
 			session,
-			queuedTurn.currentUserText,
+			queuedTurn.recallUserText,
 		);
 		if (
 			preparedTurn.compacted ||
@@ -593,6 +593,10 @@ function tryMergeQueuedTurns(
 		base.currentUserText ?? extractTextFromUserInput(base.content);
 	const incomingText =
 		incoming.currentUserText ?? extractTextFromUserInput(incoming.content);
+	const recallText = mergeOptionalText(
+		base.recallUserText,
+		incoming.recallUserText,
+	);
 
 	return {
 		success: true,
@@ -600,11 +604,22 @@ function tryMergeQueuedTurns(
 			content: contentMerge.merged,
 			commandText: "",
 			currentUserText: baseText + (incomingText ? "\n" + incomingText : ""),
+			recallUserText: recallText,
 			currentMessageDate:
 				base.currentMessageDate ?? incoming.currentMessageDate,
 			attachmentBudget: base.attachmentBudget ?? incoming.attachmentBudget,
 		},
 	};
+}
+
+function mergeOptionalText(
+	base: string | undefined,
+	incoming: string | undefined,
+): string | undefined {
+	const parts = [base, incoming].filter(
+		(value): value is string => value !== undefined && value.trim() !== "",
+	);
+	return parts.length > 0 ? parts.join("\n") : undefined;
 }
 
 function isSessionCommandClearingQueue(commandText: string): boolean {
@@ -666,6 +681,7 @@ export async function handleTelegramQueuedTurn(
 	currentUserText?: string,
 	attachmentBudget?: TelegramAttachmentBudget,
 	currentMessageDate?: Date,
+	recallUserText?: string | null,
 ): Promise<void> {
 	if (
 		await handleTelegramControlInput(
@@ -689,6 +705,8 @@ export async function handleTelegramQueuedTurn(
 		content,
 		commandText,
 		currentUserText,
+		recallUserText:
+			recallUserText === null ? undefined : (recallUserText ?? currentUserText),
 		currentMessageDate,
 		attachmentBudget,
 	});

@@ -856,6 +856,101 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(session.pendingRecallContext).toBeUndefined();
 	});
 
+	test("merged forwarded context-only text does not trigger recall", async () => {
+		let releaseFirstStream!: () => void;
+		const firstStreamReleased = new Promise<void>((resolve) => {
+			releaseFirstStream = resolve;
+		});
+		const listActiveTasks = vi.fn().mockResolvedValue([]);
+		const streamInputs: Array<{ messages?: Array<{ content?: unknown }> }> = [];
+		let streamCalls = 0;
+		const agent = {
+			getState: async () => ({ values: { messages: [] } }),
+			stream: async (input: { messages?: Array<{ content?: unknown }> }) => {
+				streamInputs.push(input);
+				streamCalls += 1;
+				const callNumber = streamCalls;
+				if (callNumber === 1) {
+					await firstStreamReleased;
+				}
+				return (async function* () {
+					yield [{ getType: () => "ai", content: `reply ${callNumber}` }];
+				})();
+			},
+		};
+		const session = {
+			agent,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+			recallConfig: {
+				caller: "telegram:123",
+				taskStore: { listActiveTasks },
+				checkpointStore: {
+					listRecentForCaller: vi.fn().mockResolvedValue([]),
+				},
+			},
+		} as unknown as TelegramAgentSession;
+		const bot = {
+			api: {
+				sendChatAction: vi.fn().mockResolvedValue(undefined),
+				sendMessage: vi.fn().mockResolvedValue(undefined),
+			},
+		} as unknown as Bot;
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			"first",
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			"first",
+			undefined,
+			new Date("2026-04-28T00:00:00.000Z"),
+		);
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(streamInputs).toHaveLength(1);
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			[
+				{
+					type: "text",
+					text: "[Telegram forwarded context]\ncontinue the sales proposal\n[/Telegram forwarded context]",
+				},
+			],
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			undefined,
+			undefined,
+			new Date("2026-04-28T00:00:01.000Z"),
+		);
+		releaseFirstStream();
+		for (let i = 0; i < 20 && streamInputs.length < 2; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(streamInputs).toHaveLength(2);
+		expect(listActiveTasks).not.toHaveBeenCalled();
+	});
+
 	test("callback payload parsing preserves prompt ids containing colons", () => {
 		const data = "approve-once:1712345678901:abc123";
 		const separator = data.indexOf(":");

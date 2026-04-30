@@ -203,6 +203,13 @@ export async function processTelegramFile(
 	const commandText = params.contextPrefix
 		? ""
 		: (result.value.commandText ?? "");
+	const currentUserText = params.contextPrefix
+		? undefined
+		: result.value.currentUserText;
+	const recallUserText =
+		!params.contextPrefix && capability?.name === "voice"
+			? result.value.currentUserText
+			: null;
 
 	await queueTurn(
 		session,
@@ -213,7 +220,7 @@ export async function processTelegramFile(
 		caller,
 		store,
 		webShare,
-		result.value.currentUserText,
+		currentUserText,
 		capability === null
 			? undefined
 			: {
@@ -223,6 +230,7 @@ export async function processTelegramFile(
 					callerId: caller.id,
 				},
 		params.currentMessageDate,
+		recallUserText,
 	);
 }
 

@@ -1,10 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, test, vi } from "bun:test";
+import type { CapabilityRegistry } from "../../capabilities/registry";
+import type { FileCapability } from "../../capabilities/types";
 import { SqliteStateBackend } from "../../backends";
 import type { AppConfig } from "../../config";
 import {
 	buildIncomingImagePromptText,
 	buildTelegramPhotoUserInput,
 	extractIncomingExtension,
+	processTelegramFile,
 } from "./files";
 
 const BASE_CONFIG: AppConfig = {
@@ -33,6 +36,7 @@ const BASE_CONFIG: AppConfig = {
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
 	enableBrowserOnParent: false,
+	enableTabular: true,
 	defaultStatusLocale: "en",
 	transcriptionProvider: "openai",
 	transcriptionApiKey: "test-key",
@@ -163,5 +167,56 @@ describe("buildIncomingImagePromptText", () => {
 	test("trims whitespace-only captions", () => {
 		const text = buildIncomingImagePromptText("/incoming/x.jpg", "   ");
 		expect(text).not.toContain("Caption:");
+	});
+});
+
+describe("processTelegramFile", () => {
+	test("suppresses task and recall text for forwarded files", async () => {
+		const capability = {
+			name: "pdf",
+			canHandle: () => true,
+			process: async () => ({
+				ok: true as const,
+				value: {
+					content: "continue the sales proposal",
+					currentUserText: "continue the sales proposal",
+				},
+			}),
+		} satisfies FileCapability;
+		const registry = {
+			match: () => capability,
+			handle: async () => ({
+				ok: true as const,
+				value: {
+					content: "continue the sales proposal",
+					currentUserText: "continue the sales proposal",
+				},
+			}),
+		} as unknown as CapabilityRegistry;
+		const queued = vi.fn().mockResolvedValue(undefined);
+
+		await processTelegramFile(
+			BASE_CONFIG,
+			registry,
+			{ workspace: {} as never } as never,
+			{} as never,
+			"123",
+			{ id: "telegram:123", entrypoint: "telegram", externalId: "123" },
+			{} as never,
+			undefined,
+			{
+				metadata: {
+					mimeType: "application/pdf",
+					filename: "proposal.pdf",
+				},
+				download: async () => Uint8Array.from([1]),
+				contextPrefix: "[Telegram forwarded context]",
+			},
+			{ queueTurn: queued },
+		);
+
+		expect(queued).toHaveBeenCalledTimes(1);
+		expect(queued.mock.calls[0]?.[8]).toBeUndefined();
+		expect(queued.mock.calls[0]?.[11]).toBeNull();
 	});
 });

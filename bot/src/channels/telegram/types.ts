@@ -77,6 +77,7 @@ export type TelegramQueuedTurn = {
 	content: TelegramUserInput;
 	commandText: string;
 	currentUserText?: string;
+	recallUserText?: string;
 	currentMessageDate?: Date;
 	attachmentBudget?: TelegramAttachmentBudget;
 };
@@ -102,6 +103,7 @@ export type ProcessTelegramFileHelpers = {
 		currentUserText?: string,
 		attachmentBudget?: TelegramAttachmentBudget,
 		currentMessageDate?: Date,
+		recallUserText?: string | null,
 	) => Promise<void>;
 };
 
