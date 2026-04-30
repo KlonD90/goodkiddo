@@ -38,6 +38,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [CSV and Excel Spreadsheets](feature-csv-excel.md) | [RALPHEX plan](../plans/csv-excel.md) |
 | [Scheduled Timers](feature-scheduled-timers.md) | [RALPHEX plan](../plans/scheduled-timers.md) |
 | [Tool Activity Status Messages](feature-tool-activity-status.md) | [RALPHEX plan](../plans/tool-activity-status.md) |
+| [Codex Pull-Agent Smoke](codex-pull-agent-smoke.md) | [RALPHEX plan](../plans/7-docs--Codex-pull-agent-smoke.md) |
 
 ---
 
