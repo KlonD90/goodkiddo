@@ -14,6 +14,8 @@ import {
 	detectAmbiguousContinuation,
 	memoryRecallCandidates,
 	rankRecallCandidates,
+	RECALL_CONFIDENCE_POLICY,
+	recallConfidence,
 	taskRecallCandidates,
 	type RecallCandidateInput,
 } from "./recall";
@@ -143,6 +145,7 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].rationale).toContain(
 			"matched terms: sales, proposal",
 		);
+		expect(result.candidates[0].confidence).toBe("high");
 		expect(result.candidates[0].score).toBeGreaterThan(
 			result.candidates[1].score,
 		);
@@ -164,6 +167,37 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].rationale).toContain(
 			"available context for vague continuation",
 		);
+		expect(result.candidates[0].confidence).toBe("low");
+	});
+
+	test("assigns medium confidence to a single explicit match", () => {
+		const result = rankRecallCandidates({
+			input: "the proposal",
+			candidates,
+			now: NOW,
+		});
+
+		expect(result.candidates[0]?.id).toBe("task-1");
+		expect(result.candidates[0]?.confidence).toBe("medium");
+		expect(result.candidates[0]?.rationale).toContain("confidence: medium");
+	});
+
+	test("keeps recency-only matches low confidence", () => {
+		expect(recallConfidence(4, 0)).toBe("low");
+		expect(recallConfidence(RECALL_CONFIDENCE_POLICY.high.minimumScore, 0)).toBe(
+			"low",
+		);
+	});
+
+	test("documents threshold policy for high and medium confidence", () => {
+		expect(RECALL_CONFIDENCE_POLICY.high).toMatchObject({
+			minimumScore: 20,
+			minimumMatchedTerms: 2,
+		});
+		expect(RECALL_CONFIDENCE_POLICY.medium).toMatchObject({
+			minimumScore: 10,
+			minimumMatchedTerms: 1,
+		});
 	});
 });
 

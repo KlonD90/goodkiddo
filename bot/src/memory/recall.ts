@@ -22,6 +22,8 @@ export type RecallCandidateInput = {
 	updatedAt?: number;
 };
 
+export type RecallConfidence = "high" | "medium" | "low";
+
 export type AmbiguousContinuationDetection = {
 	isAmbiguous: boolean;
 	matchedPhrases: string[];
@@ -30,6 +32,7 @@ export type AmbiguousContinuationDetection = {
 
 export type RankedRecallCandidate = RecallCandidateInput & {
 	score: number;
+	confidence: RecallConfidence;
 	rationale: string[];
 };
 
@@ -70,6 +73,27 @@ type MemoryRecallCandidateOptions = {
 	memoryEntries?: number;
 	logEntries?: number;
 };
+
+export const RECALL_CONFIDENCE_POLICY = {
+	high: {
+		minimumScore: 20,
+		minimumMatchedTerms: 2,
+		description:
+			"Proceed only when multiple explicit request terms match a candidate with a strong score.",
+	},
+	medium: {
+		minimumScore: 10,
+		minimumMatchedTerms: 1,
+		description:
+			"Ask for confirmation when one explicit request term or comparable evidence points to a likely match.",
+	},
+	low: {
+		minimumScore: 1,
+		minimumMatchedTerms: 0,
+		description:
+			"Offer candidates or ask targeted clarification when evidence is weak, including bare continuation requests.",
+	},
+} as const;
 
 const AMBIGUOUS_PATTERNS: Array<{ phrase: string; pattern: RegExp }> = [
 	{ phrase: "continue", pattern: /\b(?:continue|carry on|keep going)\b/i },
@@ -364,11 +388,36 @@ function scoreCandidate(
 		rationale.push("available context for vague continuation");
 	}
 
+	const confidence = recallConfidence(score, matchedTerms.length);
+	rationale.push(`confidence: ${confidence}`);
+
 	return {
 		...candidate,
 		score,
+		confidence,
 		rationale,
 	};
+}
+
+export function recallConfidence(
+	score: number,
+	matchedTermCount: number,
+): RecallConfidence {
+	if (
+		score >= RECALL_CONFIDENCE_POLICY.high.minimumScore &&
+		matchedTermCount >= RECALL_CONFIDENCE_POLICY.high.minimumMatchedTerms
+	) {
+		return "high";
+	}
+
+	if (
+		score >= RECALL_CONFIDENCE_POLICY.medium.minimumScore &&
+		matchedTermCount >= RECALL_CONFIDENCE_POLICY.medium.minimumMatchedTerms
+	) {
+		return "medium";
+	}
+
+	return "low";
 }
 
 function scoreRecency(updatedAt: number | undefined, now: number): number {
