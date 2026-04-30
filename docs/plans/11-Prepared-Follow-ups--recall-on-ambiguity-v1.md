@@ -63,9 +63,9 @@ Expected decision behavior:
 - [x] Include virtual files only if an existing safe abstraction already exists; otherwise document as future work.
 
 ### Task 3: Confidence and output shape
-- [ ] Return candidates with source, summary/snippet, and confidence/rationale.
-- [ ] Provide a clear high/medium/low threshold policy.
-- [ ] Ensure no candidate is treated as certain without evidence.
+- [x] Return candidates with source, summary/snippet, and confidence/rationale.
+- [x] Provide a clear high/medium/low threshold policy.
+- [x] Ensure no candidate is treated as certain without evidence.
 
 ### Task 4: Prompt/runtime integration
 - [ ] Update the relevant runtime context or memory prompt so the assistant knows to recall before asking.

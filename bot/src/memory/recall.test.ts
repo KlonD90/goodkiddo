@@ -165,6 +165,39 @@ describe("rankRecallCandidates", () => {
 		);
 	});
 
+	test("returns source-backed candidate shape with confidence rationale", () => {
+		const result = rankRecallCandidates({
+			input: "continue the sales proposal",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Draft sales proposal for Acme",
+					snippet: "Use the March pricing notes",
+					updatedAt: NOW,
+				},
+			],
+			now: NOW,
+		});
+
+		expect(result.candidates).toEqual([
+			expect.objectContaining({
+				id: "task-1",
+				source: "task",
+				summary: "Draft sales proposal for Acme",
+				snippet: "Use the March pricing notes",
+				confidence: "high",
+				rationale: expect.arrayContaining([
+					"matched terms: sales, proposal",
+					"confidence: high",
+				]),
+			}),
+		]);
+		expect(result.candidates[0]?.score).toBeGreaterThanOrEqual(
+			RECALL_CONFIDENCE_POLICY.high.minimumScore,
+		);
+	});
+
 	test("uses recent available context for bare continuation requests", () => {
 		const result = rankRecallCandidates({
 			input: "continue",
@@ -294,7 +327,7 @@ describe("rankRecallCandidates", () => {
 		).toBe("low");
 	});
 
-	test("documents threshold policy for high and medium confidence", () => {
+	test("documents threshold policy for high, medium, and low confidence", () => {
 		expect(RECALL_CONFIDENCE_POLICY.high).toMatchObject({
 			minimumScore: 20,
 			minimumMatchedTerms: 2,
@@ -303,6 +336,19 @@ describe("rankRecallCandidates", () => {
 			minimumScore: 10,
 			minimumMatchedTerms: 1,
 		});
+		expect(RECALL_CONFIDENCE_POLICY.low).toMatchObject({
+			minimumScore: 1,
+			minimumMatchedTerms: 0,
+		});
+	});
+
+	test("applies exact confidence threshold boundaries", () => {
+		expect(recallConfidence(20, 2)).toBe("high");
+		expect(recallConfidence(19, 2)).toBe("medium");
+		expect(recallConfidence(20, 1)).toBe("medium");
+		expect(recallConfidence(10, 1)).toBe("medium");
+		expect(recallConfidence(9, 1)).toBe("low");
+		expect(recallConfidence(20, 0)).toBe("low");
 	});
 });
 
