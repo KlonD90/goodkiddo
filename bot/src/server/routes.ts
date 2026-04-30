@@ -235,7 +235,9 @@ async function handleApi(
 		}
 		const workspace = openWorkspace(db, dialect, grant.userId);
 		if (kind === "dir") {
-			const entries = await workspace.lsInfo(normalized);
+			const entries = (await workspace.lsInfo(normalized)).filter(
+				(entry) => !isDraftArtifactPath(entry.path),
+			);
 			return jsonResponse({
 				path: normalized,
 				is_dir: true,

@@ -155,6 +155,27 @@ describe("POST /api/fs/*", () => {
 		cleanup();
 	});
 
+	test("stat child count excludes internal prepared follow-up drafts", async () => {
+		const { access, handler, seedWorkspace, cleanup } = createHarness();
+		const ws = await seedWorkspace("u1");
+		await ws.write("/prepared-followups/d-123.md", "# internal draft");
+		const grant = await access.issue("u1");
+		const res = await handler(
+			new Request("http://localhost/api/fs/stat", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					authorization: `Bearer ${grant.bearerToken}`,
+				},
+				body: JSON.stringify({ path: "/" }),
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { child_count: number };
+		expect(body.child_count).toBe(3);
+		cleanup();
+	});
+
 	test("missing bearer returns 401", async () => {
 		const { handler, cleanup } = createHarness();
 		const res = await handler(
