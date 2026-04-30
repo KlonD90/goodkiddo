@@ -55,7 +55,7 @@ bot/src/db/migrate.ts
 
 ### Task 4: Add task metadata migration
 
-- [ ] Add a proper versioned migration for the Prepared Follow-ups task metadata columns from #10:
+- [x] Add a proper versioned migration for the Prepared Follow-ups task metadata columns from #10:
   - `due_at`
   - `next_check_at`
   - `priority`
@@ -65,8 +65,8 @@ bot/src/db/migrate.ts
   - `last_nudged_at`
   - `nudge_count`
   - `snoozed_until`
-- [ ] Use dialect-appropriate SQL.
-- [ ] Keep old rows valid with defaults/nullability.
+- [x] Use dialect-appropriate SQL.
+- [x] Keep old rows valid with defaults/nullability.
 
 ### Task 5: Rework store startup contract
 

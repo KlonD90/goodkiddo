@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { buildDbmateConfig } from "./migrate";
 
 type TableInfoRow = {
+	dflt_value: string | null;
 	name: string;
+	notnull: number;
 };
 
 type TableListRow = {
@@ -83,6 +85,63 @@ describe("baseline migrations", () => {
 				"updated_at",
 				"completed_at",
 				"dismissed_at",
+				"due_at",
+				"next_check_at",
+				"priority",
+				"loop_type",
+				"source_context",
+				"source_ref",
+				"last_nudged_at",
+				"nudge_count",
+				"snoozed_until",
+			]);
+			expect(
+				taskColumns
+					.filter((column) => ["priority", "nudge_count"].includes(column.name))
+					.map((column) => ({
+						defaultValue: column.dflt_value,
+						name: column.name,
+						notNull: column.notnull,
+					})),
+			).toEqual([
+				{ defaultValue: "0", name: "priority", notNull: 1 },
+				{ defaultValue: "0", name: "nudge_count", notNull: 1 },
+			]);
+
+			const insertedRows = await db<
+				{
+					due_at: number | null;
+					nudge_count: number;
+					priority: number;
+					source_context: string | null;
+				}[]
+			>`
+				INSERT INTO tasks (
+					user_id,
+					thread_id_created,
+					list_name,
+					title,
+					status,
+					created_at,
+					updated_at
+				) VALUES (
+					'user-1',
+					'thread-1',
+					'default',
+					'Old row shape',
+					'active',
+					1,
+					1
+				)
+				RETURNING due_at, priority, source_context, nudge_count
+			`;
+			expect(insertedRows).toEqual([
+				{
+					due_at: null,
+					nudge_count: 0,
+					priority: 0,
+					source_context: null,
+				},
 			]);
 
 			const timerColumns = await db<TableInfoRow[]>`PRAGMA table_info(timers)`;
