@@ -79,6 +79,22 @@ describe("proactive fatigue decisions", () => {
 		}
 	});
 
+	test("does not batch overnight quiet hours to a digest time inside quiet hours", () => {
+		const decision = decideProactiveFatigue({
+			preferences: preferences({ digestLocalTime: "22:00" }),
+			now: new Date("2026-05-01T02:30:00.000Z"),
+			recentNudgeCountToday: 0,
+		});
+
+		expect(decision.action).toBe("batch");
+		expect(decision.reason).toBe("quiet_hours");
+		if (decision.action === "batch") {
+			expect(decision.batchAfterUtc?.toISOString()).toBe(
+				"2026-05-01T13:00:00.000Z",
+			);
+		}
+	});
+
 	test("batches daytime quiet-hour windows until quiet hours end", () => {
 		const decision = decideProactiveFatigue({
 			preferences: preferences({

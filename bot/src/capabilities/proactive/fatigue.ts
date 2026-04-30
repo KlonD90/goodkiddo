@@ -84,6 +84,7 @@ export function decideProactiveFatigue(
 				batchAfterUtc: nextDigestTimeAfterQuietHoursUtc(
 					now,
 					preferences.timezone,
+					preferences.quietHours.startLocalTime,
 					preferences.quietHours.endLocalTime,
 					preferences.digestLocalTime,
 				),
@@ -198,14 +199,19 @@ function nextLocalTimeUtc(
 function nextDigestTimeAfterQuietHoursUtc(
 	now: Date,
 	timezone: string,
+	quietStartLocalTime: string,
 	quietEndLocalTime: string,
 	digestLocalTime: string,
 ): Date | null {
 	const quietEnd = nextLocalTimeUtc(now, timezone, quietEndLocalTime);
 	if (!quietEnd) return nextLocalTimeUtc(now, timezone, digestLocalTime);
 
+	const quietStartParts = parseLocalTime(quietStartLocalTime);
 	const quietEndParts = parseLocalTime(quietEndLocalTime);
 	const digestParts = parseLocalTime(digestLocalTime);
+	if (isWithinQuietHours(digestParts, quietStartParts, quietEndParts)) {
+		return quietEnd;
+	}
 	if (localTimeToMinutes(digestParts) < localTimeToMinutes(quietEndParts)) {
 		return quietEnd;
 	}
