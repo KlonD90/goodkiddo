@@ -787,6 +787,75 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(session.queue).toHaveLength(0);
 	});
 
+	test("forwarded context-only text does not trigger recall", async () => {
+		const listActiveTasks = vi.fn().mockResolvedValue([]);
+		const streamInputs: Array<{ messages?: Array<{ content?: unknown }> }> = [];
+		const agent = {
+			getState: async () => ({ values: { messages: [] } }),
+			stream: async (input: { messages?: Array<{ content?: unknown }> }) => {
+				streamInputs.push(input);
+				return (async function* () {
+					yield [{ getType: () => "ai", content: "reply" }];
+				})();
+			},
+		};
+		const session = {
+			agent,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+			recallConfig: {
+				caller: "telegram:123",
+				taskStore: { listActiveTasks },
+				checkpointStore: {
+					listRecentForCaller: vi.fn().mockResolvedValue([]),
+				},
+			},
+		} as unknown as TelegramAgentSession;
+		const bot = {
+			api: {
+				sendChatAction: vi.fn().mockResolvedValue(undefined),
+				sendMessage: vi.fn().mockResolvedValue(undefined),
+			},
+		} as unknown as Bot;
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+
+		await handleTelegramQueuedTurn(
+			session,
+			bot,
+			"123",
+			"",
+			[
+				{
+					type: "text",
+					text: "[Telegram forwarded context]\ncontinue the sales proposal\n[/Telegram forwarded context]",
+				},
+			],
+			caller,
+			{} as PermissionsStore,
+			undefined,
+			undefined,
+			undefined,
+			new Date("2026-04-28T00:00:00.000Z"),
+		);
+		for (let i = 0; i < 20 && streamInputs.length < 1; i++) {
+			await new Promise((resolve) => setTimeout(resolve, 0));
+		}
+
+		expect(streamInputs).toHaveLength(1);
+		expect(listActiveTasks).not.toHaveBeenCalled();
+		expect(session.pendingRecallContext).toBeUndefined();
+	});
+
 	test("callback payload parsing preserves prompt ids containing colons", () => {
 		const data = "approve-once:1712345678901:abc123";
 		const separator = data.indexOf(":");

@@ -331,19 +331,32 @@ export async function memoryRecallCandidates(
 	]);
 
 	const memoryIndex = parseIndex(memoryIndexRaw);
-	for (const entry of memoryIndex.entries.slice(0, memoryEntryLimit)) {
-		if (!isSafeIndexedMemoryNotePath(entry.path)) continue;
+	const safeMemoryEntries = memoryIndex.entries.filter((entry) =>
+		isSafeIndexedMemoryNotePath(entry.path),
+	);
+	const noteDetails = new Map<
+		string,
+		{ note: string; modifiedAt: string | null }
+	>(
+		await Promise.all(
+			safeMemoryEntries.slice(0, memoryEntryLimit).map(async (entry) => {
+				const [note, modifiedAt] = await Promise.all([
+					readOrEmpty(backend, entry.path),
+					readModifiedAt(backend, entry.path),
+				]);
+				return [entry.slug, { note, modifiedAt }] as const;
+			}),
+		),
+	);
 
-		const [note, modifiedAt] = await Promise.all([
-			readOrEmpty(backend, entry.path),
-			readModifiedAt(backend, entry.path),
-		]);
+	for (const entry of safeMemoryEntries) {
+		const detail = noteDetails.get(entry.slug);
 		pushIfUseful(candidates, {
 			id: `memory:${entry.slug}`,
 			source: "memory",
 			summary: `${entry.slug}: ${entry.hook}`,
-			snippet: note,
-			updatedAt: parseModifiedAt(modifiedAt),
+			snippet: detail?.note,
+			updatedAt: parseModifiedAt(detail?.modifiedAt ?? null),
 		});
 	}
 

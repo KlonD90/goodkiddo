@@ -406,7 +406,7 @@ async function runAgentTurn(
 		}
 		const recall = await maybeRunRecallOnAmbiguity(
 			session,
-			queuedTurn.currentUserText ?? queuedTurn.content,
+			queuedTurn.currentUserText,
 		);
 		if (
 			preparedTurn.compacted ||
@@ -549,26 +549,23 @@ function mergeContent(
 	}
 
 	if (typeof base === "string" && Array.isArray(incoming)) {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			{ type: "text", text: base },
-			...incoming,
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [{ type: "text", text: base }, ...incoming];
 		return { success: true, merged: combined };
 	}
 
 	if (Array.isArray(base) && typeof incoming === "string") {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			...base,
-			{ type: "text", text: incoming },
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [...base, { type: "text", text: incoming }];
 		return { success: true, merged: combined };
 	}
 
 	if (Array.isArray(base) && Array.isArray(incoming)) {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			...base,
-			...incoming,
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [...base, ...incoming];
 		return { success: true, merged: combined };
 	}
 
@@ -592,7 +589,8 @@ function tryMergeQueuedTurns(
 		return { success: false };
 	}
 
-	const baseText = base.currentUserText ?? extractTextFromUserInput(base.content);
+	const baseText =
+		base.currentUserText ?? extractTextFromUserInput(base.content);
 	const incomingText =
 		incoming.currentUserText ?? extractTextFromUserInput(incoming.content);
 
@@ -602,7 +600,8 @@ function tryMergeQueuedTurns(
 			content: contentMerge.merged,
 			commandText: "",
 			currentUserText: baseText + (incomingText ? "\n" + incomingText : ""),
-			currentMessageDate: base.currentMessageDate ?? incoming.currentMessageDate,
+			currentMessageDate:
+				base.currentMessageDate ?? incoming.currentMessageDate,
 			attachmentBudget: base.attachmentBudget ?? incoming.attachmentBudget,
 		},
 	};

@@ -600,7 +600,7 @@ describe("recall candidate sources", () => {
 		);
 	});
 
-	test("honors memory and log limits while keeping newest log entries", async () => {
+	test("keeps all memory index hooks while limiting note snippets", async () => {
 		const backend = createBackend("recall-memory-limits");
 		await ensureMemoryBootstrapped(backend);
 		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
@@ -634,9 +634,17 @@ describe("recall candidate sources", () => {
 		expect(candidates.map((candidate) => candidate.id)).toContain(
 			"memory:alpha-note",
 		);
-		expect(candidates.map((candidate) => candidate.id)).not.toContain(
+		expect(candidates.map((candidate) => candidate.id)).toContain(
 			"memory:beta-note",
 		);
+		expect(
+			candidates.find((candidate) => candidate.id === "memory:alpha-note")
+				?.snippet,
+		).toBe("Alpha body");
+		expect(
+			candidates.find((candidate) => candidate.id === "memory:beta-note")
+				?.snippet,
+		).toBeUndefined();
 		expect(
 			candidates.filter((candidate) => candidate.source === "log"),
 		).toEqual([
@@ -645,6 +653,41 @@ describe("recall candidate sources", () => {
 				summary: "new_event: New context",
 			}),
 		]);
+	});
+
+	test("can rank a memory index hook beyond the note read limit", async () => {
+		const backend = createBackend("recall-memory-index-beyond-limit");
+		await ensureMemoryBootstrapped(backend);
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "alpha-note",
+			path: "/memory/notes/alpha-note.md",
+			hook: "General operations note",
+		});
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "sales-proposal",
+			path: "/memory/notes/sales-proposal.md",
+			hook: "Acme sales proposal follow-up",
+		});
+		await overwrite(backend, "/memory/notes/alpha-note.md", "Alpha body");
+		await overwrite(
+			backend,
+			"/memory/notes/sales-proposal.md",
+			"Proposal details that should not need to be read for hook matching.",
+		);
+
+		const candidates = await memoryRecallCandidates(backend, {
+			memoryEntries: 1,
+		});
+		const ranked = rankRecallCandidates({
+			input: "continue the Acme sales proposal",
+			candidates,
+			limit: 1,
+			now: NOW,
+		});
+
+		expect(ranked.candidates[0]?.id).toBe("memory:sales-proposal");
+		expect(ranked.candidates[0]?.confidence).toBe("high");
+		expect(ranked.candidates[0]?.snippet).toBeUndefined();
 	});
 
 	test("collects configured sources and only accepts supplied virtual file candidates", async () => {
