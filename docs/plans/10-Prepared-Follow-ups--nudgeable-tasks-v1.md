@@ -48,9 +48,15 @@ Prefer additive schema changes that keep old data valid.
 - `bun run check`
 
 ### Task 1: Inspect current task schema and compatibility rules
-- [ ] Identify current task table/schema and migration pattern.
-- [ ] Identify existing task APIs/tools and tests.
-- [ ] Decide additive field names that fit current code style.
+- [x] Identify current task table/schema and migration pattern.
+- [x] Identify existing task APIs/tools and tests.
+- [x] Decide additive field names that fit current code style.
+
+Notes:
+- `bot/src/tasks/store.ts` owns the `tasks` table. It creates SQLite/Postgres DDL inline with `CREATE TABLE IF NOT EXISTS`, then creates `idx_tasks_user_status_updated_at` and `idx_tasks_user_list_status`, with SQLite WAL enabled. There is no separate migration runner for tasks today, so compatibility should be handled by additive startup schema updates that leave old rows valid.
+- Current columns are `id`, `user_id`, `thread_id_created`, `thread_id_completed`, `list_name`, `title`, `note`, `status`, `status_reason`, `created_at`, `updated_at`, `completed_at`, and `dismissed_at`. Existing statuses are `active`, `completed`, and `dismissed`; this should remain unchanged for v1 compatibility.
+- Existing task APIs are `addTask`, `getTask`, `listTasksForUser`, `listActiveTasks`, `countTasksForUser`, `listRecentlyCompletedTasks`, `composeActiveTaskSnapshot`, `completeTask`, and `dismissTask`. Tools expose only `task_add`, `task_complete`, `task_dismiss`, and `task_list_active`, with tests in `bot/src/tasks/store.test.ts`, `bot/src/tasks/reconcile.test.ts`, and `bot/src/tools/task_tools.test.ts`.
+- Use additive snake_case DB fields with camelCase TypeScript properties: `due_at`/`dueAt`, `next_check_at`/`nextCheckAt`, `priority`, `loop_type`/`loopType`, `source_context`/`sourceContext`, `source_ref`/`sourceRef`, `last_nudged_at`/`lastNudgedAt`, `nudge_count`/`nudgeCount`, and `snoozed_until`/`snoozedUntil`. Keep defaults nullable except `priority` and `nudge_count`, which should default to bounded low-complexity values.
 
 ### Task 2: Add nudgeable task metadata
 - [ ] Add schema/migration support for the metadata.
