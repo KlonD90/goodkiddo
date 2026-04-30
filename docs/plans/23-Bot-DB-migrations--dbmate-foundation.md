@@ -89,9 +89,9 @@ Existing #10 tests for task metadata should keep passing after rework.
 ### Task 7: Docs
 
 Update relevant docs/README with:
-- [ ] How to run migrations locally.
-- [ ] How deployment/startup should run migrations before bot boot.
-- [ ] Why schema changes belong in migrations, not store-local helpers.
+- [x] How to run migrations locally.
+- [x] How deployment/startup should run migrations before bot boot.
+- [x] Why schema changes belong in migrations, not store-local helpers.
 
 ## Validation Commands
 

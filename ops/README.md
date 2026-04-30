@@ -18,6 +18,8 @@ The playbook provisions:
 - the `web/` bot UI bundle consumed by the bot service after running `bun run web:build`
 - a managed environment file at `/etc/goodkiddo/bot.env`
 - a systemd service that runs `bun src/bin/bot.ts` from `bot/`
+- database migrations applied by the bot entrypoint before stores are
+  constructed
 - optional Telegram image understanding through MiniMax MCP when
   `enable_image_understanding=true`
 
@@ -134,6 +136,10 @@ Vault file and installs `uvx` so the runtime can launch
   `bun run web:build`; the bot service reads the generated `web/dist` files.
 - The bot gets `SEARXNG_API_BASE` and `AGENT_BROWSER_EXECUTABLE_PATH` through
   `/etc/goodkiddo/bot.env`, which is what the current runtime expects.
+- The bot entrypoint runs dbmate migrations during startup using
+  `DATABASE_URL` from `/etc/goodkiddo/bot.env`. For manual maintenance from the
+  deployed checkout, run `bun run db:status` or `bun run db:migrate` from the
+  repository root with the same environment file loaded.
 - MiniMax image understanding is controlled by `enable_image_understanding`,
   `minimax_api_key`, and `minimax_api_host`; these render to
   `ENABLE_IMAGE_UNDERSTANDING`, `MINIMAX_API_KEY`, and `MINIMAX_API_HOST`.
