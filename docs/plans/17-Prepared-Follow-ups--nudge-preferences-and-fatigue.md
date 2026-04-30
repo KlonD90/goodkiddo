@@ -36,9 +36,9 @@ Out:
 - `bun run check`
 
 ### Task 1: Preference data model
-- [ ] Decide where proactive preferences live.
-- [ ] Add defaults that are conservative and Telegram-friendly.
-- [ ] Preserve existing profiles/memory behavior.
+- [x] Decide where proactive preferences live.
+- [x] Add defaults that are conservative and Telegram-friendly.
+- [x] Preserve existing profiles/memory behavior.
 
 ### Task 2: Fatigue decision helper
 - [ ] Implement send/batch/suppress decision from preferences and recent nudge count.

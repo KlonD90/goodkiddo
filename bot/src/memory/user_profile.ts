@@ -10,6 +10,41 @@ export const USER_PROFILE_SECTIONS = [
 
 export type UserProfileSection = (typeof USER_PROFILE_SECTIONS)[number];
 
+export const PROACTIVE_PREFERENCES_PROFILE_SECTION: UserProfileSection =
+	"Preferences";
+
+export type ProactivePushiness = "minimal" | "standard" | "assertive";
+
+export type ProactiveQuietHours = {
+	enabled: boolean;
+	startLocalTime: string;
+	endLocalTime: string;
+};
+
+export type ProactivePreferences = {
+	/**
+	 * IANA timezone when the user has provided one. Keep null by default so
+	 * Telegram nudges never silently assume the app/server timezone.
+	 */
+	timezone: string | null;
+	quietHours: ProactiveQuietHours;
+	digestLocalTime: string;
+	maxNudgesPerDay: number;
+	pushiness: ProactivePushiness;
+};
+
+export const DEFAULT_PROACTIVE_PREFERENCES: ProactivePreferences = {
+	timezone: null,
+	quietHours: {
+		enabled: true,
+		startLocalTime: "21:00",
+		endLocalTime: "09:00",
+	},
+	digestLocalTime: "09:00",
+	maxNudgesPerDay: 1,
+	pushiness: "minimal",
+};
+
 const EMPTY_SECTION_BODY = "_No durable facts recorded yet._";
 
 function sectionHeading(section: UserProfileSection): string {

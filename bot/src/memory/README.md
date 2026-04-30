@@ -34,6 +34,8 @@ Memory note topics and skill names must slugify to at least one ASCII letter or 
 
 `USER.md` uses a fixed Markdown shape with `## Profile`, `## Preferences`, `## Environment`, `## Constraints`, and `## Open Questions`. New callers are bootstrapped with all five sections. Existing legacy profiles remain readable until `memory_write` with `target: "user"` updates them, at which point the tool normalizes the file into the fixed-section shape. Notes and skills still use `## Actuel` / `## Archive`.
 
+Proactive nudge preferences live in the `## Preferences` section of `USER.md`. The typed defaults are exported from [`user_profile.ts`](user_profile.ts) as `DEFAULT_PROACTIVE_PREFERENCES`: no assumed timezone, quiet hours from 21:00 to 09:00, digest time 09:00, at most one proactive nudge per day, and minimal pushiness. These defaults are code-level fallbacks and are not written into empty profiles, so an empty `USER.md` still means no durable user facts have been recorded.
+
 Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. Dismissals require an explicit user confirmation turn before `task_dismiss` is allowed to mutate state. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
 
 Conversation state is split into two layers:
