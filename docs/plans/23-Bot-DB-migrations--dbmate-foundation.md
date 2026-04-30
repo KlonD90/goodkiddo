@@ -49,9 +49,9 @@ bot/src/db/migrate.ts
 
 ### Task 3: Add baseline migrations
 
-- [ ] Add initial/baseline migration files for existing bot tables that are relevant to stores already managing schema.
-- [ ] At minimum cover the `tasks` table so PR #21 can be reworked on top of the migration foundation.
-- [ ] If practical, include existing timer metadata migration debt in a separate migration, but do not expand scope too far.
+- [x] Add initial/baseline migration files for existing bot tables that are relevant to stores already managing schema.
+- [x] At minimum cover the `tasks` table so PR #21 can be reworked on top of the migration foundation.
+- [x] If practical, include existing timer metadata migration debt in a separate migration, but do not expand scope too far.
 
 ### Task 4: Add task metadata migration
 
