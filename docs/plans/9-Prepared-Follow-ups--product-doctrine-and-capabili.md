@@ -39,9 +39,9 @@ Implement documentation/spec only. No runtime behavior change required in this i
 - [x] Keep the table/list formatting consistent with the file.
 
 ### Task 3: Check docs consistency
-- [ ] Ensure wording does not frame GoodKiddo as a permission-gated powerful agent.
-- [ ] Ensure it says outside-world final effects are unavailable by capability design.
-- [ ] Ensure it is clear this feature direction is for solo entrepreneurs and Telegram-native use.
+- [x] Ensure wording does not frame GoodKiddo as a permission-gated powerful agent.
+- [x] Ensure it says outside-world final effects are unavailable by capability design.
+- [x] Ensure it is clear this feature direction is for solo entrepreneurs and Telegram-native use.
 
 ## Acceptance Criteria
 - Roadmap/spec is committed and discoverable from `docs/features/README.md`.

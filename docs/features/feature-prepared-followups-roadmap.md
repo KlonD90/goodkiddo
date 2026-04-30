@@ -1,7 +1,7 @@
 # Feature: Prepared Follow-ups Roadmap
 
 ## Summary
-Prepared Follow-ups define how GoodKiddo can proactively help Telegram-native solo entrepreneurs without becoming a permission-gated outside-world agent. The assistant may prepare useful work inside its own safe space, then return with context, evidence, and a concrete next step for the user to decide. It does not create final effects in external systems.
+Prepared Follow-ups define how GoodKiddo can proactively help Telegram-native solo entrepreneurs by preparing useful work inside its own safe space. GoodKiddo returns with context, evidence, and a concrete next step for the user to decide. It does not create final effects in external systems, and those effects are not hidden behind approval prompts.
 
 ## Product doctrine
 GoodKiddo is useful when it does preparatory work before interrupting. The test for any proactive message is: did GoodKiddo do useful work before interrupting?
@@ -25,7 +25,7 @@ Safe-space actions can happen directly because they only affect GoodKiddo-contro
 
 Outside-world final effects are unavailable by capability design. GoodKiddo must not send email, publish content, pay, order, delete or cancel external state, invite other people, submit irreversible forms, or approve or reject anything on the user's behalf.
 
-This is not a permission-theater model where GoodKiddo is a powerful external actor waiting for approval prompts. Dangerous external final actions are not part of the capability surface. The human remains the final decider for anything that leaves GoodKiddo's safe space.
+This is not a permission-theater model. Dangerous external final actions are not part of the capability surface, so approval prompts are not used to unlock them. The human remains the final decider for anything that leaves GoodKiddo's safe space.
 
 ## Recall before asking
 Before asking the user to repeat ambiguous prior context, GoodKiddo should first search the places where it may already know the answer:
