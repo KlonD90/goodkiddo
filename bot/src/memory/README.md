@@ -36,6 +36,8 @@ Memory note topics and skill names must slugify to at least one ASCII letter or 
 
 Proactive nudge preferences live in the `## Preferences` section of `USER.md`. The typed defaults are exported from [`user_profile.ts`](user_profile.ts) as `DEFAULT_PROACTIVE_PREFERENCES`: no assumed timezone, quiet hours from 21:00 to 09:00, digest time 09:00, at most one proactive nudge per day, and minimal pushiness. These defaults are code-level fallbacks and are not written into empty profiles, so an empty `USER.md` still means no durable user facts have been recorded.
 
+“Less like this” feedback is stored as an additive proactive preference signal. Future prepared follow-ups with a matching topic can be suppressed by the fatigue guard without deleting or rewriting existing user profile facts.
+
 Actionable work is now tracked separately from durable memory. The system prompt injects a compact SQL-backed active-task snapshot on each agent build, and the agent uses the task tools in [`src/tools/task_tools.ts`](../tools/task_tools.ts) for open work that should later be completed or dismissed. Dismissals require an explicit user confirmation turn before `task_dismiss` is allowed to mutate state. This keeps `/memory/` focused on durable facts while the SQL task store tracks in-flight work with explicit `active`, `completed`, and `dismissed` states.
 
 Conversation state is split into two layers:

@@ -22,7 +22,7 @@ export type ProactiveFatigueDecision =
 	  }
 	| {
 			action: "suppress";
-			reason: "daily_limit_reached";
+			reason: "daily_limit_reached" | "less_like_this";
 	  };
 
 export type ProactiveFatigueInput = {
@@ -30,6 +30,13 @@ export type ProactiveFatigueInput = {
 	now?: Date;
 	recentNudgeCountToday: number;
 	source?: ProactiveNudgeSource;
+	topic?: string;
+};
+
+export type RecordLessLikeThisInput = {
+	preferences?: ProactivePreferences;
+	topic: string;
+	now?: Date;
 };
 
 type LocalTimeParts = {
@@ -48,6 +55,10 @@ export function decideProactiveFatigue(
 
 	if (isExplicitUserRequest(source)) {
 		return { action: "send", reason: "explicit_user_request" };
+	}
+
+	if (input.topic && hasLessLikeThisSignal(preferences, input.topic)) {
+		return { action: "suppress", reason: "less_like_this" };
 	}
 
 	if (preferences.quietHours.enabled) {
@@ -82,8 +93,45 @@ export function decideProactiveFatigue(
 	return { action: "send", reason: "within_preferences" };
 }
 
+export function recordLessLikeThisSignal(
+	input: RecordLessLikeThisInput,
+): ProactivePreferences {
+	const preferences = input.preferences ?? DEFAULT_PROACTIVE_PREFERENCES;
+	const topic = normalizeSignalTopic(input.topic);
+	if (topic.length === 0) return preferences;
+
+	return {
+		...preferences,
+		quietHours: { ...preferences.quietHours },
+		feedback: {
+			...preferences.feedback,
+			lessLikeThis: [
+				...preferences.feedback.lessLikeThis,
+				{
+					topic,
+					recordedAt: (input.now ?? new Date()).toISOString(),
+				},
+			],
+		},
+	};
+}
+
 function isExplicitUserRequest(source: ProactiveNudgeSource): boolean {
 	return source === "user_requested_timer" || source === "user_requested_reminder";
+}
+
+function hasLessLikeThisSignal(
+	preferences: ProactivePreferences,
+	topic: string,
+): boolean {
+	const normalized = normalizeSignalTopic(topic);
+	return preferences.feedback.lessLikeThis.some(
+		(signal) => normalizeSignalTopic(signal.topic) === normalized,
+	);
+}
+
+function normalizeSignalTopic(value: string): string {
+	return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
 function localTimeParts(date: Date, timezone: string): LocalTimeParts {

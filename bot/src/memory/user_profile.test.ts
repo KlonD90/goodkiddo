@@ -21,6 +21,9 @@ describe("user profile proactive preferences", () => {
 			digestLocalTime: "09:00",
 			maxNudgesPerDay: 1,
 			pushiness: "minimal",
+			feedback: {
+				lessLikeThis: [],
+			},
 		});
 	});
 

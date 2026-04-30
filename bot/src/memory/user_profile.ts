@@ -21,6 +21,15 @@ export type ProactiveQuietHours = {
 	endLocalTime: string;
 };
 
+export type ProactiveLessLikeThisSignal = {
+	topic: string;
+	recordedAt: string;
+};
+
+export type ProactiveFeedbackPreferences = {
+	lessLikeThis: ProactiveLessLikeThisSignal[];
+};
+
 export type ProactivePreferences = {
 	/**
 	 * IANA timezone when the user has provided one. Keep null by default so
@@ -31,6 +40,7 @@ export type ProactivePreferences = {
 	digestLocalTime: string;
 	maxNudgesPerDay: number;
 	pushiness: ProactivePushiness;
+	feedback: ProactiveFeedbackPreferences;
 };
 
 export const DEFAULT_PROACTIVE_PREFERENCES: ProactivePreferences = {
@@ -43,6 +53,9 @@ export const DEFAULT_PROACTIVE_PREFERENCES: ProactivePreferences = {
 	digestLocalTime: "09:00",
 	maxNudgesPerDay: 1,
 	pushiness: "minimal",
+	feedback: {
+		lessLikeThis: [],
+	},
 };
 
 const EMPTY_SECTION_BODY = "_No durable facts recorded yet._";

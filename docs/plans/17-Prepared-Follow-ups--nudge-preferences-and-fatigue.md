@@ -46,8 +46,8 @@ Out:
 - [x] Exempt explicit user-requested timers/reminders if appropriate.
 
 ### Task 3: Feedback handling
-- [ ] Store “less like this” as a preference signal.
-- [ ] Ensure it affects future proactive sends without deleting user data.
+- [x] Store “less like this” as a preference signal.
+- [x] Ensure it affects future proactive sends without deleting user data.
 
 ### Task 4: Tests
 - [ ] Test quiet hours suppression/batching.

@@ -3,7 +3,7 @@ import {
 	DEFAULT_PROACTIVE_PREFERENCES,
 	type ProactivePreferences,
 } from "../../memory/user_profile";
-import { decideProactiveFatigue } from "./fatigue";
+import { decideProactiveFatigue, recordLessLikeThisSignal } from "./fatigue";
 
 function preferences(
 	overrides: Partial<ProactivePreferences> = {},
@@ -15,6 +15,13 @@ function preferences(
 		quietHours: {
 			...DEFAULT_PROACTIVE_PREFERENCES.quietHours,
 			...overrides.quietHours,
+		},
+		feedback: {
+			...DEFAULT_PROACTIVE_PREFERENCES.feedback,
+			...overrides.feedback,
+			lessLikeThis:
+				overrides.feedback?.lessLikeThis ??
+				DEFAULT_PROACTIVE_PREFERENCES.feedback.lessLikeThis,
 		},
 	};
 }
@@ -87,6 +94,78 @@ describe("proactive fatigue decisions", () => {
 			action: "batch",
 			reason: "timezone_unknown",
 			batchAfterUtc: null,
+		});
+	});
+
+	test("records less-like-this feedback without deleting existing signals", () => {
+		const existing = preferences({
+			feedback: {
+				lessLikeThis: [
+					{
+						topic: "invoice follow-up",
+						recordedAt: "2026-04-29T15:00:00.000Z",
+					},
+				],
+			},
+		});
+
+		const updated = recordLessLikeThisSignal({
+			preferences: existing,
+			topic: "sales outreach",
+			now: new Date("2026-04-30T15:00:00.000Z"),
+		});
+
+		expect(updated.feedback.lessLikeThis).toEqual([
+			{
+				topic: "invoice follow-up",
+				recordedAt: "2026-04-29T15:00:00.000Z",
+			},
+			{
+				topic: "sales outreach",
+				recordedAt: "2026-04-30T15:00:00.000Z",
+			},
+		]);
+		expect(existing.feedback.lessLikeThis).toHaveLength(1);
+	});
+
+	test("suppresses future prepared follow-ups after less-like-this feedback", () => {
+		const updated = recordLessLikeThisSignal({
+			preferences: preferences(),
+			topic: "Invoice follow-up",
+			now: new Date("2026-04-30T15:00:00.000Z"),
+		});
+
+		const decision = decideProactiveFatigue({
+			preferences: updated,
+			now: new Date("2026-05-01T15:00:00.000Z"),
+			recentNudgeCountToday: 0,
+			topic: " invoice   follow-up ",
+		});
+
+		expect(decision).toEqual({
+			action: "suppress",
+			reason: "less_like_this",
+		});
+	});
+
+	test("does not apply less-like-this feedback to explicit reminders", () => {
+		const updated = recordLessLikeThisSignal({
+			preferences: preferences(),
+			topic: "Invoice follow-up",
+			now: new Date("2026-04-30T15:00:00.000Z"),
+		});
+
+		const decision = decideProactiveFatigue({
+			preferences: updated,
+			now: new Date("2026-05-01T15:00:00.000Z"),
+			recentNudgeCountToday: 0,
+			source: "user_requested_reminder",
+			topic: "invoice follow-up",
+		});
+
+		expect(decision).toEqual({
+			action: "send",
+			reason: "explicit_user_request",
 		});
 	});
 });
