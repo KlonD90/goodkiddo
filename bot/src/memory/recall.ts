@@ -10,6 +10,7 @@ import {
 	MEMORY_LOG_PATH,
 	USER_PROFILE_PATH,
 } from "./layout";
+import { userProfileIsEmpty } from "./user_profile";
 
 export type RecallSource =
 	| "task"
@@ -112,7 +113,7 @@ const AMBIGUOUS_PATTERNS: Array<{ phrase: string; pattern: RegExp }> = [
 	{
 		phrase: "that reference",
 		pattern:
-			/^(?:that|the)\s+[\p{L}\p{N}][\p{L}\p{N}-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}-]*){0,2}$/iu,
+			/^(?:that|the)\s+[\p{L}\p{N}][\p{L}\p{N}-]*(?:\s+[\p{L}\p{N}][\p{L}\p{N}-]*){0,2}[.!?]*$/iu,
 	},
 	{
 		phrase: "relative prior time",
@@ -290,7 +291,7 @@ export async function memoryRecallCandidates(
 		});
 	}
 
-	if (userProfileRaw.trim().length > 0) {
+	if (userProfileRaw.trim().length > 0 && !userProfileIsEmpty(userProfileRaw)) {
 		const modifiedAt = await readModifiedAt(backend, USER_PROFILE_PATH);
 		pushIfUseful(candidates, {
 			id: "memory:user-profile",

@@ -7,7 +7,7 @@ import { ensureMemoryBootstrapped } from "./bootstrap";
 import { serializeCheckpointSummary } from "./checkpoint_compaction";
 import { overwrite } from "./fs";
 import { upsertIndexFile } from "./index_manager";
-import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH } from "./layout";
+import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH, USER_PROFILE_PATH } from "./layout";
 import {
 	checkpointRecallCandidates,
 	collectRecallCandidates,
@@ -75,7 +75,9 @@ describe("detectAmbiguousContinuation", () => {
 		"same thing as before",
 		"what we discussed",
 		"that client",
+		"that proposal?",
 		"the proposal",
+		"the client.",
 		"the thing from yesterday",
 	])("detects ambiguous continuation phrasing: %s", (input) => {
 		const detection = detectAmbiguousContinuation(input);
@@ -318,6 +320,11 @@ describe("recall candidate sources", () => {
 		);
 		await overwrite(
 			backend,
+			USER_PROFILE_PATH,
+			"# USER.md\n\n## Profile\nRuns Acme proposal work.\n\n## Preferences\n_No durable facts recorded yet._\n\n## Environment\n_No durable facts recorded yet._\n\n## Constraints\n_No durable facts recorded yet._\n\n## Open Questions\n_No durable facts recorded yet._\n",
+		);
+		await overwrite(
+			backend,
 			MEMORY_LOG_PATH,
 			"# Log\n\n## [2026-04-29] rotate_thread | Discussed Acme follow-up proposal\n",
 		);
@@ -338,6 +345,17 @@ describe("recall candidate sources", () => {
 		expect(profile?.summary).toBe("User profile");
 		expect(log?.summary).toBe(
 			"rotate_thread: Discussed Acme follow-up proposal",
+		);
+	});
+
+	test("skips empty bootstrapped user profile candidates", async () => {
+		const backend = createBackend("recall-empty-profile");
+		await ensureMemoryBootstrapped(backend);
+
+		const candidates = await memoryRecallCandidates(backend);
+
+		expect(candidates.map((candidate) => candidate.id)).not.toContain(
+			"memory:user-profile",
 		);
 	});
 
@@ -391,6 +409,16 @@ describe("recall candidate sources", () => {
 	test("collects configured sources and only accepts supplied virtual file candidates", async () => {
 		const backend = createBackend("recall-collect-sources");
 		await ensureMemoryBootstrapped(backend);
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "sales-proposal",
+			path: "/memory/notes/sales-proposal.md",
+			hook: "Sales proposal context",
+		});
+		await overwrite(
+			backend,
+			"/memory/notes/sales-proposal.md",
+			"Proposal memory note",
+		);
 		const result = await collectRecallCandidates({
 			userId: "telegram:1",
 			taskStore: {
