@@ -52,9 +52,9 @@ Expected decision behavior:
 - `bun run check`
 
 ### Task 1: Design a small recall API
-- [ ] Inspect existing memory/session/task APIs.
-- [ ] Add a narrowly scoped module for ambiguity detection and recall candidate ranking, or integrate into the most appropriate existing memory/runtime-context module.
-- [ ] Keep it deterministic/simple for v1; do not add heavy infra.
+- [x] Inspect existing memory/session/task APIs.
+- [x] Add a narrowly scoped module for ambiguity detection and recall candidate ranking, or integrate into the most appropriate existing memory/runtime-context module.
+- [x] Keep it deterministic/simple for v1; do not add heavy infra.
 
 ### Task 2: Candidate sources
 - [ ] Search active tasks / task titles / source context where available.

@@ -7,7 +7,11 @@ import { ensureMemoryBootstrapped } from "./bootstrap";
 import { serializeCheckpointSummary } from "./checkpoint_compaction";
 import { overwrite } from "./fs";
 import { upsertIndexFile } from "./index_manager";
-import { MEMORY_INDEX_PATH, MEMORY_LOG_PATH, USER_PROFILE_PATH } from "./layout";
+import {
+	MEMORY_INDEX_PATH,
+	MEMORY_LOG_PATH,
+	USER_PROFILE_PATH,
+} from "./layout";
 import {
 	checkpointRecallCandidates,
 	collectRecallCandidates,
