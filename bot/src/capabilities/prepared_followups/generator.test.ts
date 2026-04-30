@@ -46,6 +46,43 @@ describe("generateDraftArtifact", () => {
 	});
 
 	test("supports every v1 artifact type with a clear template", () => {
+		const expectations = {
+			follow_up_message: [
+				"## Follow-up Message Draft",
+				"[Recipient name],",
+				"Suggested next step: [clear next step for the recipient].",
+				"[Your name]",
+			],
+			proposal_outline: [
+				"## Proposal Outline Draft",
+				"Objective: prepare next step",
+				"Proposed sections:",
+				"- Deliverables",
+				"- Manual next step for the user",
+			],
+			checklist: [
+				"## Checklist Draft",
+				"Purpose: prepare next step",
+				"Checklist:",
+				"- [ ] Verify facts, names, dates, and amounts",
+				"- [ ] Send, publish, submit, or use manually outside GoodKiddo if desired",
+			],
+			decision_memo: [
+				"## Decision Memo Draft",
+				"Decision to make: prepare next step",
+				"Options:",
+				"Recommendation draft:",
+				"[State the recommended option and why. User decides manually.]",
+			],
+			content_social_draft: [
+				"## Content/Social Draft",
+				"Topic: prepare next step",
+				"Supporting points:",
+				"Draft:",
+				"- [ ] Adapt to the target platform",
+			],
+		} satisfies Record<(typeof DRAFT_ARTIFACT_TYPES)[number], string[]>;
+
 		for (const type of DRAFT_ARTIFACT_TYPES) {
 			const generated = generateDraftArtifact(
 				{
@@ -60,7 +97,40 @@ describe("generateDraftArtifact", () => {
 			expect(generated.artifact.type).toBe(type);
 			expect(generated.artifact.body).toContain("Known fact.");
 			expect(generated.artifact.body).toContain(DRAFT_ARTIFACT_NOTICE);
+			for (const expected of expectations[type]) {
+				expect(generated.artifact.body).toContain(expected);
+			}
 		}
+	});
+
+	test("preserves normalized source context in metadata and markdown", () => {
+		const generated = generateDraftArtifact(
+			{
+				type: "decision_memo",
+				title: " Package decision ",
+				task: " choose the retainer package ",
+				context: "  Client is comparing monthly options.  ",
+				evidence: [" Starter costs less. ", "", "Pro includes reporting."],
+				source_paths: [" /memory/clients/acme.md ", ""],
+				source_urls: [" https://example.com/proposal ", ""],
+			},
+			"d-context1",
+		);
+
+		expect(generated.artifact.source_context).toEqual({
+			task: "choose the retainer package",
+			summary: "Client is comparing monthly options.",
+			evidence: ["Starter costs less.", "Pro includes reporting."],
+			source_paths: ["/memory/clients/acme.md"],
+			source_urls: ["https://example.com/proposal"],
+		});
+		expect(generated.markdown).toContain('"source_context"');
+		expect(generated.markdown).toContain('"task": "choose the retainer package"');
+		expect(generated.markdown).toContain('"summary": "Client is comparing monthly options."');
+		expect(generated.markdown).toContain('"source_paths"');
+		expect(generated.markdown).toContain('/memory/clients/acme.md');
+		expect(generated.markdown).toContain('"source_urls"');
+		expect(generated.markdown).toContain("https://example.com/proposal");
 	});
 });
 
@@ -91,6 +161,39 @@ describe("prepare_draft_artifact tool", () => {
 		expect(stored).toContain('"source_paths"');
 		expect(stored).toContain("/memory/notes/launch.md");
 		expect(stored).not.toContain("send_file");
+
+		await db.close();
+	});
+
+	test("creates only an internal virtual filesystem artifact and performs no external send", async () => {
+		const { backend, db } = createBackend("prepared-followups-internal-only");
+		const tool = createPrepareDraftArtifactTool(backend);
+
+		const result = await tool.invoke({
+			type: "follow_up_message",
+			title: "Do not send this",
+			task: "draft a client nudge",
+			context: "The client has not replied.",
+			evidence: ["Last contact was three days ago."],
+		});
+
+		const parsed = JSON.parse(String(result));
+		expect(parsed.visibility).toBe("internal");
+		expect(parsed.path).toStartWith("/prepared-followups/");
+		expect(parsed.notice).toBe(
+			"Draft only - user sends/uses manually. No external send, publish, submit, or share was performed.",
+		);
+		expect(String(result)).not.toContain("sent_at");
+		expect(String(result)).not.toContain("message_id");
+		expect(String(result)).not.toContain("published_url");
+		expect(String(result)).not.toContain("submission_id");
+
+		const stored = fileDataToString(await backend.readRaw(parsed.path));
+		expect(stored).toContain('"visibility": "internal"');
+		expect(stored).toContain(DRAFT_ARTIFACT_NOTICE);
+		expect(stored).not.toContain("send_file");
+		expect(stored).not.toContain("share_file");
+		expect(stored).not.toContain("external_delivery");
 
 		await db.close();
 	});

@@ -47,9 +47,9 @@ Out:
 - [x] Return path/id and preview.
 
 ### Task 3: Tests
-- [ ] Test each artifact type template.
-- [ ] Test drafts are internal and not sent externally.
-- [ ] Test source context is preserved.
+- [x] Test each artifact type template.
+- [x] Test drafts are internal and not sent externally.
+- [x] Test source context is preserved.
 
 ### Task 4: Docs
 - [ ] Document artifact types and safe boundary.
