@@ -27,12 +27,12 @@ Implement documentation/spec only. No runtime behavior change required in this i
 - `bun run typecheck`
 
 ### Task 1: Add feature roadmap/spec doc
-- [ ] Create a Prepared Follow-ups roadmap/spec doc.
-- [ ] Include the safe-space vs outside-world boundary.
-- [ ] Include the human-final-decider rule.
-- [ ] Include the prepared-follow-up quality bar: “Did GoodKiddo do useful work before interrupting?”
-- [ ] Include the recall-before-asking rule.
-- [ ] Include independent feature slices for implementation follow-up issues.
+- [x] Create a Prepared Follow-ups roadmap/spec doc.
+- [x] Include the safe-space vs outside-world boundary.
+- [x] Include the human-final-decider rule.
+- [x] Include the prepared-follow-up quality bar: “Did GoodKiddo do useful work before interrupting?”
+- [x] Include the recall-before-asking rule.
+- [x] Include independent feature slices for implementation follow-up issues.
 
 ### Task 2: Link from feature docs index
 - [ ] Add the roadmap/spec to the active feature list in `docs/features/README.md`.
