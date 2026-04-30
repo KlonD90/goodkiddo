@@ -56,6 +56,24 @@ describe("buildSystemPrompt", () => {
 		expect(prompt.split("---").length).toBeGreaterThanOrEqual(3);
 	});
 
+	test("includes recall-on-ambiguity behavior in memory rules", async () => {
+		const backend = createBackend("prompt-recall-rules");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+		});
+
+		expect(prompt).toContain("ambiguous continuation");
+		expect(prompt).toMatch(/search available\s+internal context/);
+		expect(prompt).toContain("active tasks");
+		expect(prompt).toContain("recent compacted/checkpoint context");
+		expect(prompt).toContain("For high-confidence recall");
+		expect(prompt).toContain("For medium confidence");
+		expect(prompt).toContain("For low confidence");
+		expect(prompt).toContain("Keep the user-facing recall wording concise");
+	});
+
 	test("appends ## Memory maintenance block when lint finds issues", async () => {
 		const backend = createBackend("prompt-maint");
 		await ensureMemoryBootstrapped(backend);

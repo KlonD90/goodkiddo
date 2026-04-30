@@ -77,3 +77,5 @@ When no checkpoint exists yet, the builder falls back to replaying full stored h
 ## Recall-on-ambiguity
 
 `recall.ts` provides the deterministic v1 recall helpers used when a user sends an ambiguous continuation such as "continue", "same thing", or "what we discussed". Candidate collection is source-backed: active SQL tasks, recent forced checkpoint summaries, memory index entries with note snippets, `USER.md`, and `log.md`. Virtual filesystem files are not scanned globally by this layer; callers may pass already-safe virtual file candidates when another abstraction has selected them.
+
+The injected memory rules tell the assistant to run this recall work before asking the user to repeat themselves. High-confidence matches can be used directly with a brief source mention, medium-confidence matches require confirmation, and low-confidence results should be presented as 2-3 candidates or narrowed with one targeted clarification.

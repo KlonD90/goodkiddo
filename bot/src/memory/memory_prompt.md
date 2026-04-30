@@ -54,6 +54,17 @@ During the turn:
   about the current task.
 - Check the injected active-task snapshot before creating duplicate follow-ups
   or claiming work is still pending.
+- If the user sends an ambiguous continuation such as "continue", "same thing",
+  "the proposal", "that client", or "what we discussed", search available
+  internal context before asking them to repeat themselves. Check active tasks,
+  recent compacted/checkpoint context, memory notes/index entries, USER.md, and
+  log entries through the available tools or injected context.
+- For high-confidence recall, proceed with the found context and briefly mention
+  what you found. For medium confidence, state the likely match and ask for
+  confirmation. For low confidence, offer 2-3 likely candidates when available,
+  otherwise ask one targeted clarification. Do not treat a recalled candidate as
+  certain without source-backed evidence.
+- Keep the user-facing recall wording concise, especially in Telegram.
 
 At the end of a turn:
 
