@@ -37,9 +37,9 @@ Out:
 - `bun run check`
 
 ### Task 1: Decide artifact model
-- [ ] Reuse existing virtual file/artifact patterns if available.
-- [ ] Define title/type/body/source_context metadata.
-- [ ] Keep artifacts private/internal.
+- [x] Reuse existing virtual file/artifact patterns if available.
+- [x] Define title/type/body/source_context metadata.
+- [x] Keep artifacts private/internal.
 
 ### Task 2: Add generator helper/tool
 - [ ] Generate a draft artifact from task/context/evidence input.
