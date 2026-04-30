@@ -65,9 +65,9 @@ Notes:
 - [x] Ensure serialization/deserialization handles null/default values.
 
 ### Task 3: Update task tools/API surface
-- [ ] Allow task creation/update code paths to persist relevant metadata where appropriate.
-- [ ] Do not expose confusing user-facing complexity unnecessarily.
-- [ ] Keep direct task use simple for Telegram users.
+- [x] Allow task creation/update code paths to persist relevant metadata where appropriate.
+- [x] Do not expose confusing user-facing complexity unnecessarily.
+- [x] Keep direct task use simple for Telegram users.
 
 ### Task 4: Tests
 - [ ] Add tests for creating old/simple tasks with defaults.

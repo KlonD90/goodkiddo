@@ -250,6 +250,120 @@ describe("TaskStore", () => {
 		).rejects.toThrow("Task title cannot be empty.");
 	});
 
+	test("persists task metadata during creation", async () => {
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "follow-up",
+			title: "Send client recap",
+			note: "After kickoff",
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "  kickoff transcript  ",
+			sourceRef: "  msg:123  ",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+
+		expect(task).toMatchObject({
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "kickoff transcript",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+		expect(await store.getTask(task.id, "telegram:1")).toMatchObject({
+			dueAt: 2_000,
+			nextCheckAt: 1_500,
+			priority: 2,
+			loopType: "client_followup",
+			sourceContext: "kickoff transcript",
+			sourceRef: "msg:123",
+			lastNudgedAt: 1_250,
+			nudgeCount: 1,
+			snoozedUntil: 1_400,
+		});
+	});
+
+	test("updates task metadata without exposing it through chat tools", async () => {
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-a",
+			listName: "watch",
+			title: "Watch contract status",
+			dueAt: 2_000,
+			priority: 1,
+			loopType: "watch",
+			sourceContext: "contract tracker",
+		});
+
+		const updated = await store.updateTaskMetadata({
+			taskId: task.id,
+			userId: "telegram:1",
+			dueAt: null,
+			nextCheckAt: 3_000,
+			priority: 3,
+			sourceContext: "  updated tracker row  ",
+			lastNudgedAt: 2_500,
+			nudgeCount: 2,
+			snoozedUntil: null,
+		});
+
+		expect(updated).toMatchObject({
+			dueAt: null,
+			nextCheckAt: 3_000,
+			priority: 3,
+			loopType: "watch",
+			sourceContext: "updated tracker row",
+			lastNudgedAt: 2_500,
+			nudgeCount: 2,
+			snoozedUntil: null,
+		});
+		expect(updated?.updatedAt).toBeGreaterThan(task.updatedAt);
+		expect(
+			await store.updateTaskMetadata({
+				taskId: task.id,
+				userId: "telegram:2",
+				priority: 0,
+			}),
+		).toBeNull();
+	});
+
+	test("rejects invalid task metadata values", async () => {
+		await expect(
+			store.addTask({
+				userId: "telegram:1",
+				threadIdCreated: "thread-a",
+				listName: "today",
+				title: "Invalid priority",
+				priority: 4,
+			}),
+		).rejects.toThrow("Task priority must be an integer from 0 to 3.");
+
+		const task = await store.addTask({
+			userId: "telegram:1",
+			threadIdCreated: "thread-b",
+			listName: "today",
+			title: "Invalid update",
+		});
+		await expect(
+			store.updateTaskMetadata({
+				taskId: task.id,
+				userId: "telegram:1",
+				nextCheckAt: -1,
+			}),
+		).rejects.toThrow(
+			"Task next check time must be a non-negative integer timestamp.",
+		);
+	});
+
 	test("completes active tasks for the owning caller only", async () => {
 		const task = await store.addTask({
 			userId: "telegram:1",

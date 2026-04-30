@@ -14,6 +14,15 @@ export type TaskLoopType =
 	| "continuation"
 	| "general";
 
+const TASK_LOOP_TYPES = new Set<TaskLoopType>([
+	"deadline",
+	"client_followup",
+	"decision",
+	"watch",
+	"continuation",
+	"general",
+]);
+
 export interface TaskRecord {
 	id: number;
 	userId: string;
@@ -76,6 +85,29 @@ export interface AddTaskInput {
 	listName: string;
 	title: string;
 	note?: string | null;
+	dueAt?: number | null;
+	nextCheckAt?: number | null;
+	priority?: number;
+	loopType?: TaskLoopType | null;
+	sourceContext?: string | null;
+	sourceRef?: string | null;
+	lastNudgedAt?: number | null;
+	nudgeCount?: number;
+	snoozedUntil?: number | null;
+}
+
+export interface UpdateTaskMetadataInput {
+	taskId: number;
+	userId: string;
+	dueAt?: number | null;
+	nextCheckAt?: number | null;
+	priority?: number;
+	loopType?: TaskLoopType | null;
+	sourceContext?: string | null;
+	sourceRef?: string | null;
+	lastNudgedAt?: number | null;
+	nudgeCount?: number;
+	snoozedUntil?: number | null;
 }
 
 export interface ActiveTaskSnapshotOptions {
@@ -101,6 +133,43 @@ function compactOptionalField(value?: string | null): string | null {
 	if (value == null) return null;
 	const compacted = compactInline(value);
 	return compacted === "" ? null : compacted;
+}
+
+function normalizeOptionalTimestamp(
+	value: number | null | undefined,
+	label: string,
+): number | null | undefined {
+	if (value === undefined || value === null) return value;
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new Error(`${label} must be a non-negative integer timestamp.`);
+	}
+	return value;
+}
+
+function normalizePriority(value: number | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	if (!Number.isInteger(value) || value < 0 || value > 3) {
+		throw new Error("Task priority must be an integer from 0 to 3.");
+	}
+	return value;
+}
+
+function normalizeLoopType(
+	value: TaskLoopType | null | undefined,
+): TaskLoopType | null | undefined {
+	if (value === undefined || value === null) return value;
+	if (!TASK_LOOP_TYPES.has(value)) {
+		throw new Error("Task loop type is not supported.");
+	}
+	return value;
+}
+
+function normalizeNudgeCount(value: number | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	if (!Number.isSafeInteger(value) || value < 0) {
+		throw new Error("Task nudge count must be a non-negative integer.");
+	}
+	return value;
 }
 
 function rowToTask(row: TaskRow): TaskRecord {
@@ -341,6 +410,21 @@ export class TaskStore {
 		const listName = requireCompactField(input.listName, "Task list name");
 		const title = requireCompactField(input.title, "Task title");
 		const note = compactOptionalField(input.note);
+		const dueAt = normalizeOptionalTimestamp(input.dueAt, "Task due time") ?? null;
+		const nextCheckAt =
+			normalizeOptionalTimestamp(input.nextCheckAt, "Task next check time") ??
+			null;
+		const priority = normalizePriority(input.priority) ?? 0;
+		const loopType = normalizeLoopType(input.loopType) ?? null;
+		const sourceContext = compactOptionalField(input.sourceContext);
+		const sourceRef = compactOptionalField(input.sourceRef);
+		const lastNudgedAt =
+			normalizeOptionalTimestamp(input.lastNudgedAt, "Task last nudged time") ??
+			null;
+		const nudgeCount = normalizeNudgeCount(input.nudgeCount) ?? 0;
+		const snoozedUntil =
+			normalizeOptionalTimestamp(input.snoozedUntil, "Task snoozed until time") ??
+			null;
 		const now = this.now();
 		const rows = await this.db<TaskRow[]>`
 			INSERT INTO tasks (
@@ -378,15 +462,15 @@ export class TaskStore {
 				${now},
 				NULL,
 				NULL,
-				NULL,
-				NULL,
-				0,
-				NULL,
-				NULL,
-				NULL,
-				NULL,
-				0,
-				NULL
+				${dueAt},
+				${nextCheckAt},
+				${priority},
+				${loopType},
+				${sourceContext},
+				${sourceRef},
+				${lastNudgedAt},
+				${nudgeCount},
+				${snoozedUntil}
 			)
 			RETURNING
 				id,
@@ -415,6 +499,103 @@ export class TaskStore {
 		const row = rows[0];
 		if (!row) throw new Error("Failed to add task");
 		return rowToTask(row);
+	}
+
+	async updateTaskMetadata(
+		input: UpdateTaskMetadataInput,
+	): Promise<TaskRecord | null> {
+		await this._ready;
+		const existing = await this.getTask(input.taskId, input.userId);
+		if (!existing) return null;
+
+		const hasUpdates = [
+			"dueAt",
+			"nextCheckAt",
+			"priority",
+			"loopType",
+			"sourceContext",
+			"sourceRef",
+			"lastNudgedAt",
+			"nudgeCount",
+			"snoozedUntil",
+		].some((key) => Object.hasOwn(input, key));
+		if (!hasUpdates) return existing;
+
+		const dueAt = Object.hasOwn(input, "dueAt")
+			? (normalizeOptionalTimestamp(input.dueAt, "Task due time") ?? null)
+			: existing.dueAt;
+		const nextCheckAt = Object.hasOwn(input, "nextCheckAt")
+			? (normalizeOptionalTimestamp(input.nextCheckAt, "Task next check time") ??
+				null)
+			: existing.nextCheckAt;
+		const priority = Object.hasOwn(input, "priority")
+			? (normalizePriority(input.priority) ?? existing.priority)
+			: existing.priority;
+		const loopType = Object.hasOwn(input, "loopType")
+			? (normalizeLoopType(input.loopType) ?? null)
+			: existing.loopType;
+		const sourceContext = Object.hasOwn(input, "sourceContext")
+			? compactOptionalField(input.sourceContext)
+			: existing.sourceContext;
+		const sourceRef = Object.hasOwn(input, "sourceRef")
+			? compactOptionalField(input.sourceRef)
+			: existing.sourceRef;
+		const lastNudgedAt = Object.hasOwn(input, "lastNudgedAt")
+			? (normalizeOptionalTimestamp(
+					input.lastNudgedAt,
+					"Task last nudged time",
+				) ?? null)
+			: existing.lastNudgedAt;
+		const nudgeCount = Object.hasOwn(input, "nudgeCount")
+			? (normalizeNudgeCount(input.nudgeCount) ?? existing.nudgeCount)
+			: existing.nudgeCount;
+		const snoozedUntil = Object.hasOwn(input, "snoozedUntil")
+			? (normalizeOptionalTimestamp(
+					input.snoozedUntil,
+					"Task snoozed until time",
+				) ?? null)
+			: existing.snoozedUntil;
+		const now = this.now();
+		const rows = await this.db<TaskRow[]>`
+			UPDATE tasks
+			SET
+				due_at = ${dueAt},
+				next_check_at = ${nextCheckAt},
+				priority = ${priority},
+				loop_type = ${loopType},
+				source_context = ${sourceContext},
+				source_ref = ${sourceRef},
+				last_nudged_at = ${lastNudgedAt},
+				nudge_count = ${nudgeCount},
+				snoozed_until = ${snoozedUntil},
+				updated_at = ${now}
+			WHERE id = ${input.taskId}
+				AND user_id = ${input.userId}
+			RETURNING
+				id,
+				user_id,
+				thread_id_created,
+				thread_id_completed,
+				list_name,
+				title,
+				note,
+				status,
+				status_reason,
+				created_at,
+				updated_at,
+				completed_at,
+				dismissed_at,
+				due_at,
+				next_check_at,
+				priority,
+				loop_type,
+				source_context,
+				source_ref,
+				last_nudged_at,
+				nudge_count,
+				snoozed_until
+		`;
+		return rows[0] ? rowToTask(rows[0]) : null;
 	}
 
 	async getTask(taskId: number, userId: string): Promise<TaskRecord | null> {
