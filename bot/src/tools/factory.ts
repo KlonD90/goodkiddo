@@ -4,6 +4,7 @@ import type { WorkspaceBackend } from "../backends/types";
 import type { TabularEngine } from "../capabilities/tabular/engine";
 import { createTabularTools } from "../capabilities/tabular/tools";
 import { createResearchTool } from "../capabilities/research/tool";
+import { createPrepareDraftArtifactTool } from "../capabilities/prepared_followups/tool";
 import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import type { OutboundChannel } from "../channels/outbound";
 import type { ExecutionPolicy } from "../execution/manifest";
@@ -182,6 +183,7 @@ export async function createExecutionToolset(
 		createSkillWriteTool(options.workspace, options.onMemoryMutation),
 		createMemoryAppendLogTool(options.workspace),
 		createMemoryMaintainTool(options.workspace),
+		createPrepareDraftArtifactTool(options.workspace),
 		...taskTools,
 		...(enableBrowserOnParent
 			? [

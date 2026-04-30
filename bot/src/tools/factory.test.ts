@@ -132,6 +132,13 @@ describe("createExecutionToolset enableToolStatus flag", () => {
 		await db.close();
 	});
 
+	test("prepared draft artifact tool is registered", async () => {
+		const { workspace, db } = createTestWorkspace("factory-prepared-drafts");
+		const tools = await createExecutionToolset({ workspace });
+		expect(tools.find((t) => t.name === "prepare_draft_artifact")).toBeDefined();
+		await db.close();
+	});
+
 	test("browser_snapshot and browser_action absent when enableBrowserOnParent is false (default)", async () => {
 		const { workspace, db } = createTestWorkspace("factory-browser-off");
 		const tools = await createExecutionToolset({ workspace });

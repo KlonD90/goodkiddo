@@ -42,9 +42,9 @@ Out:
 - [x] Keep artifacts private/internal.
 
 ### Task 2: Add generator helper/tool
-- [ ] Generate a draft artifact from task/context/evidence input.
-- [ ] Support the v1 artifact types with clear templates.
-- [ ] Return path/id and preview.
+- [x] Generate a draft artifact from task/context/evidence input.
+- [x] Support the v1 artifact types with clear templates.
+- [x] Return path/id and preview.
 
 ### Task 3: Tests
 - [ ] Test each artifact type template.

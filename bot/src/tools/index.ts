@@ -4,6 +4,7 @@ export {
 	createSessionRegistry,
 } from "./browser_tools";
 export { createResearchTool } from "../capabilities/research/tool";
+export { createPrepareDraftArtifactTool } from "../capabilities/prepared_followups/tool";
 export {
 	createExecuteScriptTool,
 	createExecuteWorkspaceTool,
