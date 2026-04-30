@@ -35,7 +35,8 @@ When adding a new tool, author a status template alongside it so users see what 
 - Full LangGraph history stays in SQL for audit and recovery.
 - Model-facing runtime context is rebuilt from the latest forced checkpoint summary, recent turns, active tasks, and the current user input.
 - Compaction boundaries are coordinated by `bot/src/checkpoints/compaction_trigger.ts`.
-- Ambiguous continuations such as "continue", "that proposal", or "what we discussed" are handled by `bot/src/memory/recall.ts` before the agent asks the user to repeat themselves. Recall checks active tasks, recent forced checkpoints, memory index/note snippets, `USER.md`, `log.md`, and already-safe supplied virtual file candidates. High confidence can proceed with a brief source mention; medium confidence asks confirmation; low confidence offers likely candidates or one targeted clarification.
+- Ambiguous continuations such as "continue", "that proposal", or "what we discussed" are handled by `bot/src/memory/recall.ts` before the agent asks the user to repeat themselves. Recall checks active tasks, recent forced checkpoints, memory index/note snippets, `USER.md`, `log.md`, and already-safe supplied virtual file candidates. High confidence can proceed with a brief source mention when there is a single high-confidence candidate; medium confidence or competing high-confidence candidates ask confirmation; low confidence offers likely candidates or one targeted clarification.
+- Channel turns should run `maybeRunRecallOnAmbiguity` after task reconciliation, refresh the agent when recall returns `needsRefresh`, and always call `clearPendingRecallContext` in cleanup so recall evidence is one-turn only.
 
 ## Validation
 
@@ -43,7 +44,9 @@ When adding a new tool, author a status template alongside it so users see what 
   - `cd bot && bun test src/channels/shared.test.ts src/channels/session_commands.test.ts`
   - `cd bot && bun test src/tools/task_tools.test.ts src/tasks/store.test.ts src/tasks/reconcile.test.ts`
 - Forced checkpoints and compaction:
-  - `cd bot && bun test src/checkpoints/compaction_trigger.test.ts src/memory/checkpoint_compaction.test.ts src/memory/runtime_context.test.ts`
+	- `cd bot && bun test src/checkpoints/compaction_trigger.test.ts src/memory/checkpoint_compaction.test.ts src/memory/runtime_context.test.ts`
+- Recall-on-ambiguity:
+	- `cd bot && bun test src/memory/recall.test.ts src/channels/shared.test.ts src/memory/session_loader.test.ts src/checkpoints/sql_saver.test.ts`
 
 <!-- rtk-instructions v2 -->
 # RTK (Rust Token Killer) - Token-Optimized Commands

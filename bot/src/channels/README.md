@@ -17,6 +17,7 @@ CLI and Telegram sessions share the same LangGraph checkpoint flow:
 - checkpoints are handled by the SQL-backed saver in [`src/checkpoints/sql_saver.ts`](../checkpoints/sql_saver.ts)
 - forced checkpoint summaries are stored separately in [`src/checkpoints/forced_checkpoint_store.ts`](../checkpoints/forced_checkpoint_store.ts)
 - `pendingTaskCheck` marks the next substantive turn after session start or `/new_thread` so boundary-only task reconciliation runs once
+- `pendingRecallContext` carries one-turn recall evidence for ambiguous continuations such as "continue" or "what we discussed"
 - the checkpointer, permission store, workspace backend, and web access store share one injected `Bun.SQL` connection created in [`src/bin/bot.ts`](../bin/bot.ts)
 - rebuilding the agent between turns refreshes the system prompt without losing thread history
 
@@ -29,8 +30,9 @@ After a forced checkpoint is created, channel sessions load compacted runtime co
 `full_history != runtime_context`. Full turn history stays in the SQL saver for audit and recovery. The model sees only:
 
 1. Latest forced checkpoint summary (serialized as a runtime-only prompt block)
-2. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
-3. Current user input
+2. One-turn runtime blocks for boundary task reconciliation or recall-on-ambiguity when present
+3. Last 2 user-initiated turns (including interleaved assistant/tool messages within each turn)
+4. Current user input
 
 Forced checkpoints are created at defined boundaries — `/new_thread`, session resume, and prompt-budget pressure — by [`src/checkpoints/compaction_trigger.ts`](../checkpoints/compaction_trigger.ts). That trigger layer decides which boundary fired, skips empty or tiny histories below the 20,000-character minimum meaningful-content threshold, calls [`src/memory/checkpoint_compaction.ts`](../memory/checkpoint_compaction.ts) to build the structured summary, persists it through `ForcedCheckpointStore`, and uses [`src/memory/runtime_context.ts`](../memory/runtime_context.ts) to render the runtime-only prompt context.
 
@@ -39,6 +41,8 @@ The checkpoint summary and retained turns are injected through the rebuilt syste
 `/new_thread` continues to rotate the thread id and summarize to `log.md`, and also triggers a forced checkpoint when the previous thread has enough meaningful content. Empty or very short threads rotate without creating a checkpoint or seed. The immediate `/new_thread` reply includes the previous-thread summary, the caller's current active tasks, and recently completed tasks from the last 7 days.
 
 The same boundary flow also runs task reconciliation once per session boundary. On the first substantive turn after session start or `/new_thread`, active SQL tasks are compared against the current user message. Exact single-task completion matches may be auto-completed; ambiguous matches are left unchanged; likely dismissals are converted into explicit confirmation prompts instead of automatic state changes.
+
+CLI and Telegram turns also run recall-on-ambiguity after task reconciliation. When a message looks like a vague continuation, the channel collects source-backed candidates from active tasks, recent forced checkpoints, memory notes, `USER.md`, and `log.md`; injects a one-turn `## Recall-on-Ambiguity` block; refreshes the agent before invocation when that block is present; and clears the block during turn cleanup so stale recall evidence does not persist.
 
 If a thread was rotated for compaction but the first seeded turn has not been written yet, session startup recovers the latest checkpoint and seeds the empty active thread before continuing. This keeps compaction continuity intact across crashes and restarts.
 

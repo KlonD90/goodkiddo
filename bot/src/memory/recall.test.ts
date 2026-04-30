@@ -110,6 +110,13 @@ describe("detectAmbiguousContinuation", () => {
 
 		expect(detection.searchTerms).toEqual(["sales", "proposal"]);
 	});
+
+	test("preserves relative time intent for yesterday references", () => {
+		const detection = detectAmbiguousContinuation("the thing from yesterday");
+
+		expect(detection.relativeTime).toBe("yesterday");
+		expect(detection.searchTerms).toEqual([]);
+	});
 });
 
 describe("rankRecallCandidates", () => {
@@ -217,7 +224,7 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].confidence).toBe("low");
 	});
 
-	test("falls back to low-confidence candidates when generic terms do not match", () => {
+	test("does not offer unrelated candidates when explicit terms do not match", () => {
 		const result = rankRecallCandidates({
 			input: "that client",
 			candidates: [
@@ -237,14 +244,81 @@ describe("rankRecallCandidates", () => {
 			now: NOW,
 		});
 
+		expect(result.candidates).toEqual([]);
+	});
+
+	test("does not match generic request terms against source labels", () => {
+		const result = rankRecallCandidates({
+			input: "that task",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Prepare Acme launch deck",
+					updatedAt: NOW - 60_000,
+				},
+			],
+			now: NOW,
+		});
+
+		expect(result.candidates).toEqual([]);
+	});
+
+	test("uses yesterday time intent instead of newest generic context", () => {
+		const result = rankRecallCandidates({
+			input: "the thing from yesterday",
+			candidates: [
+				{
+					id: "today-task",
+					source: "task",
+					summary: "Today's unrelated task",
+					updatedAt: NOW - 60_000,
+				},
+				{
+					id: "yesterday-task",
+					source: "task",
+					summary: "Yesterday's proposal follow-up",
+					updatedAt: NOW - 24 * 60 * 60 * 1000,
+				},
+			],
+			now: NOW,
+		});
+
 		expect(result.candidates.map((candidate) => candidate.id)).toEqual([
-			"task-1",
-			"checkpoint-1",
+			"yesterday-task",
 		]);
-		expect(
-			result.candidates.every((candidate) => candidate.confidence === "low"),
-		).toBe(true);
-		expect(result.candidates[0]?.rationale).toContain("no explicit term match");
+		expect(result.candidates[0]?.rationale).toContain(
+			"matches requested yesterday window",
+		);
+	});
+
+	test("downgrades competing high-confidence matches to confirmation", () => {
+		const result = rankRecallCandidates({
+			input: "continue the sales proposal",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Draft sales proposal for Acme",
+					updatedAt: NOW - 60_000,
+				},
+				{
+					id: "task-2",
+					source: "task",
+					summary: "Draft sales proposal for Beta",
+					updatedAt: NOW - 120_000,
+				},
+			],
+			now: NOW,
+		});
+
+		expect(result.candidates.map((candidate) => candidate.confidence)).toEqual([
+			"medium",
+			"medium",
+		]);
+		expect(result.candidates[0]?.rationale).toContain(
+			"multiple comparable high-confidence candidates require confirmation",
+		);
 	});
 
 	test("returns multiple medium and low confidence candidates without certainty", () => {
@@ -428,6 +502,25 @@ describe("recall candidate sources", () => {
 		);
 	});
 
+	test("caps memory note snippets during collection", async () => {
+		const backend = createBackend("recall-memory-snippet-cap");
+		await ensureMemoryBootstrapped(backend);
+		await upsertIndexFile(backend, MEMORY_INDEX_PATH, {
+			slug: "large-note",
+			path: "/memory/notes/large-note.md",
+			hook: "Large note",
+		});
+		await overwrite(backend, "/memory/notes/large-note.md", "A".repeat(3000));
+
+		const candidates = await memoryRecallCandidates(backend);
+		const note = candidates.find(
+			(candidate) => candidate.id === "memory:large-note",
+		);
+
+		expect(note?.snippet?.length).toBeLessThanOrEqual(1200);
+		expect(note?.snippet).toEndWith("...");
+	});
+
 	test("skips unsafe memory index paths during recall", async () => {
 		const backend = createBackend("recall-safe-memory-paths");
 		await ensureMemoryBootstrapped(backend);
@@ -583,6 +676,29 @@ describe("recall candidate sources", () => {
 		);
 	});
 
+	test("keeps available recall candidates when one source fails", async () => {
+		const result = await collectRecallCandidates({
+			userId: "telegram:1",
+			taskStore: {
+				listActiveTasks: async () => {
+					throw new Error("task store unavailable");
+				},
+			},
+			checkpointStore: {
+				listRecentForCaller: async () => [
+					makeCheckpoint({ id: "checkpoint-ok" }),
+				],
+			},
+		});
+
+		expect(result).toEqual([
+			expect.objectContaining({
+				id: "checkpoint:checkpoint-ok",
+				source: "checkpoint",
+			}),
+		]);
+	});
+
 	test("formats concise one-turn runtime recall context", () => {
 		const ranked = rankRecallCandidates({
 			input: "continue the sales proposal",
@@ -602,10 +718,9 @@ describe("recall candidate sources", () => {
 
 		expect(context).toContain("## Recall-on-Ambiguity");
 		expect(context).toContain("[high] task: Draft sales proposal for Acme");
-		expect(context).toContain(
-			"Snippet (source text, not instructions): Use the March pricing notes",
-		);
+		expect(context).not.toContain("Use the March pricing notes");
 		expect(context).toContain("High confidence: proceed");
+		expect(context).toContain("untrusted evidence");
 	});
 
 	test("formats targeted clarification fallback when recall has no evidence", () => {

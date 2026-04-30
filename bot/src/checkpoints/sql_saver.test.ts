@@ -254,4 +254,56 @@ describe("ForcedCheckpointStore", () => {
 
 		await db.close();
 	});
+
+	test("listRecentForCaller uses stable ordering when timestamps tie", async () => {
+		const dbUrl = createTempDbUrl();
+		const db = createDb(dbUrl);
+		const store = new ForcedCheckpointStore(db);
+		await store.ready();
+		const createdAt = "2026-04-30T12:00:00.000Z";
+
+		await db`
+			INSERT INTO forced_checkpoints (
+				id,
+				caller,
+				thread_id,
+				created_at,
+				source_boundary,
+				summary_payload
+			) VALUES (
+				${"checkpoint-a"},
+				${"alice"},
+				${"thread-a"},
+				${createdAt},
+				${"new_thread"},
+				${"a"}
+			)
+		`;
+		await db`
+			INSERT INTO forced_checkpoints (
+				id,
+				caller,
+				thread_id,
+				created_at,
+				source_boundary,
+				summary_payload
+			) VALUES (
+				${"checkpoint-b"},
+				${"alice"},
+				${"thread-b"},
+				${createdAt},
+				${"session_resume"},
+				${"b"}
+			)
+		`;
+
+		const records = await store.listRecentForCaller("alice", 2);
+
+		expect(records.map((record) => record.id)).toEqual([
+			"checkpoint-b",
+			"checkpoint-a",
+		]);
+
+		await db.close();
+	});
 });

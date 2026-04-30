@@ -69,10 +69,12 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("active tasks");
 		expect(prompt).toContain("recent compacted/checkpoint context");
 		expect(prompt).toContain("For high-confidence recall");
-		expect(prompt).toContain("For medium confidence");
+		expect(prompt).toContain(
+			"medium confidence or multiple high-confidence candidates",
+		);
 		expect(prompt).toContain("For low confidence");
 		expect(prompt).toContain("ask one targeted clarification");
-		expect(prompt).toContain("Do not treat a recalled candidate as");
+		expect(prompt).toMatch(/Do not treat a\s+recalled candidate as/);
 		expect(prompt).toContain("Keep the user-facing recall wording concise");
 	});
 

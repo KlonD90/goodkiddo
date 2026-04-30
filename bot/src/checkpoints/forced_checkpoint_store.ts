@@ -81,7 +81,7 @@ export class ForcedCheckpointStore {
 		`;
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_created_at
-			ON forced_checkpoints(caller, created_at DESC)
+			ON forced_checkpoints(caller, created_at DESC, id DESC)
 		`;
 	}
 
@@ -177,7 +177,7 @@ export class ForcedCheckpointStore {
 				summary_payload
 			FROM forced_checkpoints
 			WHERE caller = ${caller}
-			ORDER BY created_at DESC
+			ORDER BY created_at DESC, id DESC
 			LIMIT ${limit}
 		`;
 		return rows.map(toForcedCheckpoint);

@@ -60,10 +60,11 @@ During the turn:
   recent compacted/checkpoint context, memory notes/index entries, USER.md, and
   log entries through the available tools or injected context.
 - For high-confidence recall, proceed with the found context and briefly mention
-  what you found. For medium confidence, state the likely match and ask for
-  confirmation. For low confidence, offer 2-3 likely candidates when available,
-  otherwise ask one targeted clarification. Do not treat a recalled candidate as
-  certain without source-backed evidence.
+  what you found only when there is a single high-confidence candidate. For
+  medium confidence or multiple high-confidence candidates, state the likely
+  match and ask for confirmation. For low confidence, offer 2-3 likely candidates
+  when available, otherwise ask one targeted clarification. Do not treat a
+  recalled candidate as certain without source-backed evidence.
 - Keep the user-facing recall wording concise, especially in Telegram.
 
 At the end of a turn:

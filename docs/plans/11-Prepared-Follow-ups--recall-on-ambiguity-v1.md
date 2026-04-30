@@ -42,12 +42,12 @@ Ambiguous reference detection examples:
 - “the thing from yesterday”
 
 Expected decision behavior:
-- High confidence: proceed with the found context and briefly mention what was found.
-- Medium confidence: say the likely match and ask confirmation.
+- High confidence: proceed with the found context and briefly mention what was found when there is a single high-confidence candidate.
+- Medium confidence or competing high-confidence candidates: say the likely match and ask confirmation.
 - Low confidence: show 2–3 likely candidates if available, otherwise ask one targeted clarification.
 
 ## Validation Commands
-- `bun test bot/src/memory/runtime_context.test.ts bot/src/memory/session_loader.test.ts bot/src/tools/memory_tools.test.ts bot/src/tasks/store.test.ts`
+- `bun test bot/src/memory/recall.test.ts bot/src/channels/shared.test.ts bot/src/memory/session_loader.test.ts bot/src/checkpoints/sql_saver.test.ts`
 - `bun run typecheck`
 - `bun run check`
 

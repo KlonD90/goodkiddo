@@ -20,6 +20,7 @@ import { TaskStore } from "../tasks/store";
 import type { ChannelAgentSession } from "./shared";
 import {
 	buildInvokeMessages,
+	buildSessionRuntimeMessages,
 	clearPendingCompactionSeed,
 	clearPendingRecallContext,
 	clearPendingTaskCheckContext,
@@ -507,6 +508,16 @@ describe("channel recall-on-ambiguity state", () => {
 			expect(session.pendingRecallContext).toContain("Draft sales proposal");
 			expect(session.pendingRecallContext).toContain(
 				"Prepare the Acme sales proposal",
+			);
+			expect(
+				buildSessionRuntimeMessages(session, [
+					{ role: "user", content: "continue the sales proposal" },
+				]),
+			).toContainEqual(
+				expect.objectContaining({
+					role: "system",
+					content: expect.stringContaining("## Recall-on-Ambiguity"),
+				}),
 			);
 
 			clearPendingRecallContext(session);
