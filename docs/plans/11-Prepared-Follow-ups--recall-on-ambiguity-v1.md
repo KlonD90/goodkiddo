@@ -68,9 +68,9 @@ Expected decision behavior:
 - [x] Ensure no candidate is treated as certain without evidence.
 
 ### Task 4: Prompt/runtime integration
-- [ ] Update the relevant runtime context or memory prompt so the assistant knows to recall before asking.
-- [ ] Include the high/medium/low behavior.
-- [ ] Keep Telegram-facing wording concise.
+- [x] Update the relevant runtime context or memory prompt so the assistant knows to recall before asking.
+- [x] Include the high/medium/low behavior.
+- [x] Keep Telegram-facing wording concise.
 
 ### Task 5: Tests
 - [ ] Add tests for ambiguous phrase detection.

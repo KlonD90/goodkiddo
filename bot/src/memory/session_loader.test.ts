@@ -133,6 +133,22 @@ describe("buildSystemPrompt", () => {
 		expect(prompt).toContain("## Compacted Conversation Context");
 	});
 
+	test("appends one-turn recall context when provided", async () => {
+		const backend = createBackend("prompt-recall-runtime-context");
+		await ensureMemoryBootstrapped(backend);
+		const prompt = await buildSystemPrompt({
+			identityPrompt: "# Identity",
+			backend,
+			runtimeContextBlock:
+				"## Recall-on-Ambiguity\nHigh confidence: proceed with a brief source mention. Medium confidence: ask confirmation. Low confidence: offer likely candidates or ask one targeted clarification.",
+		});
+
+		expect(prompt).toContain("## Recall-on-Ambiguity");
+		expect(prompt).toContain("High confidence: proceed");
+		expect(prompt).toContain("Medium confidence: ask confirmation");
+		expect(prompt).toContain("Low confidence: offer likely candidates");
+	});
+
 	test("appends active-task snapshot when provided", async () => {
 		const backend = createBackend("prompt-active-tasks");
 		await ensureMemoryBootstrapped(backend);
