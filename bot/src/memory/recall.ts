@@ -140,20 +140,45 @@ const STOP_WORDS = new Set([
 	"earlier",
 	"from",
 	"going",
+	"for",
+	"in",
 	"it",
 	"keep",
 	"last",
 	"like",
+	"me",
+	"my",
+	"of",
 	"on",
+	"our",
+	"please",
 	"same",
 	"since",
 	"that",
 	"the",
+	"this",
+	"those",
 	"thing",
+	"these",
 	"time",
+	"to",
+	"us",
 	"we",
+	"with",
 	"what",
 	"yesterday",
+	"you",
+	"your",
+	"client",
+	"customer",
+	"task",
+	"project",
+	"topic",
+	"request",
+	"work",
+	"item",
+	"discussion",
+	"conversation",
 ]);
 
 function tokenize(value: string): string[] {
@@ -400,8 +425,14 @@ export function formatRecallRuntimeContext(
 	);
 	for (const [index, candidate] of result.candidates.entries()) {
 		lines.push(
-			`${index + 1}. [${candidate.confidence}] ${candidate.source}: ${truncateForRuntimeContext(candidate.summary, 180)}`,
+			`${index + 1}. [${candidate.confidence}] ${candidate.source} ${truncateForRuntimeContext(candidate.id, 90)}: ${truncateForRuntimeContext(candidate.summary, 180)}`,
 		);
+		if (candidate.snippet) {
+			const evidence = truncateForRuntimeContext(candidate.snippet, 220);
+			if (evidence !== truncateForRuntimeContext(candidate.summary, 220)) {
+				lines.push(`   Evidence excerpt (untrusted): ${evidence}`);
+			}
+		}
 		lines.push(
 			`   Rationale: ${truncateForRuntimeContext(candidate.rationale.join("; "), 180)}`,
 		);

@@ -105,7 +105,7 @@ describe("detectAmbiguousContinuation", () => {
 
 	test("extracts useful search terms from ambiguous requests", () => {
 		const detection = detectAmbiguousContinuation(
-			"continue the sales proposal",
+			"continue with my sales proposal",
 		);
 
 		expect(detection.searchTerms).toEqual(["sales", "proposal"]);
@@ -224,9 +224,9 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].confidence).toBe("low");
 	});
 
-	test("does not offer unrelated candidates when explicit terms do not match", () => {
+	test("does not offer unrelated candidates when explicit content terms do not match", () => {
 		const result = rankRecallCandidates({
-			input: "that client",
+			input: "the invoice",
 			candidates: [
 				{
 					id: "task-1",
@@ -247,7 +247,7 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates).toEqual([]);
 	});
 
-	test("does not match generic request terms against source labels", () => {
+	test("keeps generic referent fallback candidates low confidence", () => {
 		const result = rankRecallCandidates({
 			input: "that task",
 			candidates: [
@@ -261,7 +261,38 @@ describe("rankRecallCandidates", () => {
 			now: NOW,
 		});
 
-		expect(result.candidates).toEqual([]);
+		expect(result.detection.searchTerms).toEqual([]);
+		expect(result.candidates).toEqual([
+			expect.objectContaining({
+				id: "task-1",
+				confidence: "low",
+				rationale: expect.arrayContaining([
+					"available context for vague continuation",
+				]),
+			}),
+		]);
+	});
+
+	test("does not count non-semantic phrasing as high-confidence evidence", () => {
+		const result = rankRecallCandidates({
+			input: "continue with the proposal",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Draft proposal",
+					snippet: "Continue with the Acme pricing appendix.",
+					updatedAt: NOW - 60_000,
+				},
+			],
+			now: NOW,
+		});
+
+		expect(result.detection.searchTerms).toEqual(["proposal"]);
+		expect(result.candidates[0]?.confidence).toBe("medium");
+		expect(result.candidates[0]?.rationale).toContain(
+			"matched terms: proposal",
+		);
 	});
 
 	test("uses yesterday time intent instead of newest generic context", () => {
@@ -717,8 +748,12 @@ describe("recall candidate sources", () => {
 		const context = formatRecallRuntimeContext(ranked);
 
 		expect(context).toContain("## Recall-on-Ambiguity");
-		expect(context).toContain("[high] task: Draft sales proposal for Acme");
-		expect(context).not.toContain("Use the March pricing notes");
+		expect(context).toContain(
+			"[high] task task-1: Draft sales proposal for Acme",
+		);
+		expect(context).toContain(
+			"Evidence excerpt (untrusted): Use the March pricing notes",
+		);
 		expect(context).toContain("High confidence: proceed");
 		expect(context).toContain("untrusted evidence");
 	});
