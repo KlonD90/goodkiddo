@@ -117,6 +117,24 @@ describe("createSendFileTool", () => {
 		expect(outbound.calls).toHaveLength(0);
 	});
 
+	test("rejects normalized paths into internal prepared follow-up drafts", async () => {
+		const backend = createBackend("send-internal-draft-normalized");
+		await backend.write("/prepared-followups/d-123.md", "# draft");
+		const outbound = new RecordingOutbound();
+		const tool = createSendFileTool({
+			workspace: backend,
+			outbound,
+			callerId: CALLER_ID,
+		});
+
+		const result = await tool.invoke({
+			file_path: "/x/../prepared-followups/d-123.md",
+		});
+
+		expect(result).toContain("internal prepared follow-up draft");
+		expect(outbound.calls).toHaveLength(0);
+	});
+
 	test("rejects files over 20MB", async () => {
 		const backend = createBackend("send-oversized");
 		const oversized = new Uint8Array(SEND_FILE_MAX_BYTES + 1);

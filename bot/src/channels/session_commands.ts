@@ -1,5 +1,6 @@
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { BackendProtocol } from "deepagents";
+import { normalizePath } from "../backends";
 import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import {
 	type CompactionContext,
@@ -111,9 +112,6 @@ async function handleOpenFs(
 ): Promise<string> {
 	const raw = args.trim();
 	const scopePath = raw === "" ? "/" : raw;
-	if (isDraftArtifactPath(scopePath)) {
-		return "Prepared follow-up drafts are internal and cannot be shared.";
-	}
 
 	let kind: ScopeKind;
 	let normalizedPath = scopePath;
@@ -122,22 +120,33 @@ async function handleOpenFs(
 			kind = "root";
 		} else if (scopePath.endsWith("/")) {
 			kind = "dir";
-			const entries = await backend.lsInfo(scopePath);
+			normalizedPath = normalizePath(scopePath, "dir");
+			if (isDraftArtifactPath(normalizedPath)) {
+				return "Prepared follow-up drafts are internal and cannot be shared.";
+			}
+			const entries = await backend.lsInfo(normalizedPath);
 			if (entries.length === 0) {
-				return `Directory '${scopePath}' is empty or does not exist.`;
+				return `Directory '${normalizedPath}' is empty or does not exist.`;
 			}
 		} else {
 			kind = "file";
+			normalizedPath = normalizePath(scopePath, "file");
+			if (isDraftArtifactPath(normalizedPath)) {
+				return "Prepared follow-up drafts are internal and cannot be shared.";
+			}
 			if (!backend.downloadFiles) {
 				return "Error: backend does not support file download.";
 			}
-			const downloads = await backend.downloadFiles([scopePath]);
+			const downloads = await backend.downloadFiles([normalizedPath]);
 			const [download] = downloads;
 			if (!download || download.error === "file_not_found") {
-				return `File '${scopePath}' not found.`;
+				return `File '${normalizedPath}' not found.`;
 			}
 			if (download.error) return `Error: ${download.error}`;
 			normalizedPath = download.path;
+			if (isDraftArtifactPath(normalizedPath)) {
+				return "Prepared follow-up drafts are internal and cannot be shared.";
+			}
 		}
 	} catch (error) {
 		return `Error: ${error instanceof Error ? error.message : String(error)}`;

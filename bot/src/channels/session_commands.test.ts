@@ -8,6 +8,7 @@ import { SqliteStateBackend } from "../backends";
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createDb, detectDialect } from "../db";
 import { PermissionsStore } from "../permissions/store";
+import { AccessStore } from "../server/access_store";
 import { TaskStore } from "../tasks/store";
 import {
 	maybeHandleSessionCommand,
@@ -658,6 +659,38 @@ describe("maybeHandleSessionCommand — passthrough", () => {
 
 		const result = await maybeHandleSessionCommand("/unknown_cmd", ctx);
 		expect(result.handled).toBe(false);
+	});
+});
+
+describe("maybeHandleSessionCommand — /open_fs", () => {
+	test("rejects normalized paths into prepared follow-up draft shares", async () => {
+		const backend = createBackend("open-fs-internal-draft-normalized");
+		await backend.write("/prepared-followups/d-123.md", "# draft");
+		const session = createStubSession("t-open-fs", [], backend);
+		const accessDb = createDb("sqlite://:memory:");
+		const access = new AccessStore({ db: accessDb, dialect: "sqlite" });
+		const ctx: SessionCommandContext = {
+			session,
+			model: createStubModel(),
+			backend,
+			mintThreadId: () => "t-2",
+			webShare: {
+				access,
+				publicBaseUrl: "http://localhost:8787",
+				callerId: "telegram:12345",
+			},
+		};
+
+		const result = await maybeHandleSessionCommand(
+			"/open-fs /x/../prepared-followups/d-123.md",
+			ctx,
+		);
+
+		expect(result).toEqual({
+			handled: true,
+			reply: "Prepared follow-up drafts are internal and cannot be shared.",
+		});
+		await accessDb.close();
 	});
 });
 

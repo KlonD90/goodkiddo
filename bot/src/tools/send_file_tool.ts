@@ -1,5 +1,6 @@
 import { context, tool } from "langchain";
 import { z } from "zod";
+import { normalizePath } from "../backends";
 import type { WorkspaceBackend } from "../backends/types";
 import { isDraftArtifactPath } from "../capabilities/prepared_followups/artifacts";
 import type { OutboundChannel } from "../channels/outbound";
@@ -21,10 +22,6 @@ Limits:
 
 If the file is missing, too large, or delivery fails, an error string is returned so you can adapt.`;
 
-function toBackendPath(filePath: string): string {
-	return filePath.startsWith("/") ? filePath : `/${filePath}`;
-}
-
 export interface CreateSendFileToolOptions {
 	workspace: WorkspaceBackend;
 	outbound: OutboundChannel;
@@ -34,7 +31,12 @@ export interface CreateSendFileToolOptions {
 export function createSendFileTool(options: CreateSendFileToolOptions) {
 	return tool(
 		async ({ file_path, caption }: { file_path: string; caption?: string }) => {
-			const resolvedPath = toBackendPath(file_path);
+			let resolvedPath: string;
+			try {
+				resolvedPath = normalizePath(file_path, "file");
+			} catch (error) {
+				return `Error: ${error instanceof Error ? error.message : String(error)}`;
+			}
 			if (isDraftArtifactPath(resolvedPath)) {
 				return `Error: '${resolvedPath}' is an internal prepared follow-up draft and cannot be sent as a file.`;
 			}
@@ -57,6 +59,9 @@ export function createSendFileTool(options: CreateSendFileToolOptions) {
 					return `Error: file '${resolvedPath}' not found.`;
 				}
 				return `Error: ${downloaded.error}`;
+			}
+			if (isDraftArtifactPath(downloaded.path)) {
+				return `Error: '${downloaded.path}' is an internal prepared follow-up draft and cannot be sent as a file.`;
 			}
 			if (!downloaded.content) {
 				return `Error: file '${resolvedPath}' has no content.`;

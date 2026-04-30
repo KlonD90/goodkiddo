@@ -32,6 +32,27 @@ describe("createGrantFsAccessTool", () => {
 		expect(result).toContain("prepared follow-up drafts are internal");
 	});
 
+	test("rejects normalized paths into prepared follow-up draft file shares", async () => {
+		const backend = createBackend("share-internal-draft-file-normalized");
+		await backend.write("/prepared-followups/d-123.md", "# draft");
+		const access = new AccessStore({
+			db: createDb("sqlite://:memory:"),
+			dialect: "sqlite",
+		});
+		const tool = createGrantFsAccessTool({
+			access,
+			workspace: backend,
+			callerId: "telegram:12345",
+			publicBaseUrl: "http://localhost:8787",
+		});
+
+		const result = await tool.invoke({
+			scope_path: "/x/../prepared-followups/d-123.md",
+		});
+
+		expect(result).toContain("prepared follow-up drafts are internal");
+	});
+
 	test("rejects direct prepared follow-up draft directory shares", async () => {
 		const backend = createBackend("share-internal-draft-dir");
 		await backend.write("/prepared-followups/d-123.md", "# draft");
@@ -48,6 +69,27 @@ describe("createGrantFsAccessTool", () => {
 
 		const result = await tool.invoke({
 			scope_path: "/prepared-followups/",
+		});
+
+		expect(result).toContain("prepared follow-up drafts are internal");
+	});
+
+	test("rejects normalized paths into prepared follow-up draft directories", async () => {
+		const backend = createBackend("share-internal-draft-dir-normalized");
+		await backend.write("/prepared-followups/d-123.md", "# draft");
+		const access = new AccessStore({
+			db: createDb("sqlite://:memory:"),
+			dialect: "sqlite",
+		});
+		const tool = createGrantFsAccessTool({
+			access,
+			workspace: backend,
+			callerId: "telegram:12345",
+			publicBaseUrl: "http://localhost:8787",
+		});
+
+		const result = await tool.invoke({
+			scope_path: "/x/../prepared-followups/",
 		});
 
 		expect(result).toContain("prepared follow-up drafts are internal");

@@ -38,16 +38,16 @@ async function classifyScopePath(
 	if (rawPath === "/" || rawPath === "") {
 		return { ok: true, scopePath: "/", scopeKind: "root" };
 	}
-	if (isDraftArtifactPath(rawPath)) {
-		return {
-			ok: false,
-			error: "prepared follow-up drafts are internal and cannot be shared",
-		};
-	}
 	const looksLikeDir = rawPath.endsWith("/");
 	if (looksLikeDir) {
 		try {
 			const normalized = normalizePath(rawPath, "dir");
+			if (isDraftArtifactPath(normalized)) {
+				return {
+					ok: false,
+					error: "prepared follow-up drafts are internal and cannot be shared",
+				};
+			}
 			const entries = await workspace.lsInfo(normalized);
 			if (entries.length === 0 && normalized !== "/") {
 				return {
@@ -66,6 +66,12 @@ async function classifyScopePath(
 
 	try {
 		const normalized = normalizePath(rawPath, "file");
+		if (isDraftArtifactPath(normalized)) {
+			return {
+				ok: false,
+				error: "prepared follow-up drafts are internal and cannot be shared",
+			};
+		}
 		if (!workspace.downloadFiles) {
 			return { ok: false, error: "workspace does not support file download" };
 		}
