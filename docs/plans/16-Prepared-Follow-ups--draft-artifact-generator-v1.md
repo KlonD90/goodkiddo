@@ -1,5 +1,7 @@
 # Plan: Prepared Follow-ups — Draft Artifact Generator v1
 
+Status: completed
+
 ## Goal
 Generate safe internal artifacts GoodKiddo can prepare before nudging: client follow-up drafts, proposal outlines, checklists, decision memos, and message/email drafts. It must never send/publish/submit externally.
 

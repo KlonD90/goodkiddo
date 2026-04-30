@@ -100,5 +100,6 @@ Each slice should be independently shippable and should preserve the capability 
 - Future execution plans should keep slices small enough to validate with prompt/tool tests plus any affected integration tests.
 
 ## Related
-- Execution plan: `docs/plans/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Product doctrine plan: `docs/plans/completed/9-Prepared-Follow-ups--product-doctrine-and-capabili.md`.
+- Draft artifact generator plan: `docs/plans/16-Prepared-Follow-ups--draft-artifact-generator-v1.md`.
 - Prepared follow-up artifact docs: `bot/src/capabilities/prepared_followups/README.md`.

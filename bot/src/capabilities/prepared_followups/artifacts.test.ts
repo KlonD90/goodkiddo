@@ -4,8 +4,8 @@ import {
 	buildDraftArtifactPath,
 	DRAFT_ARTIFACT_NOTICE,
 	DRAFT_ARTIFACT_TYPES,
-	serializeDraftArtifactMarkdown,
 	type DraftArtifact,
+	serializeDraftArtifactMarkdown,
 } from "./artifacts";
 
 const baseArtifact: DraftArtifact = {

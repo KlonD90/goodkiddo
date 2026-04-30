@@ -135,7 +135,9 @@ describe("createExecutionToolset enableToolStatus flag", () => {
 	test("prepared draft artifact tool is registered", async () => {
 		const { workspace, db } = createTestWorkspace("factory-prepared-drafts");
 		const tools = await createExecutionToolset({ workspace });
-		expect(tools.find((t) => t.name === "prepare_draft_artifact")).toBeDefined();
+		expect(
+			tools.find((t) => t.name === "prepare_draft_artifact"),
+		).toBeDefined();
 		await db.close();
 	});
 

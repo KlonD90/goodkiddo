@@ -50,23 +50,32 @@ export function createPrepareDraftArtifactTool(backend: BackendProtocol) {
 			name: "prepare_draft_artifact",
 			description: PREPARE_DRAFT_ARTIFACT_PROMPT,
 			schema: z.object({
-				type: DraftArtifactTypeSchema.describe("Prepared follow-up artifact type."),
+				type: DraftArtifactTypeSchema.describe(
+					"Prepared follow-up artifact type.",
+				),
 				title: z
 					.string()
 					.optional()
-					.describe("Optional artifact title. A safe default is generated when omitted."),
+					.describe(
+						"Optional artifact title. A safe default is generated when omitted.",
+					),
 				task: z
 					.string()
+					.trim()
 					.min(1)
 					.describe("The task or follow-up this draft should prepare."),
 				context: z
 					.string()
 					.optional()
-					.describe("Relevant context summary to preserve in metadata and draft body."),
+					.describe(
+						"Relevant context summary to preserve in metadata and draft body.",
+					),
 				evidence: z
 					.array(z.string())
 					.optional()
-					.describe("Evidence, facts, or observations used to prepare the draft."),
+					.describe(
+						"Evidence, facts, or observations used to prepare the draft.",
+					),
 				source_paths: z
 					.array(z.string())
 					.optional()

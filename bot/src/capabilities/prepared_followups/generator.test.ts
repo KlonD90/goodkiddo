@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { BackendProtocol } from "deepagents";
 import { SqliteStateBackend } from "../../backends";
 import { createDb, detectDialect } from "../../db";
 import { fileDataToString } from "../../utils/filesystem";
@@ -13,6 +14,18 @@ function createBackend(namespace: string) {
 		backend: new SqliteStateBackend({ db, dialect, namespace }),
 		db,
 	};
+}
+
+function createRecordingBackend() {
+	const writes: Array<{ path: string; content: string }> = [];
+	const backend = {
+		write: async (path: string, content: string) => {
+			writes.push({ path, content });
+			return { path, filesUpdate: null };
+		},
+	} as unknown as BackendProtocol;
+
+	return { backend, writes };
 }
 
 describe("generateDraftArtifact", () => {
@@ -31,7 +44,9 @@ describe("generateDraftArtifact", () => {
 		);
 
 		expect(generated.id).toBe("d-fixed123");
-		expect(generated.path).toBe("/prepared-followups/d-fixed123-acme-follow-up.md");
+		expect(generated.path).toBe(
+			"/prepared-followups/d-fixed123-acme-follow-up.md",
+		);
 		expect(generated.artifact.source_context).toEqual({
 			task: "confirm Friday delivery",
 			summary: "ACME asked whether the timeline still holds.",
@@ -125,12 +140,33 @@ describe("generateDraftArtifact", () => {
 			source_urls: ["https://example.com/proposal"],
 		});
 		expect(generated.markdown).toContain('"source_context"');
-		expect(generated.markdown).toContain('"task": "choose the retainer package"');
-		expect(generated.markdown).toContain('"summary": "Client is comparing monthly options."');
+		expect(generated.markdown).toContain(
+			'"task": "choose the retainer package"',
+		);
+		expect(generated.markdown).toContain(
+			'"summary": "Client is comparing monthly options."',
+		);
 		expect(generated.markdown).toContain('"source_paths"');
-		expect(generated.markdown).toContain('/memory/clients/acme.md');
+		expect(generated.markdown).toContain("/memory/clients/acme.md");
 		expect(generated.markdown).toContain('"source_urls"');
 		expect(generated.markdown).toContain("https://example.com/proposal");
+	});
+
+	test("caps preview while preserving full markdown", () => {
+		const longContext = "Detailed launch context. ".repeat(80);
+		const generated = generateDraftArtifact(
+			{
+				type: "proposal_outline",
+				task: "prepare launch proposal",
+				context: longContext,
+				evidence: ["Pricing confirmed.", "Timeline approved."],
+			},
+			"d-preview",
+		);
+
+		expect(generated.preview.length).toBe(600);
+		expect(generated.preview.endsWith("...")).toBe(true);
+		expect(generated.markdown).toContain(longContext.trim());
 	});
 });
 
@@ -150,10 +186,12 @@ describe("prepare_draft_artifact tool", () => {
 
 		const parsed = JSON.parse(String(result));
 		expect(parsed.path).toMatch(
-			/^\/prepared-followups\/d-[a-z0-9]{8}-launch-checklist\.md$/,
+			/^\/prepared-followups\/d-[a-f0-9-]{36}-launch-checklist\.md$/,
 		);
 		expect(parsed.visibility).toBe("internal");
-		expect(parsed.notice).toContain("No external send, publish, submit, or share");
+		expect(parsed.notice).toContain(
+			"No external send, publish, submit, or share",
+		);
 		expect(parsed.preview).toContain("Launch checklist");
 
 		const stored = fileDataToString(await backend.readRaw(parsed.path));
@@ -165,8 +203,8 @@ describe("prepare_draft_artifact tool", () => {
 		await db.close();
 	});
 
-	test("creates only an internal virtual filesystem artifact and performs no external send", async () => {
-		const { backend, db } = createBackend("prepared-followups-internal-only");
+	test("creates only one internal virtual filesystem artifact write", async () => {
+		const { backend, writes } = createRecordingBackend();
 		const tool = createPrepareDraftArtifactTool(backend);
 
 		const result = await tool.invoke({
@@ -188,12 +226,26 @@ describe("prepare_draft_artifact tool", () => {
 		expect(String(result)).not.toContain("published_url");
 		expect(String(result)).not.toContain("submission_id");
 
-		const stored = fileDataToString(await backend.readRaw(parsed.path));
-		expect(stored).toContain('"visibility": "internal"');
-		expect(stored).toContain(DRAFT_ARTIFACT_NOTICE);
-		expect(stored).not.toContain("send_file");
-		expect(stored).not.toContain("share_file");
-		expect(stored).not.toContain("external_delivery");
+		expect(writes).toHaveLength(1);
+		expect(writes[0]?.path).toBe(parsed.path);
+		expect(writes[0]?.path).toStartWith("/prepared-followups/");
+		expect(writes[0]?.content).toContain('"visibility": "internal"');
+		expect(writes[0]?.content).toContain(DRAFT_ARTIFACT_NOTICE);
+		expect(writes[0]?.content).not.toContain("send_file");
+		expect(writes[0]?.content).not.toContain("share_file");
+		expect(writes[0]?.content).not.toContain("external_delivery");
+	});
+
+	test("rejects whitespace-only tasks", async () => {
+		const { backend, db } = createBackend("prepared-followups-invalid-task");
+		const tool = createPrepareDraftArtifactTool(backend);
+
+		await expect(
+			tool.invoke({
+				type: "checklist",
+				task: "   ",
+			}),
+		).rejects.toThrow();
 
 		await db.close();
 	});
@@ -208,7 +260,7 @@ describe("prepare_draft_artifact tool", () => {
 			evidence: ["Starter is cheaper.", "Pro saves time."],
 		});
 
-		expect(stored.path).toMatch(/^\/prepared-followups\/d-[a-z0-9]{8}-/);
+		expect(stored.path).toMatch(/^\/prepared-followups\/d-[a-f0-9-]{36}-/);
 		expect("markdown" in stored).toBe(false);
 		expect(stored.preview).toContain("Decision memo");
 

@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 import type { BackendProtocol } from "deepagents";
-import { overwrite } from "../../memory/fs";
 import {
 	buildDraftArtifactPath,
 	DRAFT_ARTIFACT_NOTICE,
-	serializeDraftArtifactMarkdown,
 	type DraftArtifact,
 	type DraftArtifactSourceContext,
 	type DraftArtifactType,
+	serializeDraftArtifactMarkdown,
 } from "./artifacts";
 
 const PREVIEW_CHAR_LIMIT = 600;
+const WRITE_ATTEMPTS = 3;
 
 export type DraftArtifactGenerationInput = {
 	type: DraftArtifactType;
@@ -65,7 +65,10 @@ function defaultTitle(type: DraftArtifactType, task: string): string {
 }
 
 function evidenceSection(evidence: string[] | undefined): string {
-	return bulletList(evidence, "No explicit evidence supplied; verify before using.");
+	return bulletList(
+		evidence,
+		"No explicit evidence supplied; verify before using.",
+	);
 }
 
 function contextLine(context: string | undefined): string {
@@ -209,14 +212,15 @@ function buildPreview(markdown: string): string {
 }
 
 export function mintDraftArtifactId(): string {
-	return `d-${randomUUID().replace(/-/g, "").slice(0, 8)}`;
+	return `d-${randomUUID()}`;
 }
 
 export function generateDraftArtifact(
 	input: DraftArtifactGenerationInput,
 	id = mintDraftArtifactId(),
 ): GeneratedDraftArtifact {
-	const title = normalizeText(input.title) || defaultTitle(input.type, input.task);
+	const title =
+		normalizeText(input.title) || defaultTitle(input.type, input.task);
 	const artifact: DraftArtifact = {
 		title,
 		type: input.type,
@@ -239,8 +243,21 @@ export async function storeDraftArtifact(
 	backend: BackendProtocol,
 	input: DraftArtifactGenerationInput,
 ): Promise<StoredDraftArtifact> {
-	const generated = generateDraftArtifact(input);
-	await overwrite(backend, generated.path, generated.markdown);
-	const { markdown: _markdown, ...stored } = generated;
-	return stored;
+	let lastError: string | undefined;
+
+	for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+		const generated = generateDraftArtifact(input);
+		const result = await backend.write(generated.path, generated.markdown);
+		if (!("error" in result) || !result.error) {
+			const { markdown: _markdown, ...stored } = generated;
+			return stored;
+		}
+
+		lastError = result.error;
+		if (!result.error.toLowerCase().includes("already exists")) {
+			break;
+		}
+	}
+
+	throw new Error(lastError ?? "Failed to store draft artifact");
 }

@@ -17,6 +17,7 @@ describe("status_templates", () => {
 			expect(hasTemplate("memory_write")).toBe(true);
 			expect(hasTemplate("skill_write")).toBe(true);
 			expect(hasTemplate("memory_append_log")).toBe(true);
+			expect(hasTemplate("prepare_draft_artifact")).toBe(true);
 			expect(hasTemplate("task_add")).toBe(true);
 			expect(hasTemplate("task_complete")).toBe(true);
 			expect(hasTemplate("task_dismiss")).toBe(true);
@@ -282,6 +283,48 @@ describe("status_templates", () => {
 			});
 		});
 
+		describe("prepared_followups", () => {
+			test("prepare_draft_artifact in en uses task", () => {
+				const result = renderStatus(
+					"prepare_draft_artifact",
+					{
+						type: "checklist",
+						task: "prepare launch follow-up",
+						context: "secret context",
+						evidence: ["secret fact"],
+					},
+					"en",
+				);
+				expect(result?.message).toBe(
+					"Preparing draft artifact: prepare launch follow-up",
+				);
+				expect(result?.message).not.toContain("secret context");
+				expect(result?.message).not.toContain("secret fact");
+			});
+
+			test("prepare_draft_artifact in ru", () => {
+				const result = renderStatus(
+					"prepare_draft_artifact",
+					{ type: "checklist", task: "подготовить запуск" },
+					"ru",
+				);
+				expect(result?.message).toBe(
+					"Подготовка черновика: подготовить запуск",
+				);
+			});
+
+			test("prepare_draft_artifact in es", () => {
+				const result = renderStatus(
+					"prepare_draft_artifact",
+					{ type: "checklist", task: "preparar lanzamiento" },
+					"es",
+				);
+				expect(result?.message).toBe(
+					"Preparando borrador: preparar lanzamiento",
+				);
+			});
+		});
+
 		describe("task_tools", () => {
 			test("task_add", () => {
 				const result = renderStatus(
@@ -497,6 +540,7 @@ describe("status_templates", () => {
 				"memory_write",
 				"skill_write",
 				"memory_append_log",
+				"prepare_draft_artifact",
 				"task_add",
 				"task_complete",
 				"task_dismiss",
@@ -635,7 +679,10 @@ describe("status_templates", () => {
 			test("tabular_filter en", () => {
 				const result = renderStatus(
 					"tabular_filter",
-					{ path: "/data.csv", where: [{ column: "age", op: "gt", value: 18 }] },
+					{
+						path: "/data.csv",
+						where: [{ column: "age", op: "gt", value: 18 }],
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Filtering rows in /data.csv");
@@ -704,7 +751,9 @@ describe("status_templates", () => {
 					"tabular_filter",
 					"tabular_aggregate",
 				]) {
-					expect(hasTemplate(name), `${name} should have a template`).toBe(true);
+					expect(hasTemplate(name), `${name} should have a template`).toBe(
+						true,
+					);
 				}
 			});
 		});
