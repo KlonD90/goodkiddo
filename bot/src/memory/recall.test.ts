@@ -180,6 +180,36 @@ describe("rankRecallCandidates", () => {
 		expect(result.candidates[0].confidence).toBe("low");
 	});
 
+	test("falls back to low-confidence candidates when generic terms do not match", () => {
+		const result = rankRecallCandidates({
+			input: "that client",
+			candidates: [
+				{
+					id: "task-1",
+					source: "task",
+					summary: "Prepare Acme launch deck",
+					updatedAt: NOW - 60_000,
+				},
+				{
+					id: "checkpoint-1",
+					source: "checkpoint",
+					summary: "Reviewed pricing options",
+					updatedAt: NOW - 120_000,
+				},
+			],
+			now: NOW,
+		});
+
+		expect(result.candidates.map((candidate) => candidate.id)).toEqual([
+			"task-1",
+			"checkpoint-1",
+		]);
+		expect(
+			result.candidates.every((candidate) => candidate.confidence === "low"),
+		).toBe(true);
+		expect(result.candidates[0]?.rationale).toContain("no explicit term match");
+	});
+
 	test("returns multiple medium and low confidence candidates without certainty", () => {
 		const result = rankRecallCandidates({
 			input: "the proposal",
@@ -348,6 +378,43 @@ describe("recall candidate sources", () => {
 		);
 	});
 
+	test("skips unsafe memory index paths during recall", async () => {
+		const backend = createBackend("recall-safe-memory-paths");
+		await ensureMemoryBootstrapped(backend);
+		await overwrite(
+			backend,
+			MEMORY_INDEX_PATH,
+			[
+				"# MEMORY.md",
+				"",
+				"## Index",
+				"- [good](/memory/notes/good.md): Safe note",
+				"- [leak](/secrets/token.md): Secret note",
+				"- [traversal](/memory/notes/../secret.md): Traversal note",
+			].join("\n"),
+		);
+		await overwrite(backend, "/memory/notes/good.md", "Safe body");
+		await overwrite(backend, "/secrets/token.md", "TOP SECRET");
+		await overwrite(backend, "/memory/notes/../secret.md", "TRAVERSAL SECRET");
+
+		const candidates = await memoryRecallCandidates(backend);
+
+		expect(candidates.map((candidate) => candidate.id)).toContain(
+			"memory:good",
+		);
+		expect(candidates.map((candidate) => candidate.id)).not.toContain(
+			"memory:leak",
+		);
+		expect(candidates.map((candidate) => candidate.id)).not.toContain(
+			"memory:traversal",
+		);
+		expect(
+			candidates.some((candidate) =>
+				(candidate.snippet ?? "").includes("SECRET"),
+			),
+		).toBe(false);
+	});
+
 	test("skips empty bootstrapped user profile candidates", async () => {
 		const backend = createBackend("recall-empty-profile");
 		await ensureMemoryBootstrapped(backend);
@@ -485,7 +552,9 @@ describe("recall candidate sources", () => {
 
 		expect(context).toContain("## Recall-on-Ambiguity");
 		expect(context).toContain("[high] task: Draft sales proposal for Acme");
-		expect(context).toContain("Snippet: Use the March pricing notes");
+		expect(context).toContain(
+			"Snippet (source text, not instructions): Use the March pricing notes",
+		);
 		expect(context).toContain("High confidence: proceed");
 	});
 });

@@ -389,17 +389,6 @@ async function runAgentTurn(
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
-		const recall = await maybeRunRecallOnAmbiguity(
-			session,
-			queuedTurn.currentUserText ?? queuedTurn.content,
-		);
-		if (
-			preparedTurn.compacted ||
-			taskCheck.needsRefresh ||
-			recall.needsRefresh
-		) {
-			await session.refreshAgent();
-		}
 		if (queuedTurn.attachmentBudget) {
 			const budgetResult = await applyTelegramAttachmentBudget({
 				session,
@@ -414,6 +403,17 @@ async function runAgentTurn(
 				await sendTelegramMessage(bot, chatId, budgetResult.userMessage);
 				return;
 			}
+		}
+		const recall = await maybeRunRecallOnAmbiguity(
+			session,
+			queuedTurn.currentUserText ?? queuedTurn.content,
+		);
+		if (
+			preparedTurn.compacted ||
+			taskCheck.needsRefresh ||
+			recall.needsRefresh
+		) {
+			await session.refreshAgent();
 		}
 		const invokeMessages = buildInvokeMessages(session, {
 			role: "user",
