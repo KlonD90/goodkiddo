@@ -6,7 +6,9 @@ Add GoodKiddo to a Telegram business chat; every weekday it reads the recent bus
 
 ## Product promise
 
-GoodKiddo is not a calendar and not a generic AI assistant. It is a friendly business dog in the chat that brings one useful thing each workday: a draft, a checklist, a small research note, or a clear next action.
+GoodKiddo is not a calendar. It is a friendly business dog in the chat that brings one useful thing each workday: a draft, a checklist, a small research note, or a clear next action.
+
+It should still answer normal questions in chat when people ask it directly. Daily Shot is the proactive habit, not the whole product. On demand, GoodKiddo can be a small researcher and business helper: explain, summarize, compare, draft, check public sources, and turn messy context into a practical answer.
 
 ## Why this v0
 
@@ -28,13 +30,29 @@ The user should do only two things:
 
 No forms. No dashboard. No manual loop creation.
 
+## On-demand chat help
+
+GoodKiddo should also respond when someone asks it directly in the Telegram chat. This keeps the useful assistant behavior users already expect.
+
+On-demand examples:
+
+- “GoodKiddo, how should we answer this customer?”
+- “GoodKiddo, summarize what happened with this order.”
+- “GoodKiddo, check this competitor page.”
+- “GoodKiddo, what price should we try?”
+- “GoodKiddo, make a short checklist for this case.”
+
+When asked directly, GoodKiddo should answer immediately with a useful draft, summary, checklist, or small research note. It should still follow the same safety boundary: prepare and explain, but do not take final external action.
+
+This on-demand mode is intentionally small. It is not a full agent workspace or enterprise research suite. It is the chat-native helper mode that supports Daily Shot.
+
 ## Daily Shot behavior
 
 Every weekday, GoodKiddo should inspect recent chat context and post one compact business shot.
 
 A Daily Shot contains:
 
-1. **What GoodKiddo noticed** — the business signal from chat or a lightweight check.
+1. **What GoodKiddo noticed** — the business signal from chat, an explicit user question, or a lightweight check.
 2. **Why it matters** — one short reason.
 3. **Prepared next move** — draft, checklist, summary, offer, or research note.
 4. **Source/context** — enough context to trust it.
@@ -154,6 +172,8 @@ In scope:
 - Recent-message scanner.
 - Daily Shot selector.
 - Draft/checklist/research-note generator.
+- On-demand direct-question answers in chat.
+- Small researcher mode for public-source checks when explicitly requested.
 - Artifact link or compact preview.
 - Basic source/context references.
 - Weekday schedule.
@@ -162,7 +182,7 @@ In scope:
 Out of scope:
 
 - calendar-style reminder product;
-- full market research service;
+- full market research service, beyond small on-demand checks and Daily Shot notes;
 - full ops desk;
 - multi-channel integrations;
 - dashboards;
