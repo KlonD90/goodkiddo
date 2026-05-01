@@ -97,4 +97,4 @@ Each task must have one clear goal, target specific files, and a testable done c
 
 For new execution-ready plans, use `docs/plans/` and follow the RALPHEX-aligned format documented in [../plans/README.md](../plans/README.md).
 
-- [GoodKiddo Doctrine: The Telegram Business Dog](./goodkiddo-doctrine.md)
+- [GoodKiddo v0: Daily Shot](./goodkiddo-daily-shot-v0.md)
