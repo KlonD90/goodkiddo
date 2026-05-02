@@ -24,7 +24,7 @@ Legacy task lists in this directory still exist and remain valid. New execution-
 | [Telegram Reply and Forward Context](feature-telegram-reply-forward-context.md) | [RALPHEX plan](../plans/telegram-reply-forward-context.md) |
 | [Tabular Read](feature-tabular-read.md) | [RALPHEX plan](../plans/tabular-read.md) |
 | [Research Sub-Agent](feature-research-subagent.md) | [RALPHEX plan](../plans/research-subagent.md) |
-| [GoodKiddo v0: Daily Shot](goodkiddo-daily-shot-v0.md) | [RALPHEX plan](../plans/goodkiddo-daily-shot-v0.md) |
+| [GoodKiddo v0: Fetch](goodkiddo-fetch-v0.md) | [RALPHEX plan](../plans/goodkiddo-v0-product-piece-slices.md) |
 
 ## Completed
 

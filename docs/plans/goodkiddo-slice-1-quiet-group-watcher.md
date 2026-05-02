@@ -1,17 +1,27 @@
-# Plan: GoodKiddo Slice 1 — Quiet Telegram Group Watcher
+# Plan: GoodKiddo Slice 1 — Quiet Telegram Group Presence
 
-> Parent roadmap: [`goodkiddo-daily-shot-v0.md`](./goodkiddo-daily-shot-v0.md)
+> Parent roadmap: [`goodkiddo-v0-product-piece-slices.md`](./goodkiddo-v0-product-piece-slices.md)
 
 ## Goal
 
-Let GoodKiddo join a Telegram business group, capture useful recent chat context, and stay quiet unless someone directly asks it for help.
+Let GoodKiddo join a Telegram business group, stay quiet by default, capture useful recent chat context, and answer when someone directly asks it for help.
+
+This slice should not make GoodKiddo feel dumb. The doggo remains smart out of the box when directly addressed; quiet group presence only prevents accidental noise.
+
+## Product pieces proven
+
+- **Telegram-native** — GoodKiddo lives where the business chat happens.
+- **Friendly business dog** — observant and calm, not bossy/noisy.
+- **Smart out of the box** — direct asks still get useful drafts/checklists/questions/notes.
+- **No dangerous hands** — responses are draft/artifact text only.
 
 ## User-visible behavior
 
 - In private DM: GoodKiddo behaves as it does today.
 - In group/supergroup: normal business messages do not trigger an agent reply.
 - In group/supergroup: GoodKiddo answers when directly addressed.
-- Captured group messages become available for later Daily Shot slices.
+- Captured group messages become available for later Fetch slices.
+- No scheduler/profile/Morning Fetch work in this slice.
 
 ## Direct ask rules
 
@@ -26,25 +36,27 @@ Everything else is passive context only.
 
 ## Files
 
+Likely files; verify exact names before implementing:
+
 - Modify: `bot/src/channels/telegram/types.ts`
 - Modify: `bot/src/channels/telegram/handlers.ts`
 - Modify: `bot/src/channels/telegram/turn.ts`
-- Create: `bot/src/capabilities/daily_shot/chat_store.ts`
-- Create: `bot/src/capabilities/daily_shot/chat_store.test.ts`
+- Create: `bot/src/capabilities/fetch/recent_chat_store.ts`
+- Create: `bot/src/capabilities/fetch/recent_chat_store.test.ts`
 - Test: `bot/src/channels/telegram.test.ts` or `bot/src/channels/telegram_group_watcher.test.ts`
 
 ## Validation Commands
 
 ```bash
-cd bot && bun test src/capabilities/daily_shot/chat_store.test.ts
+cd bot && bun test src/capabilities/fetch/recent_chat_store.test.ts
 cd bot && bun test src/channels/telegram.test.ts
 cd bot && bun run typecheck
 ```
 
 ## Task 1: Add recent chat store
 
-- [ ] Create `src/capabilities/daily_shot/chat_store.ts`.
-- [ ] Add table `daily_shot_chat_messages` with fields:
+- [ ] Create `src/capabilities/fetch/recent_chat_store.ts`.
+- [ ] Add table `fetch_recent_chat_messages` with fields:
   - `id`
   - `caller_id`
   - `chat_id`
@@ -73,7 +85,7 @@ Done when handlers can branch by chat type without changing behavior yet.
 
 ## Task 3: Record passive group text
 
-- [ ] Instantiate/inject `DailyShotChatStore` in `telegramChannel.run()`.
+- [ ] Instantiate/inject `FetchRecentChatStore` in `telegramChannel.run()` or the current Telegram channel composition point.
 - [ ] Record every non-empty group/supergroup text message before any direct-trigger decision.
 - [ ] Include sender label when safely available: username, first name, or Telegram user id.
 - [ ] Store message timestamp from Telegram message date.
@@ -93,12 +105,13 @@ Done when normal group chatter is persisted and the bot still does not reply.
 
 Done when group direct asks work and normal chatter stays silent.
 
-## Task 5: Minimal command registration prep
+## Task 5: Minimal Fetch command registration prep
 
-- [ ] Add `/daily_shot` to Telegram commands as a known command, but it may return a short “Daily Shot is not implemented yet” placeholder in this slice.
-- [ ] Do not implement the Daily Shot generator in this slice.
+- [ ] Add `/fetch` to Telegram commands as a known command, but it may return a short “Fetch is not implemented yet” placeholder in this slice.
+- [ ] Do not implement the full Fetch generator in this slice.
+- [ ] Do not add scheduler/profile work.
 
-Done when `/daily_shot` is reserved for Slice 2 without expanding this PR.
+Done when `/fetch` is reserved for Slice 2 without expanding this PR.
 
 ## Acceptance checklist
 
@@ -107,5 +120,7 @@ Done when `/daily_shot` is reserved for Slice 2 without expanding this PR.
 - [ ] `@bot_username summarize this` invokes the agent.
 - [ ] Replying to a bot message invokes the agent.
 - [ ] Private DM behavior is unchanged.
+- [ ] Direct asks return useful draft/checklist/question/note behavior, not “configure me first.”
 - [ ] Forwarded slash commands still do not execute.
+- [ ] `/fetch` is reserved without pulling scheduler/profile into this slice.
 - [ ] Tests and typecheck pass.
