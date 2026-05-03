@@ -79,9 +79,10 @@ Ubuntu production provisioning with PostgreSQL and a systemd bot service lives
 in [`ops/ansible/`](./ops/ansible/).
 
 That playbook installs Bun, provisions a local PostgreSQL database
-and role, builds the landing and embedded bot web UI as static files, configures nginx as the public
-entrypoint, issues Let's Encrypt certificates for the main and `app.`
-hostnames, installs the local browser/search stack (`google-chrome-stable`,
+and role, builds the landing and embedded bot web UI as static files, serves
+the generated `landing/dist/` bundle through nginx as the public
+origin behind Cloudflare Flexible SSL for the main and `app.` hostnames,
+installs the local browser/search stack (`google-chrome-stable`,
 `agent-browser`, SearXNG), and runs the bot as a systemd service bound to
 localhost HTTP. It is now structured around separate inventory, non-secret
 vars, and Vault-backed secret vars so you do not need to edit production values

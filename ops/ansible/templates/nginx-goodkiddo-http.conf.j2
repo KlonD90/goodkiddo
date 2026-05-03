@@ -3,14 +3,8 @@ server {
     listen [::]:80;
     server_name {{ bot_main_domain }};
 
-    location ^~ /.well-known/acme-challenge/ {
-        root {{ bot_acme_webroot }};
-        default_type "text/plain";
-        try_files $uri =404;
-    }
-
     location / {
-        root {{ bot_landing_dir }};
+        root {{ bot_landing_dir }}/dist;
         try_files $uri $uri/ /index.html;
     }
 }
@@ -19,12 +13,6 @@ server {
     listen 80;
     listen [::]:80;
     server_name {{ bot_app_domain }};
-
-    location ^~ /.well-known/acme-challenge/ {
-        root {{ bot_acme_webroot }};
-        default_type "text/plain";
-        try_files $uri =404;
-    }
 
     location /assets/ {
         root {{ bot_web_dist_dir }};
@@ -42,7 +30,7 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
@@ -51,11 +39,11 @@ server {
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto http;
+        proxy_set_header X-Forwarded-Proto https;
         proxy_set_header X-Real-IP $remote_addr;
     }
 
     location / {
-        return 302 http://{{ bot_main_domain }}/;
+        return 302 https://{{ bot_main_domain }}/;
     }
 }

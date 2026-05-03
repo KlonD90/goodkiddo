@@ -4,7 +4,6 @@
 
 bot_main_domain: example.com
 bot_app_domain: "app.{{ bot_main_domain }}"
-bot_letsencrypt_email: admin@example.com
 
 # Set this when Ansible should clone/update the repository on the host.
 # Leave empty when you place the checkout on the host yourself.

@@ -27,10 +27,6 @@
       owner: root
       group: root
       mode: "0750"
-    - path: "{{ bot_acme_webroot }}"
-      owner: www-data
-      group: www-data
-      mode: "0755"
 
 - name: Ensure existing application checkout belongs to service user
   ansible.builtin.file:
@@ -104,22 +100,24 @@
 
 - name: Ensure landing entrypoint exists
   ansible.builtin.stat:
-    path: "{{ bot_landing_dir }}/index.html"
+    path: "{{ bot_landing_dir }}/dist/index.html"
   register: bot_landing_index
 
 - name: Stop if landing entrypoint is missing
   ansible.builtin.fail:
     msg: >-
-      Expected {{ bot_landing_dir }}/index.html to exist after building the landing bundle.
+      Expected {{ bot_landing_dir }}/dist/index.html to exist after building the landing bundle.
   when: not bot_landing_index.stat.exists
 
 - name: Ensure landing JavaScript bundle exists
-  ansible.builtin.stat:
-    path: "{{ bot_landing_dir }}/dist/main.js"
-  register: bot_landing_bundle
+  ansible.builtin.find:
+    paths: "{{ bot_landing_dir }}/dist"
+    patterns: "*.js"
+    file_type: file
+  register: bot_landing_bundles
 
 - name: Stop if landing JavaScript bundle is missing
   ansible.builtin.fail:
     msg: >-
-      Expected {{ bot_landing_dir }}/dist/main.js after running bun run build in the landing directory.
-  when: not bot_landing_bundle.stat.exists
+      Expected at least one JavaScript bundle in {{ bot_landing_dir }}/dist after running bun run build in the landing directory.
+  when: bot_landing_bundles.matched == 0

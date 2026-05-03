@@ -22,7 +22,7 @@
     - name: Configure bot service
       ansible.builtin.include_tasks: tasks/bot_service.yml
 
-    - name: Configure nginx and certificates
+    - name: Configure nginx
       ansible.builtin.include_tasks: tasks/nginx.yml
 
   handlers:
