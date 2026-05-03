@@ -163,24 +163,27 @@ function Nav() {
 
 function HeroPreviewLab() {
   return (
-    <div className="gk-composed-hero-art" aria-hidden="true">
-      <img className="gk-hero-confetti gk-hero-confetti-one" src={HeroPieceConfettiImage} alt="" />
-      <img className="gk-hero-confetti gk-hero-confetti-two" src={HeroPieceConfettiImage} alt="" />
-      <div className="gk-hero-sticker gk-hero-sticker-burst">
+    <div className="gk-composed-hero-art">
+      <img className="gk-hero-confetti gk-hero-confetti-one" src={HeroPieceConfettiImage} alt="" aria-hidden="true" />
+      <img className="gk-hero-confetti gk-hero-confetti-two" src={HeroPieceConfettiImage} alt="" aria-hidden="true" />
+      <div className="gk-hero-sticker gk-hero-sticker-burst" aria-hidden="true">
         <img src={HeroStickerBurstImage} alt="" />
         <span>Fetch<br />like a<br />pro!</span>
       </div>
-      <div className="gk-hero-sticker gk-hero-sticker-keys">
+      <div className="gk-hero-sticker gk-hero-sticker-keys" aria-hidden="true">
         <img src={HeroStickerBubbleImage} alt="" />
         <span>No keys.<br />No problem.</span>
       </div>
-      <div className="gk-hero-sticker gk-hero-sticker-cloud">
+      <div className="gk-hero-sticker gk-hero-sticker-cloud" aria-hidden="true">
         <img src={HeroStickerCloudImage} alt="" />
         <span>Brings the<br />ball back</span>
       </div>
-      <img className="gk-hero-phone-piece" src={HeroPiecePhoneImage} alt="" />
-      <img className="gk-hero-ball-piece" src={HeroPieceBallImage} alt="" />
-      <div className="gk-hero-sticker gk-hero-sticker-done">
+      <div className="gk-hero-phone-piece" aria-label="GoodKiddo Telegram preview">
+        <img src={HeroPiecePhoneImage} alt="" aria-hidden="true" />
+        <PettableDog className="gk-pet-dog-phone-art" label="Pet GoodKiddo phone mascot" />
+      </div>
+      <img className="gk-hero-ball-piece" src={HeroPieceBallImage} alt="" aria-hidden="true" />
+      <div className="gk-hero-sticker gk-hero-sticker-done" aria-hidden="true">
         <img src={HeroStickerBurstImage} alt="" />
         <span>Draft!<br />Pause!<br />Done!</span>
       </div>
