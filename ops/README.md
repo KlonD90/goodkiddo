@@ -13,8 +13,9 @@ The playbook provisions:
 - a dedicated system user
 - local PostgreSQL with a dedicated database and role
 - nginx as the only public entrypoint
-- Let's Encrypt certificates for the apex domain and `app.` subdomain
-- the `landing/` directory served by nginx after running its `bun build` script
+- an HTTP-only nginx origin intended to sit behind Cloudflare Flexible SSL
+- the generated `landing/dist/` bundle served by nginx after running the
+  landing `bun build` script
 - the `web/` bot UI bundle consumed by the bot service after running `bun run web:build`
 - a managed environment file at `/etc/goodkiddo/bot.env`
 - a systemd service that runs `bun src/bin/bot.ts` from `bot/`
@@ -24,8 +25,9 @@ The playbook provisions:
 It deliberately does **not** provision Firecracker or any execution sandbox
 hardening yet. The example vars keep `ENABLE_EXECUTE=false` so the bot runs as
 a Telegram service with PostgreSQL persistence but without scripting/execution.
-The Bun app stays HTTP-only on `WEB_HOST`/`WEB_PORT`, and nginx terminates TLS
-and proxies `app.<domain>` to it.
+The Bun app stays HTTP-only on `WEB_HOST`/`WEB_PORT`. nginx also stays
+HTTP-only on the origin; Cloudflare Flexible SSL handles public HTTPS and
+forwards requests to the origin over HTTP.
 
 ## Files
 
@@ -92,7 +94,7 @@ Vault file and installs `uvx` so the runtime can launch
    - set `bot_repo_url` if Ansible should clone/update the repository into `bot_app_dir`
    - leave `bot_repo_url` empty if you place the checkout on the host yourself
 
-6. Point DNS at the host before running the playbook:
+6. Point proxied Cloudflare DNS records at the host before running the playbook:
 
    - `bot_main_domain` -> server public IP
    - `bot_app_domain` -> same server public IP
@@ -120,16 +122,16 @@ Vault file and installs `uvx` so the runtime can launch
 - PostgreSQL is local by default. Override `bot_database_url` if you want to
   point the bot at a managed PostgreSQL instance instead, and set
   `bot_manage_postgres=false` so Ansible skips the local PostgreSQL tasks.
-- `bot_main_domain`, `bot_app_domain`, and `bot_letsencrypt_email` must be set
-  correctly or certificate issuance will fail.
+- `bot_main_domain` and `bot_app_domain` must be set correctly in Cloudflare
+  and should be proxied when using Flexible SSL.
 - The browser/search stack is local-only: Chrome is installed on the host,
   `agent-browser` is installed globally with Bun, Docker and `docker-compose`
   are installed on the host, and SearXNG listens on
   `bot_searxng_host:bot_searxng_port`.
 - The SearXNG compose stack is managed by `{{ bot_searxng_service_name }}`
   through systemd instead of a one-off `docker-compose up -d` task.
-- nginx serves `landing/` on `https://<bot_main_domain>/` and proxies
-  the Bun file-share UI on `https://<bot_app_domain>/`.
+- nginx serves the generated `landing/dist/` bundle for `bot_main_domain` over
+  origin HTTP and proxies the Bun file-share UI for `bot_app_domain`.
 - The embedded bot browser UI is built from the root workspace with
   `bun run web:build`; the bot service reads the generated `web/dist` files.
 - The bot gets `SEARXNG_API_BASE` and `AGENT_BROWSER_EXECUTABLE_PATH` through

@@ -14,7 +14,6 @@ bot_env_file: "{{ bot_env_dir }}/bot.env"
 bot_landing_dir: "{{ bot_app_dir }}/landing"
 bot_web_dist_dir: "{{ bot_app_dir }}/web/dist"
 bot_nginx_site_name: goodkiddo
-bot_acme_webroot: /var/www/letsencrypt
 bot_searxng_service_name: goodkiddo-searxng
 bot_searxng_dir: "{{ bot_app_dir }}/searxng"
 bot_searxng_env_file: "{{ bot_searxng_dir }}/.env"

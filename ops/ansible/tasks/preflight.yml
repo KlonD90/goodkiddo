@@ -17,7 +17,6 @@
       and secrets in ops/ansible/group_vars/goodkiddo_prod/20-secrets.vault.yml.
   loop:
     - bot_main_domain
-    - bot_letsencrypt_email
     - ai_type
     - ai_model_name
     - telegram_bot_token

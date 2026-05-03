@@ -24,7 +24,6 @@
 - name: Install runtime system packages
   ansible.builtin.apt:
     name:
-      - certbot
       - docker-compose
       - docker.io
       - nginx

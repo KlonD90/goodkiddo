@@ -5,7 +5,7 @@
     state: absent
   notify: reload nginx
 
-- name: Render HTTP-only nginx site for bootstrap and ACME
+- name: Render HTTP-only nginx site
   ansible.builtin.template:
     src: templates/nginx-goodkiddo-http.conf.j2
     dest: "/etc/nginx/sites-available/{{ bot_nginx_site_name }}.conf"
@@ -27,55 +27,3 @@
     name: nginx
     state: started
     enabled: true
-
-- name: Flush handlers before certificate issuance
-  ansible.builtin.meta: flush_handlers
-
-- name: Ensure Let's Encrypt deploy hook directory exists
-  ansible.builtin.file:
-    path: /etc/letsencrypt/renewal-hooks/deploy
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
-
-- name: Install nginx reload hook for certificate renewals
-  ansible.builtin.copy:
-    dest: /etc/letsencrypt/renewal-hooks/deploy/reload-nginx.sh
-    owner: root
-    group: root
-    mode: "0755"
-    content: |
-      #!/bin/sh
-      systemctl reload nginx
-
-- name: Request or renew Let's Encrypt certificate
-  ansible.builtin.command:
-    argv:
-      - certbot
-      - certonly
-      - --webroot
-      - -w
-      - "{{ bot_acme_webroot }}"
-      - --cert-name
-      - "{{ bot_main_domain }}"
-      - -d
-      - "{{ bot_main_domain }}"
-      - -d
-      - "{{ bot_app_domain }}"
-      - --email
-      - "{{ bot_letsencrypt_email }}"
-      - --agree-tos
-      - --non-interactive
-      - --keep-until-expiring
-  register: certbot_result
-  changed_when: false
-
-- name: Render HTTPS nginx site
-  ansible.builtin.template:
-    src: templates/nginx-goodkiddo-https.conf.j2
-    dest: "/etc/nginx/sites-available/{{ bot_nginx_site_name }}.conf"
-    owner: root
-    group: root
-    mode: "0644"
-  notify: reload nginx
