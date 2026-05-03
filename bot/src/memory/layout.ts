@@ -24,6 +24,8 @@ export const INDEX_HEADING = "## Index";
 
 // Hard cap for the memory block injected into the system prompt. ~4 chars/token
 // gives roughly 1500 tokens — fits comfortably alongside the identity prompt.
+// NOTE: 4 chars/token is an approximation; non-English text (especially CJK/Russian
+// characters) may encode at 2–3 chars/token, so actual token count varies.
 export const MEMORY_PROMPT_CHAR_CAP = 6000;
 
 // Lint thresholds (conservative defaults; tune once we have real sessions).
