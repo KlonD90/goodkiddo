@@ -16,7 +16,7 @@ The playbook provisions:
 - an HTTP-only nginx origin intended to sit behind Cloudflare Flexible SSL
 - the generated `landing/dist/` bundle served by nginx after running the
   landing `bun build` script
-- the `web/` bot UI bundle consumed by the bot service after running `bun run web:build`
+- the `web/` bot UI bundle served by nginx after running `bun run web:build`
 - a managed environment file at `/etc/goodkiddo/bot.env`
 - a systemd service that runs `bun src/bin/bot.ts` from `bot/`
 - optional Telegram image understanding through MiniMax MCP when
@@ -130,8 +130,10 @@ Vault file and installs `uvx` so the runtime can launch
   `bot_searxng_host:bot_searxng_port`.
 - The SearXNG compose stack is managed by `{{ bot_searxng_service_name }}`
   through systemd instead of a one-off `docker-compose up -d` task.
-- nginx serves the generated `landing/dist/` bundle for `bot_main_domain` over
-  origin HTTP and proxies the Bun file-share UI for `bot_app_domain`.
+- nginx serves the generated `landing/dist/` bundle for `bot_main_domain` and
+  the generated `web/dist` file-share UI under `/fs` for `bot_app_domain`.
+- `/api/fs/...` and `/_dl` are proxied to the Bun web server for authenticated
+  boot, browse, preview, and download operations.
 - Landing analytics are embedded at build time. Set `landing_posthog_key` and
   `landing_posthog_host` before provisioning so `bun run build` can inline the
   browser PostHog config into `landing/dist`.

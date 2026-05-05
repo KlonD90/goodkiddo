@@ -80,9 +80,10 @@ in [`ops/ansible/`](./ops/ansible/).
 
 That playbook installs Bun, provisions a local PostgreSQL database
 and role, builds the landing and embedded bot web UI as static files, serves
-the generated `landing/dist/` bundle through nginx as the public
-origin behind Cloudflare Flexible SSL for the main and `app.` hostnames,
-installs the local browser/search stack (`google-chrome-stable`,
+the generated `landing/dist/` bundle through nginx for the main hostname,
+serves the `app.` file-share UI bundle through nginx behind Cloudflare Flexible
+SSL, proxies file-share API and download routes to the Bun service, installs
+the local browser/search stack (`google-chrome-stable`,
 `agent-browser`, SearXNG), and runs the bot as a systemd service bound to
 localhost HTTP. It is now structured around separate inventory, non-secret
 vars, and Vault-backed secret vars so you do not need to edit production values
