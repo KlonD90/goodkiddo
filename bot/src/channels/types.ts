@@ -1,5 +1,6 @@
 import type { PdfExtractor } from "../capabilities/pdf/extractor";
 import type { CapabilityRegistry } from "../capabilities/registry";
+import type { RecentChatStore } from "../capabilities/fetch/recent_chat_store";
 import type { SpreadsheetParser } from "../capabilities/spreadsheet/parser";
 import type { SchedulerOptions } from "../capabilities/timers/scheduler";
 import type { TimerStore } from "../capabilities/timers/store";
@@ -21,6 +22,8 @@ export interface ChannelRunOptions {
 	pdfExtractor?: PdfExtractor;
 	spreadsheetParser?: SpreadsheetParser;
 	capabilityRegistry?: CapabilityRegistry;
+	recentChatStore?: RecentChatStore;
+	telegramBot?: import("grammy").Bot;
 	timerStore?: TimerStore;
 	timerScheduler?: {
 		start(store: TimerStore, options: SchedulerOptions): { stop(): void };

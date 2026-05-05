@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import type { Bot } from "grammy";
+import { RecentChatStore } from "../capabilities/fetch/recent_chat_store";
 import { NoOpPdfExtractor } from "../capabilities/pdf/extractor";
 import { NoOpSpreadsheetParser } from "../capabilities/spreadsheet/parser";
 import {
@@ -13,6 +14,8 @@ import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
 import { createStatusEmitter } from "../tools/status_emitter";
+import type { AppConfig } from "../config";
+import { createDb } from "../db";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
@@ -35,6 +38,7 @@ import {
 	renderTelegramHtml,
 	renderTelegramWelcomeMessage,
 	TELEGRAM_COMMANDS,
+	telegramChannel,
 	type TelegramAgentSession,
 	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
@@ -43,6 +47,62 @@ import {
 } from "./telegram";
 
 let store: PermissionsStore;
+
+type TelegramTextHandlerForTest = (ctx: {
+	chat: { id: number; type: string };
+	from?: {
+		id?: number;
+		username?: string;
+		first_name?: string;
+		language_code?: string;
+	};
+	message: {
+		message_id: number;
+		date: number;
+		text: string;
+		chat: { id: number; type: string };
+	};
+}) => Promise<void>;
+
+const TELEGRAM_TEST_CONFIG: AppConfig = {
+	aiApiKey: "test-key",
+	aiBaseUrl: "",
+	aiType: "openai",
+	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
+	appEntrypoint: "telegram",
+	telegramBotToken: "telegram-token",
+	telegramAllowedChatId: "",
+	usingMode: "single",
+	blockedUserMessage: "blocked",
+	maxContextWindowTokens: 150_000,
+	contextReserveSummaryTokens: 4_000,
+	contextReserveRecentTurnTokens: 8_000,
+	contextReserveNextTurnTokens: 8_000,
+	permissionsMode: "disabled",
+	databaseUrl: "sqlite://:memory:",
+	enableExecute: false,
+	enableVoiceMessages: true,
+	enablePdfDocuments: true,
+	enableSpreadsheets: true,
+	enableImageUnderstanding: false,
+	enableToolStatus: true,
+	enableAttachmentCompactionNotice: true,
+	enableBrowserOnParent: false,
+	enableTabular: true,
+	defaultStatusLocale: "en",
+	transcriptionProvider: "openai",
+	transcriptionApiKey: "test-key",
+	transcriptionBaseUrl: "",
+	minimaxApiKey: "",
+	minimaxApiHost: "https://api.minimax.io",
+	webHost: "127.0.0.1",
+	webPort: 8083,
+	webPublicBaseUrl: "http://localhost:8083",
+	timezone: "UTC",
+	recursionLimit: 60,
+};
 
 afterEach(() => {
 	store?.close();
@@ -644,6 +704,78 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(isTelegramPrivateChat(undefined)).toBe(false);
 		expect(isTelegramGroupChat(null)).toBe(false);
 		expect(isTelegramGroupChat({ type: "channel" })).toBe(false);
+	});
+
+	test("normal group text is recorded without queueing an agent reply", async () => {
+		const db = createDb("sqlite://:memory:");
+		const recentChatStore = new RecentChatStore({
+			db,
+			dialect: "sqlite",
+			now: () => 2_000,
+		});
+		const textHandlers = new Map<string, TelegramTextHandlerForTest>();
+		const fakeBot = {
+			api: {
+				setMyCommands: vi.fn().mockResolvedValue(undefined),
+				sendMessage: vi.fn().mockResolvedValue(undefined),
+				sendChatAction: vi.fn().mockResolvedValue(undefined),
+			},
+			on: vi.fn((event: string, handler: unknown) => {
+				if (event === "message:text") {
+					textHandlers.set(event, handler as TelegramTextHandlerForTest);
+				}
+			}),
+			catch: vi.fn(),
+			start: vi.fn().mockResolvedValue(undefined),
+		} as unknown as Bot;
+
+		await telegramChannel.run(TELEGRAM_TEST_CONFIG, {
+			db,
+			dialect: "sqlite",
+			recentChatStore,
+			telegramBot: fakeBot,
+			timerScheduler: {
+				start: () => ({ stop: () => {} }),
+			},
+		});
+
+		const handler = textHandlers.get("message:text");
+		expect(handler).toBeDefined();
+		const chat = { id: -100123, type: "supergroup" };
+		await handler?.({
+			chat,
+			from: {
+				id: 42,
+				username: "alice",
+				first_name: "Alice",
+				language_code: "en",
+			},
+			message: {
+				message_id: 777,
+				date: 1_800,
+				text: "  group chatter  ",
+				chat,
+			},
+		});
+
+		const messages = await recentChatStore.listRecentMessages(
+			"telegram:-100123",
+			{ limit: 10 },
+		);
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toMatchObject({
+			chatId: "-100123",
+			messageId: "777",
+			senderLabel: "@alice",
+			text: "group chatter",
+			kind: "group_text",
+			messageTimestamp: 1_800,
+			createdAt: 2_000,
+		});
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
 	});
 
 	test("renderTelegramWelcomeMessage explains how to start", () => {
