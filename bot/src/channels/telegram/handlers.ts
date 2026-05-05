@@ -31,6 +31,7 @@ import {
 	getTelegramCaller,
 	handleTelegramControlInput,
 	handleTelegramQueuedTurn,
+	isDirectTelegramAsk,
 	maybeHandleTelegramStartCommand,
 } from "./turn";
 import type { TelegramAgentSession } from "./types";
@@ -62,6 +63,17 @@ function telegramSenderLabel(sender: TelegramSenderLike | undefined): string | n
 		return sender.first_name.trim();
 	}
 	return sender.id === undefined ? null : `telegram:${sender.id}`;
+}
+
+function getTelegramBotUsername(bot: Bot, ctx: { me?: { username?: string } }): string | null {
+	const contextUsername = ctx.me?.username;
+	if (contextUsername && contextUsername.trim() !== "") {
+		return contextUsername;
+	}
+	const botInfo = (bot as unknown as { botInfo?: { username?: string } }).botInfo;
+	return botInfo?.username && botInfo.username.trim() !== ""
+		? botInfo.username
+		: null;
 }
 
 export const telegramChannel: AppChannel = {
@@ -250,7 +262,14 @@ export const telegramChannel: AppChannel = {
 				return;
 			}
 
-			if (isTelegramGroupChat(ctx.chat)) return;
+			let directText = text;
+			if (isTelegramGroupChat(ctx.chat)) {
+				const directAsk = isForwarded
+					? { isDirect: false, text }
+					: isDirectTelegramAsk(ctx.message, getTelegramBotUsername(bot, ctx));
+				if (!directAsk.isDirect) return;
+				directText = directAsk.text;
+			}
 
 			const resolved = await resolveContext(ctx);
 			if (!resolved) return;
@@ -265,15 +284,15 @@ export const telegramChannel: AppChannel = {
 
 			// commandText drives session/permission command detection — only from
 			// direct (non-forwarded) user text so forwarded slash commands never fire.
-			const commandText = isForwarded ? "" : text;
+			const commandText = isForwarded ? "" : directText;
 
 			// Agent-visible content: forwarded text lives inside the context block;
 			// replied-to content is a preamble before the user's current text.
 			const agentContent = isForwarded
 				? contextBlock
 				: contextBlock
-					? `${contextBlock}\n\n${text}`
-					: text;
+					? `${contextBlock}\n\n${directText}`
+					: directText;
 
 			await handleTelegramQueuedTurn(
 				resolved.session,
@@ -285,7 +304,7 @@ export const telegramChannel: AppChannel = {
 				store,
 				webShare,
 				// currentUserText for task-check: direct text only, never forwarded content
-				isForwarded ? undefined : text,
+				isForwarded ? undefined : directText,
 				undefined,
 				dateFromTelegramMessage(ctx.message.date),
 			);
