@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "scripts": {
-    "build": "bun build ./index.html --outdir ./dist --production"
+    "build": "bun build ./index.html --outdir ./dist --production --env=POSTHOG_*"
   },
   "dependencies": {
     "posthog-js": "^1",

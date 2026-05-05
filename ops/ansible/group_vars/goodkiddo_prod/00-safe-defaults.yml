@@ -42,6 +42,8 @@ bot_postgres_user: goodkiddo
 bot_database_url: ""
 
 bot_app_domain: ""
+landing_posthog_key: ""
+landing_posthog_host: https://us.i.posthog.com
 
 telegram_allowed_chat_id: ""
 blocked_user_message: Access not configured. Contact the admin.

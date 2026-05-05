@@ -132,6 +132,9 @@ Vault file and installs `uvx` so the runtime can launch
   through systemd instead of a one-off `docker-compose up -d` task.
 - nginx serves the generated `landing/dist/` bundle for `bot_main_domain` over
   origin HTTP and proxies the Bun file-share UI for `bot_app_domain`.
+- Landing analytics are embedded at build time. Set `landing_posthog_key` and
+  `landing_posthog_host` before provisioning so `bun run build` can inline the
+  browser PostHog config into `landing/dist`.
 - The embedded bot browser UI is built from the root workspace with
   `bun run web:build`; the bot service reads the generated `web/dist` files.
 - The bot gets `SEARXNG_API_BASE` and `AGENT_BROWSER_EXECUTABLE_PATH` through

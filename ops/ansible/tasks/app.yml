@@ -76,6 +76,8 @@
   environment:
     HOME: "{{ bot_home }}"
     PATH: "/usr/local/bin:/usr/bin:/bin"
+    POSTHOG_KEY: "{{ landing_posthog_key | default('') }}"
+    POSTHOG_HOST: "{{ landing_posthog_host | default('https://us.i.posthog.com') }}"
   become_user: "{{ bot_user }}"
   notify: restart bot service
 

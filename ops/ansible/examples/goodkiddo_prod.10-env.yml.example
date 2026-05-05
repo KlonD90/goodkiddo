@@ -5,6 +5,11 @@
 bot_main_domain: example.com
 bot_app_domain: "app.{{ bot_main_domain }}"
 
+# Browser-side PostHog project key for the public landing page.
+# This key is embedded into landing/dist at build time and is not a secret.
+landing_posthog_key: ""
+landing_posthog_host: https://us.i.posthog.com
+
 # Set this when Ansible should clone/update the repository on the host.
 # Leave empty when you place the checkout on the host yourself.
 bot_repo_url: ""
