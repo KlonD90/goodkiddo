@@ -2,11 +2,12 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import posthog from 'posthog-js';
 
-const env = typeof process !== 'undefined' ? process.env : {};
+const posthogKey = process.env.POSTHOG_KEY || '';
+const posthogHost = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
-if (env.POSTHOG_KEY) {
-  posthog.init(env.POSTHOG_KEY, {
-    api_host: env.POSTHOG_HOST,
+if (posthogKey) {
+  posthog.init(posthogKey, {
+    api_host: posthogHost,
     defaults: '2026-01-30',
   });
 }
