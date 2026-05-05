@@ -10,12 +10,12 @@ import {
 import type { TimerRecord } from "../capabilities/timers/store";
 import { TimerStore } from "../capabilities/timers/store";
 import { NoOpTranscriber } from "../capabilities/voice/transcriber";
+import type { AppConfig } from "../config";
+import { createDb } from "../db";
 import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
 import { createStatusEmitter } from "../tools/status_emitter";
-import type { AppConfig } from "../config";
-import { createDb } from "../db";
 import {
 	buildTelegramPhotoContent,
 	chunkRenderedTelegramMessages,
@@ -28,8 +28,8 @@ import {
 	getTelegramCaller,
 	handleTelegramControlInput,
 	handleTelegramQueuedTurn,
-	isTelegramGroupChat,
 	isDirectTelegramAsk,
+	isTelegramGroupChat,
 	isTelegramPrivateChat,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
@@ -41,15 +41,17 @@ import {
 	renderTelegramWelcomeMessage,
 	TELEGRAM_COMMANDS,
 	TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY,
-	telegramChannel,
 	type TelegramAgentSession,
 	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
+	telegramChannel,
 } from "./telegram";
 
 let store: PermissionsStore;
+
+type TelegramHandlerForTest = (ctx: never) => Promise<void>;
 
 type TelegramTextHandlerForTest = (ctx: {
 	chat: { id: number; type: string };
@@ -113,6 +115,50 @@ const TELEGRAM_TEST_CONFIG: AppConfig = {
 	timezone: "UTC",
 	recursionLimit: 60,
 };
+
+async function setupTelegramChannelForTest(options?: {
+	recentChatStore?: RecentChatStore;
+}) {
+	const db = createDb("sqlite://:memory:");
+	const recentChatStore =
+		options?.recentChatStore ??
+		new RecentChatStore({
+			db,
+			dialect: "sqlite",
+			now: () => 2_000,
+		});
+	const handlers = new Map<string, TelegramHandlerForTest>();
+	const sentMessages: Array<{ chatId: string; text: string }> = [];
+	const fakeBot = {
+		botInfo: { username: "bot_username" },
+		api: {
+			setMyCommands: vi.fn().mockResolvedValue(undefined),
+			sendMessage: vi
+				.fn()
+				.mockImplementation(async (chatId: string, text: string) => {
+					sentMessages.push({ chatId, text });
+				}),
+			sendChatAction: vi.fn().mockResolvedValue(undefined),
+		},
+		on: vi.fn((event: string, handler: unknown) => {
+			handlers.set(event, handler as TelegramHandlerForTest);
+		}),
+		catch: vi.fn(),
+		start: vi.fn().mockResolvedValue(undefined),
+	} as unknown as Bot;
+
+	await telegramChannel.run(TELEGRAM_TEST_CONFIG, {
+		db,
+		dialect: "sqlite",
+		recentChatStore,
+		telegramBot: fakeBot,
+		timerScheduler: {
+			start: () => ({ stop: () => {} }),
+		},
+	});
+
+	return { db, recentChatStore, handlers, fakeBot, sentMessages };
+}
 
 afterEach(() => {
 	store?.close();
@@ -774,39 +820,12 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 	});
 
 	test("normal group text is recorded without queueing an agent reply", async () => {
-		const db = createDb("sqlite://:memory:");
-		const recentChatStore = new RecentChatStore({
-			db,
-			dialect: "sqlite",
-			now: () => 2_000,
-		});
-		const textHandlers = new Map<string, TelegramTextHandlerForTest>();
-		const fakeBot = {
-			api: {
-				setMyCommands: vi.fn().mockResolvedValue(undefined),
-				sendMessage: vi.fn().mockResolvedValue(undefined),
-				sendChatAction: vi.fn().mockResolvedValue(undefined),
-			},
-			on: vi.fn((event: string, handler: unknown) => {
-				if (event === "message:text") {
-					textHandlers.set(event, handler as TelegramTextHandlerForTest);
-				}
-			}),
-			catch: vi.fn(),
-			start: vi.fn().mockResolvedValue(undefined),
-		} as unknown as Bot;
+		const { db, recentChatStore, handlers, fakeBot } =
+			await setupTelegramChannelForTest();
 
-		await telegramChannel.run(TELEGRAM_TEST_CONFIG, {
-			db,
-			dialect: "sqlite",
-			recentChatStore,
-			telegramBot: fakeBot,
-			timerScheduler: {
-				start: () => ({ stop: () => {} }),
-			},
-		});
-
-		const handler = textHandlers.get("message:text");
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
 		expect(handler).toBeDefined();
 		const chat = { id: -100123, type: "supergroup" };
 		await handler?.({
@@ -845,18 +864,181 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		await db.close();
 	});
 
+	test("group start command for another bot stays silent", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 778,
+				date: 1_801,
+				text: "/start@other_bot",
+				chat,
+			},
+		});
+
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("group direct ask continues when passive recent-chat storage fails", async () => {
+		const recentChatStore = {
+			recordMessage: vi.fn().mockRejectedValue(new Error("database locked")),
+		} as unknown as RecentChatStore;
+		const { db, handlers, sentMessages } = await setupTelegramChannelForTest({
+			recentChatStore,
+		});
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 779,
+				date: 1_802,
+				text: "/start",
+				chat,
+			},
+		});
+
+		expect(sentMessages).toHaveLength(1);
+		expect(sentMessages[0]?.text).toContain("Welcome.");
+
+		await db.close();
+	});
+
+	test("empty stripped group mention is recorded but does not queue a turn", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 780,
+				date: 1_803,
+				text: "@bot_username",
+				chat,
+			},
+		});
+
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("normal group media is ignored before downloading files", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const chat = { id: -100123, type: "supergroup" };
+
+		const photoGetFile = vi.fn().mockResolvedValue({ file_path: "photo.jpg" });
+		await handlers.get("message:photo")?.({
+			chat,
+			message: {
+				message_id: 781,
+				date: 1_804,
+				caption: "",
+				chat,
+				photo: [{ file_id: "photo-file" }],
+			},
+			getFile: photoGetFile,
+		} as never);
+
+		const voiceGetFile = vi.fn().mockResolvedValue({ file_path: "voice.ogg" });
+		await handlers.get("message:voice")?.({
+			chat,
+			message: {
+				message_id: 782,
+				date: 1_805,
+				caption: "",
+				chat,
+				voice: { file_size: 123 },
+			},
+			getFile: voiceGetFile,
+		} as never);
+
+		const documentGetFile = vi
+			.fn()
+			.mockResolvedValue({ file_path: "file.pdf" });
+		await handlers.get("message:document")?.({
+			chat,
+			message: {
+				message_id: 783,
+				date: 1_806,
+				caption: "",
+				chat,
+				document: {
+					file_name: "file.pdf",
+					mime_type: "application/pdf",
+					file_size: 123,
+				},
+			},
+			getFile: documentGetFile,
+		} as never);
+
+		expect(photoGetFile).not.toHaveBeenCalled();
+		expect(voiceGetFile).not.toHaveBeenCalled();
+		expect(documentGetFile).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("group document /fetch captions return placeholder without downloading", async () => {
+		const { db, handlers, fakeBot, sentMessages } =
+			await setupTelegramChannelForTest();
+		const chat = { id: -100123, type: "supergroup" };
+		const documentGetFile = vi
+			.fn()
+			.mockResolvedValue({ file_path: "file.pdf" });
+
+		await handlers.get("message:document")?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 784,
+				date: 1_807,
+				caption: "/fetch@bot_username",
+				chat,
+				document: {
+					file_name: "file.pdf",
+					mime_type: "application/pdf",
+					file_size: 123,
+				},
+			},
+			getFile: documentGetFile,
+		} as never);
+
+		expect(documentGetFile).not.toHaveBeenCalled();
+		expect(sentMessages).toEqual([
+			{ chatId: "-100123", text: TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY },
+		]);
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
 	test("isDirectTelegramAsk treats GoodKiddo prefixes as direct and strips them", () => {
 		expect(
-			isDirectTelegramAsk(
-				{ text: "GoodKiddo, summarize this" },
-				"kiddo_bot",
-			),
+			isDirectTelegramAsk({ text: "GoodKiddo, summarize this" }, "kiddo_bot"),
 		).toEqual({ isDirect: true, text: "summarize this" });
 		expect(
-			isDirectTelegramAsk(
-				{ text: "Good Kiddo: summarize this" },
-				"kiddo_bot",
-			),
+			isDirectTelegramAsk({ text: "Good Kiddo: summarize this" }, "kiddo_bot"),
 		).toEqual({ isDirect: true, text: "summarize this" });
 		expect(
 			isDirectTelegramAsk({ text: "Kiddo, summarize this" }, "kiddo_bot"),
@@ -909,6 +1091,32 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			isDirect: false,
 			text: "/help@other_bot",
 		});
+		expect(isDirectTelegramAsk({ text: "/help@other_bot" }, null)).toEqual({
+			isDirect: false,
+			text: "/help@other_bot",
+		});
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "other_bot" },
+					},
+				},
+				"bot_username",
+			),
+		).toEqual({ isDirect: false, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "bot_username" },
+					},
+				},
+				null,
+			),
+		).toEqual({ isDirect: false, text: "summarize this" });
 		expect(isDirectTelegramAsk({ text: "/unknown" }, "bot_username")).toEqual({
 			isDirect: false,
 			text: "/unknown",

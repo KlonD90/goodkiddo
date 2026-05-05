@@ -1,16 +1,17 @@
-import { type Bot, InlineKeyboard } from "grammy";
+import type { Bot } from "grammy";
 import { trackBotStarted, trackUserCreated } from "../../analytics";
 import { createLogger } from "../../logger";
 import { readThreadMessages } from "../../memory/rotate_thread";
-import type {
-	ApprovalOutcome,
-	ApprovalRequest,
-} from "../../permissions/approval";
-import { persistAlwaysRule } from "../../permissions/approval";
-import { maybeHandleCommand } from "../../permissions/commands";
+import {
+	maybeHandleCommand,
+	PERMISSION_COMMAND_NAMES,
+} from "../../permissions/commands";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
-import { maybeHandleSessionCommand } from "../session_commands";
+import {
+	maybeHandleSessionCommand,
+	SESSION_COMMAND_NAMES,
+} from "../session_commands";
 import {
 	clearPendingTaskCheckContext,
 	extractAgentReply,
@@ -36,12 +37,11 @@ import type {
 	TelegramUserInput,
 } from "./types";
 import {
-	APPROVAL_TIMEOUT_MS,
 	TELEGRAM_COMMANDS,
 	TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS,
 } from "./types";
 
-const log = createLogger("telegram");
+const _log = createLogger("telegram");
 
 // --- Agent reply extraction ---
 
@@ -149,6 +149,7 @@ export function isTelegramStartCommand(text: string): boolean {
 
 type TelegramDirectAskMessageLike = {
 	text?: string;
+	caption?: string;
 	reply_to_message?: {
 		from?: {
 			is_bot?: boolean;
@@ -162,8 +163,7 @@ export type TelegramDirectAskResult = {
 	text: string;
 };
 
-const GOODKIDDO_PREFIX_PATTERN =
-	/^\s*(?:good\s*kiddo|kiddo)\s*[,:\-]\s*/i;
+const GOODKIDDO_PREFIX_PATTERN = /^\s*(?:good\s*kiddo|kiddo)\s*[,:-]\s*/i;
 
 function normalizeTelegramBotUsername(
 	botUsername: string | null | undefined,
@@ -185,7 +185,10 @@ function stripLeadingTelegramBotMention(
 	return { matched: stripped !== text, text: stripped.trim() };
 }
 
-function mentionsTelegramBot(text: string, botUsername: string | null): boolean {
+function mentionsTelegramBot(
+	text: string,
+	botUsername: string | null,
+): boolean {
 	if (!botUsername) return false;
 	const pattern = new RegExp(`(^|\\s)@${escapeRegExp(botUsername)}\\b`, "i");
 	return pattern.test(text);
@@ -201,9 +204,15 @@ function isReplyToTelegramBot(
 ): boolean {
 	const repliedFrom = message.reply_to_message?.from;
 	if (!repliedFrom?.is_bot) return false;
-	if (!botUsername) return true;
+	if (!botUsername) return false;
 	return repliedFrom.username?.trim().toLowerCase() === botUsername;
 }
+
+const TELEGRAM_DIRECT_COMMAND_NAMES = new Set([
+	...TELEGRAM_COMMANDS.map(({ command }) => command),
+	...PERMISSION_COMMAND_NAMES,
+	...SESSION_COMMAND_NAMES,
+]);
 
 function isSupportedTelegramSlashCommand(
 	text: string,
@@ -216,30 +225,19 @@ function isSupportedTelegramSlashCommand(
 		firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)
 	).slice(1);
 	const commandTarget = rawCommand.split("@", 2)[1]?.toLowerCase();
-	if (commandTarget && botUsername && commandTarget !== botUsername) {
+	if (commandTarget && commandTarget !== botUsername) {
 		return false;
 	}
 	const command = extractTelegramCommandName(text);
 	if (!command) return false;
-	return new Set([
-		...TELEGRAM_COMMANDS.map(({ command: knownCommand }) => knownCommand),
-		"policy",
-		"reset",
-		"allow",
-		"deny",
-		"ask",
-		"identity",
-		"new-thread",
-		"open-fs",
-		"revoke-fs",
-	]).has(command);
+	return TELEGRAM_DIRECT_COMMAND_NAMES.has(command);
 }
 
 export function isDirectTelegramAsk(
 	message: TelegramDirectAskMessageLike,
 	botUsername?: string | null,
 ): TelegramDirectAskResult {
-	const text = message.text?.trim() ?? "";
+	const text = (message.text ?? message.caption ?? "").trim();
 	const normalizedBotUsername = normalizeTelegramBotUsername(botUsername);
 
 	if (isSupportedTelegramSlashCommand(text, normalizedBotUsername)) {
@@ -322,7 +320,7 @@ export async function getTelegramCaller(
 
 // --- Approval ---
 
-function summarizeArgs(args: unknown): string {
+function _summarizeArgs(args: unknown): string {
 	try {
 		const json = JSON.stringify(args);
 		if (json.length <= 180) return json;
@@ -665,30 +663,27 @@ function mergeContent(
 	}
 
 	if (typeof base === "string" && typeof incoming === "string") {
-		return { success: true, merged: base + "\n" + incoming };
+		return { success: true, merged: `${base}\n${incoming}` };
 	}
 
 	if (typeof base === "string" && Array.isArray(incoming)) {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			{ type: "text", text: base },
-			...incoming,
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [{ type: "text", text: base }, ...incoming];
 		return { success: true, merged: combined };
 	}
 
 	if (Array.isArray(base) && typeof incoming === "string") {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			...base,
-			{ type: "text", text: incoming },
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [...base, { type: "text", text: incoming }];
 		return { success: true, merged: combined };
 	}
 
 	if (Array.isArray(base) && Array.isArray(incoming)) {
-		const combined: Array<TelegramTextContentBlock | TelegramImageContentBlock> = [
-			...base,
-			...incoming,
-		];
+		const combined: Array<
+			TelegramTextContentBlock | TelegramImageContentBlock
+		> = [...base, ...incoming];
 		return { success: true, merged: combined };
 	}
 
@@ -712,7 +707,8 @@ function tryMergeQueuedTurns(
 		return { success: false };
 	}
 
-	const baseText = base.currentUserText ?? extractTextFromUserInput(base.content);
+	const baseText =
+		base.currentUserText ?? extractTextFromUserInput(base.content);
 	const incomingText =
 		incoming.currentUserText ?? extractTextFromUserInput(incoming.content);
 
@@ -721,8 +717,9 @@ function tryMergeQueuedTurns(
 		merged: {
 			content: contentMerge.merged,
 			commandText: "",
-			currentUserText: baseText + (incomingText ? "\n" + incomingText : ""),
-			currentMessageDate: base.currentMessageDate ?? incoming.currentMessageDate,
+			currentUserText: baseText + (incomingText ? `\n${incomingText}` : ""),
+			currentMessageDate:
+				base.currentMessageDate ?? incoming.currentMessageDate,
 			attachmentBudget: base.attachmentBudget ?? incoming.attachmentBudget,
 		},
 	};

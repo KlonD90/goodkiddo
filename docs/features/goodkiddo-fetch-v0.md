@@ -66,7 +66,7 @@ In a Telegram group, GoodKiddo should be quiet by default.
 
 It should not reply to every normal business message. It should answer when directly addressed by mention, reply, supported command, or clear GoodKiddo prefix.
 
-Quiet does not mean dumb. Normal chat can become context for later Fetch behavior when storage is implemented.
+Quiet does not mean dumb. Normal group chat is captured as recent context for later Fetch behavior.
 
 ## Scheduled habit
 
