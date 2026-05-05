@@ -48,19 +48,32 @@ Build:
 
 Plan: [`goodkiddo-slice-1-quiet-group-watcher.md`](./goodkiddo-slice-1-quiet-group-watcher.md)
 
-### Slice 2: Manual Fetch surfaces
+### Slice 2a: Fetch Card renderer
 
-Product pieces: Fetch, smart out of the box, useful before asking, small artifact.
+Product pieces: Fetch, small artifact, no dangerous hands.
 
-Goal: make the doggo’s existing intelligence easy to call before scheduler/profile work.
+Goal: create one deterministic Fetch Card output shape before adding new Telegram behavior.
 
 Build:
 
-- `/fetch` command;
-- mention/reply-based Fetch in groups;
-- forwarded-case/direct-ask handling using recent context where available;
-- Fetch Card renderer with compact output contract;
-- one blocker question max when critical info is missing.
+- `formatFetchCard` helper;
+- tests for normal card, `Missing: none`, multiline body, and no approval/action wording;
+- no `/fetch` command, group routing, recent-context lookup, scheduler, profile, dashboard, or loop forms.
+
+Plan: [`goodkiddo-slice-2a-fetch-card-renderer.md`](./goodkiddo-slice-2a-fetch-card-renderer.md)
+
+### Slice 2b: Manual `/fetch` command
+
+Product pieces: Fetch, smart out of the box, useful before asking, Telegram-native.
+
+Goal: make the formatter callable from a tiny manual surface.
+
+Build later:
+
+- `/fetch` with direct text in DM;
+- one Fetch Card through the existing agent flow;
+- one blocker question max when critical info is missing;
+- no group/recent-context behavior until a later slice.
 
 ### Slice 3: Better business nose
 
