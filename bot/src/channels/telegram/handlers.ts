@@ -1,4 +1,5 @@
 import { Bot } from "grammy";
+import { RecentChatStore } from "../../capabilities/fetch/recent_chat_store";
 import { createCapabilityRegistry } from "../../capabilities/registry";
 import { startScheduler } from "../../capabilities/timers/scheduler";
 import type { TimerRecord } from "../../capabilities/timers/store";
@@ -8,10 +9,12 @@ import type { AppConfig } from "../../config";
 import { createDb, detectDialect } from "../../db/index";
 import { resolveLocale } from "../../i18n/locale";
 import { createLogger } from "../../logger";
+import { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
 import { createStatusEmitter } from "../../tools/status_emitter";
 import { fileDataToString } from "../../utils/filesystem";
 import type { AppChannel, ChannelRunOptions } from "../types";
+import { buildInvokeMessages, extractTextFromContent } from "../shared";
 import {
 	extractTelegramMessageContext,
 	renderTelegramContextBlock,
@@ -33,6 +36,7 @@ import {
 import type { TelegramAgentSession } from "./types";
 import {
 	dateFromTelegramMessage,
+	isTelegramGroupChat,
 	normalizeTelegramCommandText,
 	TELEGRAM_COMMANDS,
 } from "./types";
@@ -43,6 +47,23 @@ async function syncTelegramCommands(bot: Bot): Promise<void> {
 	await bot.api.setMyCommands([...TELEGRAM_COMMANDS]);
 }
 
+type TelegramSenderLike = {
+	id?: number;
+	username?: string;
+	first_name?: string;
+};
+
+function telegramSenderLabel(sender: TelegramSenderLike | undefined): string | null {
+	if (!sender) return null;
+	if (sender.username && sender.username.trim() !== "") {
+		return `@${sender.username.trim()}`;
+	}
+	if (sender.first_name && sender.first_name.trim() !== "") {
+		return sender.first_name.trim();
+	}
+	return sender.id === undefined ? null : `telegram:${sender.id}`;
+}
+
 export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
@@ -50,9 +71,11 @@ export const telegramChannel: AppChannel = {
 		const db = options?.db ?? createDb(config.databaseUrl);
 		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
 		const store = new PermissionsStore({ db, dialect });
+		const recentChatStore =
+			options?.recentChatStore ?? new RecentChatStore({ db, dialect });
 		const timerStore = options?.timerStore ?? new TimerStore({ db, dialect });
 		const sessions = new Map<string, TelegramAgentSession>();
-		const bot = new Bot(config.telegramBotToken);
+		const bot = options?.telegramBot ?? new Bot(config.telegramBotToken);
 		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
 			const telegramPrefix = "telegram:";
 			if (!callerId.startsWith(telegramPrefix)) return null;
@@ -199,17 +222,42 @@ export const telegramChannel: AppChannel = {
 			// Skip empty non-forwarded messages (existing behavior)
 			if (text === "" && !isForwarded) return;
 
-			const resolved = await resolveContext(ctx);
-			if (!resolved) return;
+			const chatIdString = String(ctx.chat.id);
+			const result = await getTelegramCaller(store, chatIdString);
+			if (!result) {
+				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
+				return;
+			}
+			const { caller, isNew } = result;
+
+			if (isTelegramGroupChat(ctx.chat) && text !== "") {
+				await recentChatStore.recordMessage({
+					callerId: caller.id,
+					chatId: chatIdString,
+					messageId: ctx.message.message_id,
+					senderLabel: telegramSenderLabel(ctx.from),
+					text,
+					kind: "group_text",
+					messageTimestamp: ctx.message.date ?? null,
+				});
+			}
 
 			// /start is always direct — never from a forwarded message
-			if (!isForwarded && await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text, resolved.isNew)) {
+			if (
+				!isForwarded &&
+				await maybeHandleTelegramStartCommand(bot, chatIdString, text, isNew)
+			) {
 				return;
 			}
 
+			if (isTelegramGroupChat(ctx.chat)) return;
+
+			const resolved = await resolveContext(ctx);
+			if (!resolved) return;
+
 			log.info("text message received", {
 				chatId: resolved.chatIdString,
-				callerId: resolved.caller.id,
+				callerId: caller.id,
 				length: text.length,
 				isForwarded,
 				hasReplyContext: msgCtx.reply !== undefined,
@@ -233,7 +281,7 @@ export const telegramChannel: AppChannel = {
 				resolved.chatIdString,
 				commandText,
 				agentContent,
-				resolved.caller,
+				caller,
 				store,
 				webShare,
 				// currentUserText for task-check: direct text only, never forwarded content
@@ -616,6 +664,3 @@ export const telegramChannel: AppChannel = {
 		}
 	},
 };
-
-import { PermissionsStore } from "../../permissions/store";
-import { buildInvokeMessages, extractTextFromContent } from "../shared";

@@ -240,6 +240,17 @@ Relevant files:
 - `src/bin/admin.ts` — admin CLI `add-user` and `list-users` commands
 - `src/permissions/store.ts` — `createUserFree`, `upsertUserPaid`, `upgradeToPaid` methods
 
+## Telegram Group Presence
+
+Telegram group and supergroup text messages are passive by default. Non-empty group text is recorded in `fetch_recent_chat_messages` with the chat id, Telegram message id, safe sender label, message text, and Telegram message timestamp, then normal group chatter exits before an agent turn is queued.
+
+Private chats keep the existing direct conversation behavior. Forwarded slash-command safety is unchanged: forwarded text is context/source material only and never becomes command text.
+
+Relevant files:
+- `src/channels/telegram/handlers.ts` — records passive group text and skips passive group turns
+- `src/channels/telegram/types.ts` — chat-type helpers for private vs group/supergroup detection
+- `src/capabilities/fetch/recent_chat_store.ts` — SQL-backed recent group text storage
+
 ## Telegram How-To
 
 Relevant files:
