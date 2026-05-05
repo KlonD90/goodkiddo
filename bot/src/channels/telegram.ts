@@ -58,12 +58,14 @@ export {
 	extractTelegramReplyFromAgentState,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	handleTelegramControlInput,
 	handleTelegramQueuedTurn,
 	isDirectTelegramAsk,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
 	renderTelegramWelcomeMessage,
+	TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY,
 } from "./telegram/turn";
 export type {
 	MarkdownTableBlock,

@@ -26,6 +26,7 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	handleTelegramControlInput,
 	handleTelegramQueuedTurn,
 	isTelegramGroupChat,
 	isDirectTelegramAsk,
@@ -39,6 +40,7 @@ import {
 	renderTelegramHtml,
 	renderTelegramWelcomeMessage,
 	TELEGRAM_COMMANDS,
+	TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY,
 	telegramChannel,
 	type TelegramAgentSession,
 	TelegramOutboundChannel,
@@ -691,6 +693,63 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			command: "start",
 			description: "Show how to start using the assistant",
 		});
+	});
+
+	test("TELEGRAM_COMMANDS reserves /fetch for the command menu", () => {
+		expect(TELEGRAM_COMMANDS).toContainEqual({
+			command: "fetch",
+			description: "Morning Fetch is reserved for later",
+		});
+	});
+
+	test("/fetch returns reserved placeholder without queueing agent behavior", async () => {
+		const db = createDb("sqlite://:memory:");
+		const commandStore = new PermissionsStore({ db, dialect: "sqlite" });
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+		const session: TelegramAgentSession = {
+			agent: {} as never,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+		};
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+
+		const handled = await handleTelegramControlInput(
+			session,
+			mockBot,
+			"123",
+			"/fetch@bot_username",
+			caller,
+			commandStore,
+			undefined,
+		);
+
+		expect(handled).toBe(true);
+		expect(sentMessages).toEqual([
+			{ chatId: "123", text: TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY },
+		]);
+		expect(session.queue).toEqual([]);
+
+		await commandStore.close();
+		await db.close();
 	});
 
 	test("Telegram chat helpers identify private chats", () => {

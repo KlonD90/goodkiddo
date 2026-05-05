@@ -177,6 +177,10 @@ direct ask:
 - a `GoodKiddo,`, `Good Kiddo,`, or `Kiddo,` prefix, with the prefix stripped
 - a reply to a previous message from this bot
 
+`/fetch` is reserved in the Telegram command menu for later Morning Fetch work.
+For now it returns a short not-implemented placeholder and does not run a Fetch
+generator.
+
 Forwarded text remains context-only and never triggers slash commands or approval
 replies, even if the forwarded text contains a command or mention.
 
