@@ -9,7 +9,7 @@ Source root for the harness.
 - `app.ts` — caller-aware agent factory (per-user FS + permissions guard)
 - `config.ts` — env + wizard config resolver
 - `permissions/` — multi-tenant permissions (DB-backed, allow/ask/deny)
-- `server/` — HTTP routes and browser virtual filesystem explorer; text previews are transported as base64 bytes and decoded as UTF-8 in the `web/` workspace frontend served from `web/dist`
+- `server/` — HTTP routes and browser virtual filesystem explorer; the bot web server serves `web/dist` under `/fs/`, text previews are transported as base64 bytes and decoded as UTF-8 in the `web/` workspace frontend, and `stat` resolves slashless existing directory paths so markdown links like `/reports` can open `/reports/`
 - `tools/` — LangChain tools (FS + sandbox execution)
 - `memory/` — per-caller memory wiki (notes, skills, log)
 - `tasks/` — SQL-backed active task storage, prompt snapshots, and boundary reconciliation helpers

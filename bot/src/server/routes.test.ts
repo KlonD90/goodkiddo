@@ -50,9 +50,7 @@ describe("GET /_boot", () => {
 		await seedWorkspace("u1");
 		const grant = await access.issue("u1");
 		const res = await handler(
-			new Request(
-				`http://localhost/_boot?uuid=${grant.linkUuid}&path=/`,
-			),
+			new Request(`http://localhost/_boot?uuid=${grant.linkUuid}&path=/`),
 		);
 		expect(res.status).toBe(200);
 		const boot = (await res.json()) as {
@@ -91,9 +89,7 @@ describe("GET /_boot", () => {
 			scopeKind: "dir",
 		});
 		const res = await handler(
-			new Request(
-				`http://localhost/_boot?uuid=${grant.linkUuid}&path=/other/`,
-			),
+			new Request(`http://localhost/_boot?uuid=${grant.linkUuid}&path=/other/`),
 		);
 		expect(res.status).toBe(404);
 		cleanup();
@@ -125,6 +121,35 @@ describe("GET /_boot", () => {
 			new Request("http://localhost/_boot", { method: "POST" }),
 		);
 		expect(res.status).toBe(405);
+		cleanup();
+	});
+});
+
+describe("GET /fs", () => {
+	test("serves the file browser shell from the bot web server", async () => {
+		const { handler, cleanup } = createHarness();
+		const res = await handler(new Request("http://localhost/fs/?uuid=demo"));
+		expect(res.status).toBe(200);
+		expect(res.headers.get("content-type")).toContain("text/html");
+		const html = await res.text();
+		expect(html).toContain("<html");
+		cleanup();
+	});
+
+	test("redirects slashless /fs while preserving query params", async () => {
+		const { handler, cleanup } = createHarness();
+		const res = await handler(new Request("http://localhost/fs?uuid=demo"));
+		expect(res.status).toBe(308);
+		expect(res.headers.get("location")).toBe("/fs/?uuid=demo");
+		cleanup();
+	});
+
+	test("does not serve files outside web dist", async () => {
+		const { handler, cleanup } = createHarness();
+		const res = await handler(
+			new Request("http://localhost/fs/%2e%2e/package.json"),
+		);
+		expect(res.status).toBe(404);
 		cleanup();
 	});
 });
@@ -316,6 +341,32 @@ describe("POST /api/fs/*", () => {
 		expect(res.status).toBe(404);
 		cleanup();
 	});
+
+	test("stat resolves an existing directory without a trailing slash", async () => {
+		const { access, handler, seedWorkspace, cleanup } = createHarness();
+		await seedWorkspace("u1");
+		const grant = await access.issue("u1");
+		const res = await handler(
+			new Request("http://localhost/api/fs/stat", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					authorization: `Bearer ${grant.bearerToken}`,
+				},
+				body: JSON.stringify({ path: "/reports" }),
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as {
+			path: string;
+			is_dir: boolean;
+			child_count: number;
+		};
+		expect(body.path).toBe("/reports/");
+		expect(body.is_dir).toBe(true);
+		expect(body.child_count).toBe(2);
+		cleanup();
+	});
 });
 
 describe("GET /_dl", () => {
@@ -340,7 +391,7 @@ describe("GET /_dl", () => {
 		const { access, handler, seedWorkspace, cleanup } = createHarness();
 		await seedWorkspace("u1");
 		const grantA = await access.issue("u1");
-		const grantB = await access.issue("u1");
+		const _grantB = await access.issue("u1");
 		const crossRes = await handler(
 			new Request(
 				`http://localhost/_dl?uuid=${grantA.linkUuid}&path=/reports/q1.md`,
@@ -349,9 +400,7 @@ describe("GET /_dl", () => {
 		expect(crossRes.status).toBe(200);
 
 		const junkRes = await handler(
-			new Request(
-				"http://localhost/_dl?uuid=wrong-uuid&path=/reports/q1.md",
-			),
+			new Request("http://localhost/_dl?uuid=wrong-uuid&path=/reports/q1.md"),
 		);
 		expect(junkRes.status).toBe(401);
 		cleanup();

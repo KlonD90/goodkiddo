@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { dirname, extname, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { normalizePath, SqliteStateBackend } from "../backends";
 import { detectMimeType } from "../utils/filesystem";
 import {
@@ -20,6 +23,12 @@ export type WebHandler = (request: Request) => Promise<Response>;
 const DOWNLOAD_COOKIE_NAME = "fs_session";
 const PREVIEW_MAX_BYTES = 10 * 1024 * 1024;
 const DOWNLOAD_MAX_BYTES = 50 * 1024 * 1024;
+const here = dirname(fileURLToPath(import.meta.url));
+const WEB_DIST_CANDIDATES = [
+	resolve(process.cwd(), "web", "dist"),
+	resolve(process.cwd(), "..", "web", "dist"),
+	resolve(here, "..", "..", "..", "web", "dist"),
+];
 
 function jsonResponse(
 	body: unknown,
@@ -35,6 +44,83 @@ function jsonResponse(
 
 function errorResponse(code: string, status: number): Response {
 	return jsonResponse({ error: code }, status);
+}
+
+function isPathInside(parent: string, child: string): boolean {
+	const rel = relative(parent, child);
+	return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
+}
+
+function fsFrontendFallback(): Response {
+	return new Response(
+		[
+			"<!doctype html>",
+			'<html lang="en">',
+			"<head>",
+			'<meta charset="utf-8">',
+			'<meta name="viewport" content="width=device-width, initial-scale=1">',
+			"<title>Workspace</title>",
+			"</head>",
+			'<body style="margin:0;background:#f7f6f3;color:#9f2f2d;font-family:sans-serif">',
+			'<div style="padding:24px">Frontend bundle unavailable. Run <code>bun run web:build</code> from the repository root.</div>',
+			"</body>",
+			"</html>",
+		].join(""),
+		{
+			status: 200,
+			headers: {
+				"content-type": "text/html; charset=utf-8",
+				"cache-control": "no-store",
+			},
+		},
+	);
+}
+
+function resolveFrontendPath(pathname: string): string | null {
+	if (pathname === "/fs/" || pathname === "/fs/index.html") return "index.html";
+	if (!pathname.startsWith("/fs/")) return null;
+	try {
+		const relativePath = decodeURIComponent(pathname.slice("/fs/".length));
+		if (relativePath === "" || relativePath.includes("\0")) return null;
+		return relativePath;
+	} catch {
+		return null;
+	}
+}
+
+function staticContentType(filePath: string): string {
+	const mime = detectMimeType(filePath) ?? "application/octet-stream";
+	return mime.startsWith("text/") ? `${mime}; charset=utf-8` : mime;
+}
+
+async function handleFsFrontend(
+	pathname: string,
+	search: string,
+): Promise<Response | null> {
+	if (pathname === "/fs") {
+		return Response.redirect(`/fs/${search}`, 308);
+	}
+
+	const relativePath = resolveFrontendPath(pathname);
+	if (!relativePath) return null;
+
+	for (const distDir of WEB_DIST_CANDIDATES) {
+		const filePath = resolve(distDir, relativePath);
+		if (!isPathInside(distDir, filePath) || !existsSync(filePath)) continue;
+		const ext = extname(filePath);
+		const isAsset = ext === ".js" || ext === ".css";
+		return new Response(Bun.file(filePath).stream(), {
+			headers: {
+				"content-type": staticContentType(filePath),
+				"cache-control": isAsset
+					? "public, max-age=31536000, immutable"
+					: "no-store",
+			},
+		});
+	}
+
+	if (relativePath === "index.html") return fsFrontendFallback();
+	return null;
 }
 
 function buildDownloadCookie(
@@ -212,14 +298,15 @@ async function handleApi(
 	}
 
 	if (route === "stat") {
-		const kind: "file" | "dir" = inferRequestedPathKind(rawPath);
-		const normalized = tryNormalizeRequestedPath(rawPath, kind);
-		if (!normalized) return errorResponse("invalid_path", 400);
-		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
-			return errorResponse("out_of_scope", 403);
-		}
 		const workspace = openWorkspace(db, dialect, grant.userId);
-		if (kind === "dir") {
+		const dirRequested = inferRequestedPathKind(rawPath) === "dir";
+
+		if (dirRequested) {
+			const normalized = tryNormalizeRequestedPath(rawPath, "dir");
+			if (!normalized) return errorResponse("invalid_path", 400);
+			if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
+				return errorResponse("out_of_scope", 403);
+			}
 			const entries = await workspace.lsInfo(normalized);
 			return jsonResponse({
 				path: normalized,
@@ -229,17 +316,41 @@ async function handleApi(
 				child_count: entries.length,
 			});
 		}
-		const [download] = await workspace.downloadFiles([normalized]);
-		if (!download || download.error === "file_not_found") {
+
+		const filePath = tryNormalizeRequestedPath(rawPath, "file");
+		if (!filePath) return errorResponse("invalid_path", 400);
+		if (!withinScope(filePath, grant.scopePath, grant.scopeKind)) {
+			return errorResponse("out_of_scope", 403);
+		}
+		const [download] = await workspace.downloadFiles([filePath]);
+		if (download && !download.error) {
+			const size = download.content?.length ?? 0;
+			return jsonResponse({
+				path: filePath,
+				is_dir: false,
+				size,
+				mime: detectMimeType(filePath),
+			});
+		}
+		if (download?.error && download.error !== "file_not_found") {
+			return errorResponse(download.error, 400);
+		}
+
+		const dirPath = tryNormalizeRequestedPath(rawPath, "dir");
+		if (!dirPath) return errorResponse("file_not_found", 404);
+		if (!withinScope(dirPath, grant.scopePath, grant.scopeKind)) {
+			return errorResponse("out_of_scope", 403);
+		}
+		const entries = await workspace.lsInfo(dirPath);
+		if (entries.length === 0 && dirPath !== grant.scopePath) {
 			return errorResponse("file_not_found", 404);
 		}
-		if (download.error) return errorResponse(download.error, 400);
-		const size = download.content?.length ?? 0;
 		return jsonResponse({
-			path: normalized,
-			is_dir: false,
-			size,
-			mime: detectMimeType(normalized),
+			path: dirPath,
+			is_dir: true,
+			size: 0,
+			modified_at: "",
+			child_count: entries.length,
 		});
 	}
 
@@ -291,7 +402,9 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			if (request.method !== "GET") {
 				return errorResponse("method_not_allowed", 405);
 			}
-			const grant = await access.resolveLink(url.searchParams.get("uuid") ?? "");
+			const grant = await access.resolveLink(
+				url.searchParams.get("uuid") ?? "",
+			);
 			if (!grant) return errorResponse("not_found", 404);
 			const deepPath = url.searchParams.get("path") ?? "";
 			return handleBoot(grant, deepPath);
@@ -311,6 +424,9 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			if (!grant) return new Response("Unauthorized", { status: 401 });
 			return handleDownload(request, grant, db, dialect);
 		}
+
+		const frontend = await handleFsFrontend(pathname, url.search);
+		if (frontend) return frontend;
 
 		return new Response("Not found", { status: 404 });
 	};
