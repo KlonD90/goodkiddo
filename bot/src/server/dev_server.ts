@@ -32,14 +32,22 @@ async function serveStatic(pathname: string): Promise<Response | null> {
 	if (pathname === "/" || pathname === "") {
 		pathname = "/index.html";
 	}
+	if (
+		pathname === "/fs" ||
+		pathname === "/fs/" ||
+		pathname === "/fs/index.html"
+	) {
+		pathname = "/index.html";
+	} else if (pathname.startsWith("/fs/")) {
+		pathname = pathname.slice("/fs".length);
+	}
 	const filePath = join(WEB_DIST, pathname);
 	if (!existsSync(filePath)) return null;
 	const file = Bun.file(filePath);
 	if (!(await file.exists())) return null;
 	const ext = extname(pathname);
 	const isAsset =
-		[".js", ".css"].includes(ext) ||
-		/^[a-f0-9]+\.js$/.test(pathname);
+		[".js", ".css"].includes(ext) || /^[a-f0-9]+\.js$/.test(pathname);
 	return new Response(file.stream(), {
 		headers: {
 			"content-type": mimeFor(pathname),
@@ -83,8 +91,7 @@ export async function startDevServer(port: number): Promise<{
 				} catch (error) {
 					log.error("proxy error", {
 						url: upstreamUrl,
-						error:
-							error instanceof Error ? error.message : String(error),
+						error: error instanceof Error ? error.message : String(error),
 					});
 					return new Response("Service unavailable", { status: 503 });
 				}
