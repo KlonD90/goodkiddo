@@ -140,6 +140,22 @@ export function dateFromTelegramMessage(
 	return new Date(messageDate * 1000);
 }
 
+export type TelegramChatLike = {
+	type?: string;
+};
+
+export function isTelegramPrivateChat(
+	chat: TelegramChatLike | null | undefined,
+): boolean {
+	return chat?.type === "private";
+}
+
+export function isTelegramGroupChat(
+	chat: TelegramChatLike | null | undefined,
+): boolean {
+	return chat?.type === "group" || chat?.type === "supergroup";
+}
+
 export function normalizeTelegramCommandText(text: string | null | undefined): string {
 	return typeof text === "string" ? text.trim() : "";
 }
