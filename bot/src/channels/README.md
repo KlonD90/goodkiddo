@@ -168,9 +168,12 @@ This avoids broken continuation chunks where later table rows appear without the
 Private Telegram DMs keep the normal one-message-in, one-agent-turn behavior.
 Group and supergroup chats are quiet by default: non-empty text is recorded for
 recent-chat context, but normal chatter does not queue an agent turn.
+Recent group text is stored in `fetch_recent_chat_messages` with the chat id,
+Telegram message id, safe sender label, message text, and Telegram message
+timestamp. Files and binary data are not stored for passive context.
 
-Group text proceeds to the existing command/session/agent path only when it is a
-direct ask:
+Group messages proceed to the existing command/session/agent path only when they
+are a direct ask:
 
 - a supported slash command for this bot
 - a mention of this bot, with a leading mention stripped before agent handling
@@ -183,6 +186,11 @@ generator.
 
 Forwarded text remains context-only and never triggers slash commands or approval
 replies, even if the forwarded text contains a command or mention.
+
+Relevant files:
+- `src/channels/telegram/handlers.ts` — records passive group text and gates group turns
+- `src/channels/telegram/types.ts` — chat-type helpers for private vs group/supergroup detection
+- `src/capabilities/fetch/recent_chat_store.ts` — SQL-backed recent group text storage
 
 ## Telegram Reply and Forward Context
 
@@ -260,17 +268,6 @@ Relevant files:
 - `src/channels/telegram/handlers.ts` — `resolveContext` uses `getTelegramCaller`
 - `src/bin/admin.ts` — admin CLI `add-user` and `list-users` commands
 - `src/permissions/store.ts` — `createUserFree`, `upsertUserPaid`, `upgradeToPaid` methods
-
-## Telegram Group Presence
-
-Telegram group and supergroup text messages are passive by default. Non-empty group text is recorded in `fetch_recent_chat_messages` with the chat id, Telegram message id, safe sender label, message text, and Telegram message timestamp, then normal group chatter exits before an agent turn is queued.
-
-Private chats keep the existing direct conversation behavior. Forwarded slash-command safety is unchanged: forwarded text is context/source material only and never becomes command text.
-
-Relevant files:
-- `src/channels/telegram/handlers.ts` — records passive group text and skips passive group turns
-- `src/channels/telegram/types.ts` — chat-type helpers for private vs group/supergroup detection
-- `src/capabilities/fetch/recent_chat_store.ts` — SQL-backed recent group text storage
 
 ## Telegram How-To
 

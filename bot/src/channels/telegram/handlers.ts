@@ -13,8 +13,8 @@ import { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
 import { createStatusEmitter } from "../../tools/status_emitter";
 import { fileDataToString } from "../../utils/filesystem";
-import type { AppChannel, ChannelRunOptions } from "../types";
 import { buildInvokeMessages, extractTextFromContent } from "../shared";
+import type { AppChannel, ChannelRunOptions } from "../types";
 import {
 	extractTelegramMessageContext,
 	renderTelegramContextBlock,
@@ -54,7 +54,14 @@ type TelegramSenderLike = {
 	first_name?: string;
 };
 
-function telegramSenderLabel(sender: TelegramSenderLike | undefined): string | null {
+type ResolvedTelegramCaller = {
+	caller: Caller;
+	isNew: boolean;
+};
+
+function telegramSenderLabel(
+	sender: TelegramSenderLike | undefined,
+): string | null {
 	if (!sender) return null;
 	if (sender.username && sender.username.trim() !== "") {
 		return `@${sender.username.trim()}`;
@@ -65,15 +72,46 @@ function telegramSenderLabel(sender: TelegramSenderLike | undefined): string | n
 	return sender.id === undefined ? null : `telegram:${sender.id}`;
 }
 
-function getTelegramBotUsername(bot: Bot, ctx: { me?: { username?: string } }): string | null {
+function getTelegramBotUsername(
+	bot: Bot,
+	ctx: { me?: { username?: string } },
+): string | null {
 	const contextUsername = ctx.me?.username;
 	if (contextUsername && contextUsername.trim() !== "") {
 		return contextUsername;
 	}
-	const botInfo = (bot as unknown as { botInfo?: { username?: string } }).botInfo;
+	const botInfo = (bot as unknown as { botInfo?: { username?: string } })
+		.botInfo;
 	return botInfo?.username && botInfo.username.trim() !== ""
 		? botInfo.username
 		: null;
+}
+
+function directAskForTelegramGroup(
+	bot: Bot,
+	ctx: {
+		chat?: { type?: string };
+		me?: { username?: string };
+		message: {
+			text?: string;
+			caption?: string;
+			reply_to_message?: {
+				from?: {
+					is_bot?: boolean;
+					username?: string;
+				};
+			};
+		};
+	},
+	text: string,
+	isForwarded: boolean,
+): { isDirect: boolean; text: string } {
+	if (!isTelegramGroupChat(ctx.chat)) return { isDirect: true, text };
+	if (isForwarded) return { isDirect: false, text };
+	return isDirectTelegramAsk(
+		{ ...ctx.message, text },
+		getTelegramBotUsername(bot, ctx),
+	);
 }
 
 export const telegramChannel: AppChannel = {
@@ -110,17 +148,21 @@ export const telegramChannel: AppChannel = {
 					: undefined,
 			});
 
-		const resolveContext = async (ctx: {
-			chat: { id: number };
-			from?: { language_code?: string };
-		}): Promise<{
+		const resolveContext = async (
+			ctx: {
+				chat: { id: number };
+				from?: { language_code?: string };
+			},
+			knownCaller?: ResolvedTelegramCaller,
+		): Promise<{
 			session: TelegramAgentSession;
 			caller: Caller;
 			chatIdString: string;
 			isNew: boolean;
 		} | null> => {
 			const chatIdString = String(ctx.chat.id);
-			const result = await getTelegramCaller(store, chatIdString);
+			const result =
+				knownCaller ?? (await getTelegramCaller(store, chatIdString));
 			if (!result) {
 				await sendTelegramMessage(bot, chatIdString, config.blockedUserMessage);
 				return null;
@@ -243,35 +285,52 @@ export const telegramChannel: AppChannel = {
 			const { caller, isNew } = result;
 
 			if (isTelegramGroupChat(ctx.chat) && text !== "") {
-				await recentChatStore.recordMessage({
-					callerId: caller.id,
-					chatId: chatIdString,
-					messageId: ctx.message.message_id,
-					senderLabel: telegramSenderLabel(ctx.from),
-					text,
-					kind: "group_text",
-					messageTimestamp: ctx.message.date ?? null,
-				});
-			}
-
-			// /start is always direct — never from a forwarded message
-			if (
-				!isForwarded &&
-				await maybeHandleTelegramStartCommand(bot, chatIdString, text, isNew)
-			) {
-				return;
+				try {
+					await recentChatStore.recordMessage({
+						callerId: caller.id,
+						chatId: chatIdString,
+						messageId: ctx.message.message_id,
+						senderLabel: telegramSenderLabel(ctx.from),
+						text,
+						kind: "group_text",
+						messageTimestamp: ctx.message.date ?? null,
+					});
+				} catch (error) {
+					log.error("failed to record recent group text", {
+						chatId: chatIdString,
+						callerId: caller.id,
+						error: error instanceof Error ? error.message : String(error),
+					});
+				}
 			}
 
 			let directText = text;
 			if (isTelegramGroupChat(ctx.chat)) {
-				const directAsk = isForwarded
-					? { isDirect: false, text }
-					: isDirectTelegramAsk(ctx.message, getTelegramBotUsername(bot, ctx));
+				const directAsk = directAskForTelegramGroup(
+					bot,
+					ctx,
+					text,
+					isForwarded,
+				);
 				if (!directAsk.isDirect) return;
 				directText = directAsk.text;
+				if (directText === "") return;
 			}
 
-			const resolved = await resolveContext(ctx);
+			// /start is always direct — never from a forwarded message.
+			if (
+				!isForwarded &&
+				(await maybeHandleTelegramStartCommand(
+					bot,
+					chatIdString,
+					directText,
+					isNew,
+				))
+			) {
+				return;
+			}
+
+			const resolved = await resolveContext(ctx, { caller, isNew });
 			if (!resolved) return;
 
 			log.info("text message received", {
@@ -311,17 +370,26 @@ export const telegramChannel: AppChannel = {
 		});
 
 		bot.on("message:photo", async (ctx) => {
-			const resolved = await resolveContext(ctx);
-			if (!resolved) return;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			const msgCtx = extractTelegramMessageContext(ctx.message);
 			const contextBlock = renderTelegramContextBlock(msgCtx);
 			const isForwarded = msgCtx.forward !== undefined;
+			const directAsk = directAskForTelegramGroup(
+				bot,
+				ctx,
+				caption,
+				isForwarded,
+			);
+			if (!directAsk.isDirect) return;
+			const directCaption = directAsk.text;
+
+			const resolved = await resolveContext(ctx);
+			if (!resolved) return;
 
 			log.info("photo message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
-				hasCaption: caption !== "",
+				hasCaption: directCaption !== "",
 				isForwarded,
 				hasReplyContext: msgCtx.reply !== undefined,
 			});
@@ -330,15 +398,15 @@ export const telegramChannel: AppChannel = {
 				// Command detection runs only on direct (non-forwarded) caption text
 				if (
 					!isForwarded &&
-					await handleTelegramControlInput(
+					(await handleTelegramControlInput(
 						resolved.session,
 						bot,
 						resolved.chatIdString,
-						caption,
+						directCaption,
 						resolved.caller,
 						store,
 						webShare,
-					)
+					))
 				) {
 					return;
 				}
@@ -353,7 +421,7 @@ export const telegramChannel: AppChannel = {
 					resolved.session.workspace,
 					downloaded.data,
 					{
-						caption,
+						caption: directCaption,
 						filePath: downloaded.filePath,
 						contextPrefix: contextBlock || undefined,
 					},
@@ -391,17 +459,28 @@ export const telegramChannel: AppChannel = {
 		});
 
 		bot.on("message:voice", async (ctx) => {
-			const resolved = await resolveContext(ctx);
-			if (!resolved) return;
 			const caption = normalizeTelegramCommandText(ctx.message.caption);
 			const msgCtx = extractTelegramMessageContext(ctx.message);
 			const contextBlock = renderTelegramContextBlock(msgCtx);
+			const isForwarded = msgCtx.forward !== undefined;
+			const directAsk = directAskForTelegramGroup(
+				bot,
+				ctx,
+				caption,
+				isForwarded,
+			);
+			if (!directAsk.isDirect) return;
+			const directCaption = directAsk.text;
+
+			const resolved = await resolveContext(ctx);
+			if (!resolved) return;
 
 			log.info("voice message received", {
 				chatId: resolved.chatIdString,
 				callerId: resolved.caller.id,
 				byteSize: ctx.message.voice.file_size,
 				hasReplyContext: msgCtx.reply !== undefined,
+				isForwarded,
 			});
 
 			await processTelegramFile(
@@ -418,7 +497,7 @@ export const telegramChannel: AppChannel = {
 						mimeType: VOICE_MIME_TYPE,
 						byteSize: ctx.message.voice.file_size,
 						filename: "voice.ogg",
-						caption,
+						caption: directCaption,
 					},
 					download: downloadTelegramFile(() => ctx.getFile()),
 					currentMessageDate: dateFromTelegramMessage(ctx.message.date),
@@ -428,15 +507,23 @@ export const telegramChannel: AppChannel = {
 		});
 
 		bot.on("message:document", async (ctx) => {
-			const resolved = await resolveContext(ctx);
-			if (!resolved) return;
-
 			const document = ctx.message.document;
 			const msgCtx = extractTelegramMessageContext(ctx.message);
 			const contextBlock = renderTelegramContextBlock(msgCtx);
 
-			const docCaption = normalizeTelegramCommandText(document.file_name ?? "");
+			const docCaption = normalizeTelegramCommandText(ctx.message.caption);
 			const isForwarded = msgCtx.forward !== undefined;
+			const directAsk = directAskForTelegramGroup(
+				bot,
+				ctx,
+				docCaption,
+				isForwarded,
+			);
+			if (!directAsk.isDirect) return;
+			const directCaption = directAsk.text;
+
+			const resolved = await resolveContext(ctx);
+			if (!resolved) return;
 
 			log.info("document message received", {
 				chatId: resolved.chatIdString,
@@ -448,23 +535,23 @@ export const telegramChannel: AppChannel = {
 				isForwarded,
 			});
 
+			if (
+				!isForwarded &&
+				(await handleTelegramControlInput(
+					resolved.session,
+					bot,
+					resolved.chatIdString,
+					directCaption,
+					resolved.caller,
+					store,
+					webShare,
+				))
+			) {
+				return;
+			}
+
 			if (isImageMimeType(document.mime_type)) {
 				try {
-					if (
-						!isForwarded &&
-						await handleTelegramControlInput(
-							resolved.session,
-							bot,
-							resolved.chatIdString,
-							docCaption,
-							resolved.caller,
-							store,
-							webShare,
-						)
-					) {
-						return;
-					}
-
 					const file = await ctx.getFile();
 					const downloaded = await fetchTelegramFileBytes(
 						file,
@@ -475,7 +562,7 @@ export const telegramChannel: AppChannel = {
 						resolved.session.workspace,
 						downloaded.data,
 						{
-							caption: docCaption,
+							caption: directCaption,
 							filePath: downloaded.filePath,
 							contextPrefix: contextBlock || undefined,
 						},
@@ -525,6 +612,7 @@ export const telegramChannel: AppChannel = {
 							mimeType: document.mime_type,
 							filename: document.file_name,
 							byteSize: document.file_size,
+							caption: directCaption,
 						},
 						download: downloadTelegramFile(() => ctx.getFile()),
 						currentMessageDate: dateFromTelegramMessage(ctx.message.date),
