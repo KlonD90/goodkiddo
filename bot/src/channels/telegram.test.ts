@@ -24,6 +24,8 @@ import {
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
 	handleTelegramQueuedTurn,
+	isTelegramGroupChat,
+	isTelegramPrivateChat,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
@@ -621,6 +623,27 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			command: "start",
 			description: "Show how to start using the assistant",
 		});
+	});
+
+	test("Telegram chat helpers identify private chats", () => {
+		expect(isTelegramPrivateChat({ type: "private" })).toBe(true);
+		expect(isTelegramGroupChat({ type: "private" })).toBe(false);
+	});
+
+	test("Telegram chat helpers identify group chats", () => {
+		expect(isTelegramPrivateChat({ type: "group" })).toBe(false);
+		expect(isTelegramGroupChat({ type: "group" })).toBe(true);
+	});
+
+	test("Telegram chat helpers identify supergroup chats", () => {
+		expect(isTelegramPrivateChat({ type: "supergroup" })).toBe(false);
+		expect(isTelegramGroupChat({ type: "supergroup" })).toBe(true);
+	});
+
+	test("Telegram chat helpers ignore non-chat and channel inputs", () => {
+		expect(isTelegramPrivateChat(undefined)).toBe(false);
+		expect(isTelegramGroupChat(null)).toBe(false);
+		expect(isTelegramGroupChat({ type: "channel" })).toBe(false);
 	});
 
 	test("renderTelegramWelcomeMessage explains how to start", () => {
