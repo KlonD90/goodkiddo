@@ -144,6 +144,126 @@ export function isTelegramStartCommand(text: string): boolean {
 	return extractTelegramCommandName(text) === "start";
 }
 
+type TelegramDirectAskMessageLike = {
+	text?: string;
+	reply_to_message?: {
+		from?: {
+			is_bot?: boolean;
+			username?: string;
+		};
+	};
+};
+
+export type TelegramDirectAskResult = {
+	isDirect: boolean;
+	text: string;
+};
+
+const GOODKIDDO_PREFIX_PATTERN =
+	/^\s*(?:good\s*kiddo|kiddo)\s*[,:\-]\s*/i;
+
+function normalizeTelegramBotUsername(
+	botUsername: string | null | undefined,
+): string | null {
+	const normalized = botUsername?.trim().replace(/^@/, "").toLowerCase() ?? "";
+	return normalized === "" ? null : normalized;
+}
+
+function stripLeadingTelegramBotMention(
+	text: string,
+	botUsername: string | null,
+): { matched: boolean; text: string } {
+	if (!botUsername) return { matched: false, text };
+	const pattern = new RegExp(
+		`^\\s*@${escapeRegExp(botUsername)}\\b[:,]?\\s*`,
+		"i",
+	);
+	const stripped = text.replace(pattern, "");
+	return { matched: stripped !== text, text: stripped.trim() };
+}
+
+function mentionsTelegramBot(text: string, botUsername: string | null): boolean {
+	if (!botUsername) return false;
+	const pattern = new RegExp(`(^|\\s)@${escapeRegExp(botUsername)}\\b`, "i");
+	return pattern.test(text);
+}
+
+function escapeRegExp(value: string): string {
+	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function isReplyToTelegramBot(
+	message: TelegramDirectAskMessageLike,
+	botUsername: string | null,
+): boolean {
+	const repliedFrom = message.reply_to_message?.from;
+	if (!repliedFrom?.is_bot) return false;
+	if (!botUsername) return true;
+	return repliedFrom.username?.trim().toLowerCase() === botUsername;
+}
+
+function isSupportedTelegramSlashCommand(
+	text: string,
+	botUsername: string | null,
+): boolean {
+	const trimmed = text.trim();
+	if (!trimmed.startsWith("/")) return false;
+	const firstSpace = trimmed.indexOf(" ");
+	const rawCommand = (
+		firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace)
+	).slice(1);
+	const commandTarget = rawCommand.split("@", 2)[1]?.toLowerCase();
+	if (commandTarget && botUsername && commandTarget !== botUsername) {
+		return false;
+	}
+	const command = extractTelegramCommandName(text);
+	if (!command) return false;
+	return new Set([
+		...TELEGRAM_COMMANDS.map(({ command: knownCommand }) => knownCommand),
+		"policy",
+		"reset",
+		"allow",
+		"deny",
+		"ask",
+		"identity",
+		"new-thread",
+		"open-fs",
+		"revoke-fs",
+	]).has(command);
+}
+
+export function isDirectTelegramAsk(
+	message: TelegramDirectAskMessageLike,
+	botUsername?: string | null,
+): TelegramDirectAskResult {
+	const text = message.text?.trim() ?? "";
+	const normalizedBotUsername = normalizeTelegramBotUsername(botUsername);
+
+	if (isSupportedTelegramSlashCommand(text, normalizedBotUsername)) {
+		return { isDirect: true, text };
+	}
+
+	const mention = stripLeadingTelegramBotMention(text, normalizedBotUsername);
+	if (mention.matched) {
+		return { isDirect: true, text: mention.text };
+	}
+
+	if (mentionsTelegramBot(text, normalizedBotUsername)) {
+		return { isDirect: true, text };
+	}
+
+	const prefixStripped = text.replace(GOODKIDDO_PREFIX_PATTERN, "").trim();
+	if (prefixStripped !== text) {
+		return { isDirect: true, text: prefixStripped };
+	}
+
+	if (isReplyToTelegramBot(message, normalizedBotUsername)) {
+		return { isDirect: true, text };
+	}
+
+	return { isDirect: false, text };
+}
+
 export async function maybeHandleTelegramStartCommand(
 	bot: Bot,
 	chatId: string,

@@ -28,6 +28,7 @@ import {
 	getTelegramCaller,
 	handleTelegramQueuedTurn,
 	isTelegramGroupChat,
+	isDirectTelegramAsk,
 	isTelegramPrivateChat,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
@@ -61,6 +62,13 @@ type TelegramTextHandlerForTest = (ctx: {
 		date: number;
 		text: string;
 		chat: { id: number; type: string };
+		reply_to_message?: {
+			from?: {
+				is_bot?: boolean;
+				username?: string;
+			};
+			text?: string;
+		};
 	};
 }) => Promise<void>;
 
@@ -776,6 +784,82 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
 
 		await db.close();
+	});
+
+	test("isDirectTelegramAsk treats GoodKiddo prefixes as direct and strips them", () => {
+		expect(
+			isDirectTelegramAsk(
+				{ text: "GoodKiddo, summarize this" },
+				"kiddo_bot",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk(
+				{ text: "Good Kiddo: summarize this" },
+				"kiddo_bot",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk({ text: "Kiddo, summarize this" }, "kiddo_bot"),
+		).toEqual({ isDirect: true, text: "summarize this" });
+	});
+
+	test("isDirectTelegramAsk treats bot mentions as direct and strips leading mention", () => {
+		expect(
+			isDirectTelegramAsk(
+				{ text: "@bot_username summarize this" },
+				"bot_username",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk(
+				{ text: "can you summarize this @bot_username" },
+				"bot_username",
+			),
+		).toEqual({
+			isDirect: true,
+			text: "can you summarize this @bot_username",
+		});
+	});
+
+	test("isDirectTelegramAsk treats reply-to-bot and supported commands as direct", () => {
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "bot_username" },
+					},
+				},
+				"bot_username",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(isDirectTelegramAsk({ text: "/help" }, "bot_username")).toEqual({
+			isDirect: true,
+			text: "/help",
+		});
+		expect(
+			isDirectTelegramAsk({ text: "/help@bot_username" }, "bot_username"),
+		).toEqual({
+			isDirect: true,
+			text: "/help@bot_username",
+		});
+		expect(
+			isDirectTelegramAsk({ text: "/help@other_bot" }, "bot_username"),
+		).toEqual({
+			isDirect: false,
+			text: "/help@other_bot",
+		});
+		expect(isDirectTelegramAsk({ text: "/unknown" }, "bot_username")).toEqual({
+			isDirect: false,
+			text: "/unknown",
+		});
+	});
+
+	test("isDirectTelegramAsk leaves normal group chatter silent while private text can bypass the group gate", () => {
+		expect(
+			isDirectTelegramAsk({ text: "normal group chatter" }, "bot_username"),
+		).toEqual({ isDirect: false, text: "normal group chatter" });
 	});
 
 	test("renderTelegramWelcomeMessage explains how to start", () => {

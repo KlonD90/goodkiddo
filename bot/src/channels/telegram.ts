@@ -59,6 +59,7 @@ export {
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
 	handleTelegramQueuedTurn,
+	isDirectTelegramAsk,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
