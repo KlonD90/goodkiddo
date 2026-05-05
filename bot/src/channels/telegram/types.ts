@@ -43,6 +43,7 @@ export const TELEGRAM_COMMANDS = [
 	{ command: "new_thread", description: "Start a fresh conversation thread" },
 	{ command: "open_fs", description: "Open your files in a web browser" },
 	{ command: "revoke_fs", description: "Revoke all active file-share links" },
+	{ command: "fetch", description: "Morning Fetch is reserved for later" },
 ] as const;
 
 export type PendingApproval = {

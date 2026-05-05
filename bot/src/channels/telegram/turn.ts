@@ -128,6 +128,9 @@ export function formatUnknownTelegramCommandReply(command: string): string {
 	return `Unknown command: /${command}\nAvailable commands: ${knownCommands}`;
 }
 
+export const TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY =
+	"Fetch is not implemented yet.";
+
 export function renderTelegramWelcomeMessage(): string {
 	return [
 		"Welcome. Send me a normal request in plain language and I will help from here.",
@@ -450,6 +453,14 @@ export async function handleTelegramControlInput(
 		}
 
 		const slashCommand = extractTelegramCommandName(commandText);
+		if (slashCommand === "fetch") {
+			await sendTelegramMessage(
+				bot,
+				chatId,
+				TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY,
+			);
+			return true;
+		}
 		if (slashCommand !== null) {
 			await sendTelegramMessage(
 				bot,
