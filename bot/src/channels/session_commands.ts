@@ -37,6 +37,16 @@ export type SessionCommandResult =
 	| { handled: false }
 	| { handled: true; reply: string };
 
+export const SESSION_COMMAND_NAMES = new Set([
+	"new-thread",
+	"new_thread",
+	"open-fs",
+	"open_fs",
+	"revoke-fs",
+	"revoke_fs",
+	"identity",
+]);
+
 export type WebShareCommandContext = {
 	access: AccessStore;
 	publicBaseUrl: string;

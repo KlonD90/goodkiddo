@@ -43,6 +43,7 @@ export const TELEGRAM_COMMANDS = [
 	{ command: "new_thread", description: "Start a fresh conversation thread" },
 	{ command: "open_fs", description: "Open your files in a web browser" },
 	{ command: "revoke_fs", description: "Revoke all active file-share links" },
+	{ command: "fetch", description: "Morning Fetch is reserved for later" },
 ] as const;
 
 export type PendingApproval = {
@@ -138,6 +139,22 @@ export function dateFromTelegramMessage(
 ): Date | undefined {
 	if (messageDate === undefined) return undefined;
 	return new Date(messageDate * 1000);
+}
+
+export type TelegramChatLike = {
+	type?: string;
+};
+
+export function isTelegramPrivateChat(
+	chat: TelegramChatLike | null | undefined,
+): boolean {
+	return chat?.type === "private";
+}
+
+export function isTelegramGroupChat(
+	chat: TelegramChatLike | null | undefined,
+): boolean {
+	return chat?.type === "group" || chat?.type === "supergroup";
 }
 
 export function normalizeTelegramCommandText(text: string | null | undefined): string {

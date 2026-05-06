@@ -163,6 +163,35 @@ The stream chunker tracks:
 
 This avoids broken continuation chunks where later table rows appear without their headers.
 
+## Telegram Group Presence
+
+Private Telegram DMs keep the normal one-message-in, one-agent-turn behavior.
+Group and supergroup chats are quiet by default: non-empty text is recorded for
+recent-chat context, but normal chatter does not queue an agent turn.
+Recent group text is stored in `fetch_recent_chat_messages` with the chat id,
+Telegram message id, safe sender label, message text, and Telegram message
+timestamp. Files and binary data are not stored for passive context.
+
+Group messages proceed to the existing command/session/agent path only when they
+are a direct ask:
+
+- a supported slash command for this bot
+- a mention of this bot, with a leading mention stripped before agent handling
+- a `GoodKiddo,`, `Good Kiddo,`, or `Kiddo,` prefix, with the prefix stripped
+- a reply to a previous message from this bot
+
+`/fetch` is reserved in the Telegram command menu for later Morning Fetch work.
+For now it returns a short not-implemented placeholder and does not run a Fetch
+generator.
+
+Forwarded text remains context-only and never triggers slash commands or approval
+replies, even if the forwarded text contains a command or mention.
+
+Relevant files:
+- `src/channels/telegram/handlers.ts` — records passive group text and gates group turns
+- `src/channels/telegram/types.ts` — chat-type helpers for private vs group/supergroup detection
+- `src/capabilities/fetch/recent_chat_store.ts` — SQL-backed recent group text storage
+
 ## Telegram Reply and Forward Context
 
 When a user replies to a message or forwards a message, the bot prepends an explicit context block to the agent-visible input so the model understands what is being referred to.

@@ -6,6 +6,15 @@ export type CommandResult =
 	| { handled: false }
 	| { handled: true; reply: string };
 
+export const PERMISSION_COMMAND_NAMES = new Set([
+	"policy",
+	"reset",
+	"allow",
+	"deny",
+	"ask",
+	"help",
+]);
+
 function parseSlashCommand(
 	input: string,
 ): { command: string; rest: string } | null {

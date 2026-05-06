@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
 import type { Bot } from "grammy";
+import { RecentChatStore } from "../capabilities/fetch/recent_chat_store";
 import { NoOpPdfExtractor } from "../capabilities/pdf/extractor";
 import { NoOpSpreadsheetParser } from "../capabilities/spreadsheet/parser";
 import {
@@ -9,6 +10,8 @@ import {
 import type { TimerRecord } from "../capabilities/timers/store";
 import { TimerStore } from "../capabilities/timers/store";
 import { NoOpTranscriber } from "../capabilities/voice/transcriber";
+import type { AppConfig } from "../config";
+import { createDb } from "../db";
 import { extractLocaleFromTelegram, resolveLocale } from "../i18n/locale";
 import type { ApprovalOutcome } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
@@ -23,7 +26,11 @@ import {
 	fetchTelegramFileBytes,
 	formatUnknownTelegramCommandReply,
 	getTelegramCaller,
+	handleTelegramControlInput,
 	handleTelegramQueuedTurn,
+	isDirectTelegramAsk,
+	isTelegramGroupChat,
+	isTelegramPrivateChat,
 	isTelegramStartCommand,
 	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
@@ -33,14 +40,125 @@ import {
 	renderTelegramHtml,
 	renderTelegramWelcomeMessage,
 	TELEGRAM_COMMANDS,
+	TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY,
 	type TelegramAgentSession,
 	TelegramOutboundChannel,
 	takeTelegramOverflowStreamChunks,
 	takeTelegramParagraphStreamChunks,
 	takeTelegramStreamChunks,
+	telegramChannel,
 } from "./telegram";
 
 let store: PermissionsStore;
+
+type TelegramHandlerForTest = (ctx: never) => Promise<void>;
+
+type TelegramTextHandlerForTest = (ctx: {
+	chat: { id: number; type: string };
+	from?: {
+		id?: number;
+		username?: string;
+		first_name?: string;
+		language_code?: string;
+	};
+	message: {
+		message_id: number;
+		date: number;
+		text: string;
+		chat: { id: number; type: string };
+		reply_to_message?: {
+			from?: {
+				is_bot?: boolean;
+				username?: string;
+			};
+			text?: string;
+		};
+	};
+}) => Promise<void>;
+
+const TELEGRAM_TEST_CONFIG: AppConfig = {
+	aiApiKey: "test-key",
+	aiBaseUrl: "",
+	aiType: "openai",
+	aiModelName: "gpt-4o-mini",
+	aiTemperature: 1.0,
+	aiSubAgentTemperature: 0.4,
+	appEntrypoint: "telegram",
+	telegramBotToken: "telegram-token",
+	telegramAllowedChatId: "",
+	usingMode: "single",
+	blockedUserMessage: "blocked",
+	maxContextWindowTokens: 150_000,
+	contextReserveSummaryTokens: 4_000,
+	contextReserveRecentTurnTokens: 8_000,
+	contextReserveNextTurnTokens: 8_000,
+	permissionsMode: "disabled",
+	databaseUrl: "sqlite://:memory:",
+	enableExecute: false,
+	enableVoiceMessages: true,
+	enablePdfDocuments: true,
+	enableSpreadsheets: true,
+	enableImageUnderstanding: false,
+	enableToolStatus: true,
+	enableAttachmentCompactionNotice: true,
+	enableBrowserOnParent: false,
+	enableTabular: true,
+	defaultStatusLocale: "en",
+	transcriptionProvider: "openai",
+	transcriptionApiKey: "test-key",
+	transcriptionBaseUrl: "",
+	minimaxApiKey: "",
+	minimaxApiHost: "https://api.minimax.io",
+	webHost: "127.0.0.1",
+	webPort: 8083,
+	webPublicBaseUrl: "http://localhost:8083",
+	timezone: "UTC",
+	recursionLimit: 60,
+};
+
+async function setupTelegramChannelForTest(options?: {
+	recentChatStore?: RecentChatStore;
+}) {
+	const db = createDb("sqlite://:memory:");
+	const recentChatStore =
+		options?.recentChatStore ??
+		new RecentChatStore({
+			db,
+			dialect: "sqlite",
+			now: () => 2_000,
+		});
+	const handlers = new Map<string, TelegramHandlerForTest>();
+	const sentMessages: Array<{ chatId: string; text: string }> = [];
+	const fakeBot = {
+		botInfo: { username: "bot_username" },
+		api: {
+			setMyCommands: vi.fn().mockResolvedValue(undefined),
+			sendMessage: vi
+				.fn()
+				.mockImplementation(async (chatId: string, text: string) => {
+					sentMessages.push({ chatId, text });
+				}),
+			sendChatAction: vi.fn().mockResolvedValue(undefined),
+		},
+		on: vi.fn((event: string, handler: unknown) => {
+			handlers.set(event, handler as TelegramHandlerForTest);
+		}),
+		catch: vi.fn(),
+		start: vi.fn().mockResolvedValue(undefined),
+	} as unknown as Bot;
+
+	await telegramChannel.run(TELEGRAM_TEST_CONFIG, {
+		db,
+		dialect: "sqlite",
+		recentChatStore,
+		telegramBot: fakeBot,
+		timerScheduler: {
+			start: () => ({ stop: () => {} }),
+		},
+	});
+
+	return { db, recentChatStore, handlers, fakeBot, sentMessages };
+}
 
 afterEach(() => {
 	store?.close();
@@ -621,6 +739,394 @@ Paragraph with *italic*, **bold**, and [docs](https://example.com/a?b=1).
 			command: "start",
 			description: "Show how to start using the assistant",
 		});
+	});
+
+	test("TELEGRAM_COMMANDS reserves /fetch for the command menu", () => {
+		expect(TELEGRAM_COMMANDS).toContainEqual({
+			command: "fetch",
+			description: "Morning Fetch is reserved for later",
+		});
+	});
+
+	test("/fetch returns reserved placeholder without queueing agent behavior", async () => {
+		const db = createDb("sqlite://:memory:");
+		const commandStore = new PermissionsStore({ db, dialect: "sqlite" });
+		const sentMessages: Array<{ chatId: string; text: string }> = [];
+		const mockBot = {
+			api: {
+				sendMessage: vi
+					.fn()
+					.mockImplementation(async (chatId: string, text: string) => {
+						sentMessages.push({ chatId, text });
+					}),
+			},
+		} as unknown as Bot;
+		const session: TelegramAgentSession = {
+			agent: {} as never,
+			running: false,
+			queue: [],
+			threadId: "telegram-123",
+			workspace: {} as never,
+			model: {} as never,
+			refreshAgent: async () => {},
+			pendingApprovals: new Map(),
+			recursionLimit: 60,
+		};
+		const caller = {
+			id: "telegram:123",
+			entrypoint: "telegram" as const,
+			externalId: "123",
+		};
+
+		const handled = await handleTelegramControlInput(
+			session,
+			mockBot,
+			"123",
+			"/fetch@bot_username",
+			caller,
+			commandStore,
+			undefined,
+		);
+
+		expect(handled).toBe(true);
+		expect(sentMessages).toEqual([
+			{ chatId: "123", text: TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY },
+		]);
+		expect(session.queue).toEqual([]);
+
+		await commandStore.close();
+		await db.close();
+	});
+
+	test("Telegram chat helpers identify private chats", () => {
+		expect(isTelegramPrivateChat({ type: "private" })).toBe(true);
+		expect(isTelegramGroupChat({ type: "private" })).toBe(false);
+	});
+
+	test("Telegram chat helpers identify group chats", () => {
+		expect(isTelegramPrivateChat({ type: "group" })).toBe(false);
+		expect(isTelegramGroupChat({ type: "group" })).toBe(true);
+	});
+
+	test("Telegram chat helpers identify supergroup chats", () => {
+		expect(isTelegramPrivateChat({ type: "supergroup" })).toBe(false);
+		expect(isTelegramGroupChat({ type: "supergroup" })).toBe(true);
+	});
+
+	test("Telegram chat helpers ignore non-chat and channel inputs", () => {
+		expect(isTelegramPrivateChat(undefined)).toBe(false);
+		expect(isTelegramGroupChat(null)).toBe(false);
+		expect(isTelegramGroupChat({ type: "channel" })).toBe(false);
+	});
+
+	test("normal group text is recorded without queueing an agent reply", async () => {
+		const { db, recentChatStore, handlers, fakeBot } =
+			await setupTelegramChannelForTest();
+
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		expect(handler).toBeDefined();
+		const chat = { id: -100123, type: "supergroup" };
+		await handler?.({
+			chat,
+			from: {
+				id: 42,
+				username: "alice",
+				first_name: "Alice",
+				language_code: "en",
+			},
+			message: {
+				message_id: 777,
+				date: 1_800,
+				text: "  group chatter  ",
+				chat,
+			},
+		});
+
+		const messages = await recentChatStore.listRecentMessages(
+			"telegram:-100123",
+			{ limit: 10 },
+		);
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toMatchObject({
+			chatId: "-100123",
+			messageId: "777",
+			senderLabel: "@alice",
+			text: "group chatter",
+			kind: "group_text",
+			messageTimestamp: 1_800,
+			createdAt: 2_000,
+		});
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("group start command for another bot stays silent", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 778,
+				date: 1_801,
+				text: "/start@other_bot",
+				chat,
+			},
+		});
+
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("group direct ask continues when passive recent-chat storage fails", async () => {
+		const recentChatStore = {
+			recordMessage: vi.fn().mockRejectedValue(new Error("database locked")),
+		} as unknown as RecentChatStore;
+		const { db, handlers, sentMessages } = await setupTelegramChannelForTest({
+			recentChatStore,
+		});
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 779,
+				date: 1_802,
+				text: "/start",
+				chat,
+			},
+		});
+
+		expect(sentMessages).toHaveLength(1);
+		expect(sentMessages[0]?.text).toContain("Welcome.");
+
+		await db.close();
+	});
+
+	test("empty stripped group mention is recorded but does not queue a turn", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const handler = handlers.get("message:text") as
+			| TelegramTextHandlerForTest
+			| undefined;
+		const chat = { id: -100123, type: "supergroup" };
+
+		await handler?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 780,
+				date: 1_803,
+				text: "@bot_username",
+				chat,
+			},
+		});
+
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("normal group media is ignored before downloading files", async () => {
+		const { db, handlers, fakeBot } = await setupTelegramChannelForTest();
+		const chat = { id: -100123, type: "supergroup" };
+
+		const photoGetFile = vi.fn().mockResolvedValue({ file_path: "photo.jpg" });
+		await handlers.get("message:photo")?.({
+			chat,
+			message: {
+				message_id: 781,
+				date: 1_804,
+				caption: "",
+				chat,
+				photo: [{ file_id: "photo-file" }],
+			},
+			getFile: photoGetFile,
+		} as never);
+
+		const voiceGetFile = vi.fn().mockResolvedValue({ file_path: "voice.ogg" });
+		await handlers.get("message:voice")?.({
+			chat,
+			message: {
+				message_id: 782,
+				date: 1_805,
+				caption: "",
+				chat,
+				voice: { file_size: 123 },
+			},
+			getFile: voiceGetFile,
+		} as never);
+
+		const documentGetFile = vi
+			.fn()
+			.mockResolvedValue({ file_path: "file.pdf" });
+		await handlers.get("message:document")?.({
+			chat,
+			message: {
+				message_id: 783,
+				date: 1_806,
+				caption: "",
+				chat,
+				document: {
+					file_name: "file.pdf",
+					mime_type: "application/pdf",
+					file_size: 123,
+				},
+			},
+			getFile: documentGetFile,
+		} as never);
+
+		expect(photoGetFile).not.toHaveBeenCalled();
+		expect(voiceGetFile).not.toHaveBeenCalled();
+		expect(documentGetFile).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendMessage).not.toHaveBeenCalled();
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("group document /fetch captions return placeholder without downloading", async () => {
+		const { db, handlers, fakeBot, sentMessages } =
+			await setupTelegramChannelForTest();
+		const chat = { id: -100123, type: "supergroup" };
+		const documentGetFile = vi
+			.fn()
+			.mockResolvedValue({ file_path: "file.pdf" });
+
+		await handlers.get("message:document")?.({
+			chat,
+			from: { id: 42, username: "alice", first_name: "Alice" },
+			message: {
+				message_id: 784,
+				date: 1_807,
+				caption: "/fetch@bot_username",
+				chat,
+				document: {
+					file_name: "file.pdf",
+					mime_type: "application/pdf",
+					file_size: 123,
+				},
+			},
+			getFile: documentGetFile,
+		} as never);
+
+		expect(documentGetFile).not.toHaveBeenCalled();
+		expect(sentMessages).toEqual([
+			{ chatId: "-100123", text: TELEGRAM_FETCH_NOT_IMPLEMENTED_REPLY },
+		]);
+		expect(fakeBot.api.sendChatAction).not.toHaveBeenCalled();
+
+		await db.close();
+	});
+
+	test("isDirectTelegramAsk treats GoodKiddo prefixes as direct and strips them", () => {
+		expect(
+			isDirectTelegramAsk({ text: "GoodKiddo, summarize this" }, "kiddo_bot"),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk({ text: "Good Kiddo: summarize this" }, "kiddo_bot"),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk({ text: "Kiddo, summarize this" }, "kiddo_bot"),
+		).toEqual({ isDirect: true, text: "summarize this" });
+	});
+
+	test("isDirectTelegramAsk treats bot mentions as direct and strips leading mention", () => {
+		expect(
+			isDirectTelegramAsk(
+				{ text: "@bot_username summarize this" },
+				"bot_username",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk(
+				{ text: "can you summarize this @bot_username" },
+				"bot_username",
+			),
+		).toEqual({
+			isDirect: true,
+			text: "can you summarize this @bot_username",
+		});
+	});
+
+	test("isDirectTelegramAsk treats reply-to-bot and supported commands as direct", () => {
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "bot_username" },
+					},
+				},
+				"bot_username",
+			),
+		).toEqual({ isDirect: true, text: "summarize this" });
+		expect(isDirectTelegramAsk({ text: "/help" }, "bot_username")).toEqual({
+			isDirect: true,
+			text: "/help",
+		});
+		expect(
+			isDirectTelegramAsk({ text: "/help@bot_username" }, "bot_username"),
+		).toEqual({
+			isDirect: true,
+			text: "/help@bot_username",
+		});
+		expect(
+			isDirectTelegramAsk({ text: "/help@other_bot" }, "bot_username"),
+		).toEqual({
+			isDirect: false,
+			text: "/help@other_bot",
+		});
+		expect(isDirectTelegramAsk({ text: "/help@other_bot" }, null)).toEqual({
+			isDirect: false,
+			text: "/help@other_bot",
+		});
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "other_bot" },
+					},
+				},
+				"bot_username",
+			),
+		).toEqual({ isDirect: false, text: "summarize this" });
+		expect(
+			isDirectTelegramAsk(
+				{
+					text: "summarize this",
+					reply_to_message: {
+						from: { is_bot: true, username: "bot_username" },
+					},
+				},
+				null,
+			),
+		).toEqual({ isDirect: false, text: "summarize this" });
+		expect(isDirectTelegramAsk({ text: "/unknown" }, "bot_username")).toEqual({
+			isDirect: false,
+			text: "/unknown",
+		});
+	});
+
+	test("isDirectTelegramAsk leaves normal group chatter silent while private text can bypass the group gate", () => {
+		expect(
+			isDirectTelegramAsk({ text: "normal group chatter" }, "bot_username"),
+		).toEqual({ isDirect: false, text: "normal group chatter" });
 	});
 
 	test("renderTelegramWelcomeMessage explains how to start", () => {
