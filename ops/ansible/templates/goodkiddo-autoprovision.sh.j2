@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+APP_DIR={{ bot_app_dir | quote }}
+CONTROL_DIR={{ bot_autoprovision_repo_dir | quote }}
+REPO_URL={{ bot_repo_url | quote }}
+REPO_VERSION={{ bot_repo_version | quote }}
+DEPLOY_KEY={{ bot_autoprovision_deploy_key_path | quote }}
+INVENTORY={{ bot_autoprovision_inventory_file | quote }}
+KNOWN_HOSTS_FILE={{ bot_autoprovision_known_hosts_file | quote }}
+LOCK_FILE={{ bot_autoprovision_lock_file | quote }}
+STATE_FILE={{ bot_autoprovision_state_file | quote }}
+VAULT_PASSWORD_FILE={{ bot_autoprovision_vault_password_file | quote }}
+EXTRA_VARS_FILES=(
+{% for vars_file in bot_autoprovision_extra_vars_files | default([]) %}
+  {{ vars_file | quote }}
+{% endfor %}
+)
+PLAYBOOK="${CONTROL_DIR}/ops/ansible/production.yml"
+REQUIREMENTS="${CONTROL_DIR}/ops/ansible/requirements.yml"
+
+log() {
+  printf '[%s] %s\n' "$(date -Is)" "$*"
+}
+
+fail() {
+  log "ERROR: $*" >&2
+  exit 1
+}
+
+root_owned_not_group_world_writable() {
+  local path="$1"
+  local owner_uid
+  local mode
+
+  [[ -e "${path}" ]] || return 1
+  owner_uid="$(stat -c '%u' "${path}" 2>/dev/null || printf 'unknown')"
+  mode="$(stat -c '%a' "${path}" 2>/dev/null || printf 'invalid')"
+  [[ "${owner_uid}" == "0" ]] || return 1
+  [[ "${mode}" =~ ^[0-7]+$ ]] || return 1
+  (( (8#${mode} & 0022) == 0 ))
+}
+
+root_only_secret_file() {
+  local path="$1"
+  local owner_uid
+  local mode
+
+  [[ -f "${path}" ]] || return 1
+  owner_uid="$(stat -c '%u' "${path}" 2>/dev/null || printf 'unknown')"
+  mode="$(stat -c '%a' "${path}" 2>/dev/null || printf 'invalid')"
+  [[ "${owner_uid}" == "0" ]] || return 1
+  [[ "${mode}" =~ ^[0-7]+$ ]] || return 1
+  (( (8#${mode} & 0077) == 0 ))
+}
+
+if [[ -z "${REPO_URL}" ]]; then
+  fail "bot_repo_url is empty; cannot self-autoprovision"
+fi
+
+if [[ -z "${REPO_VERSION}" ]]; then
+  fail "bot_repo_version is empty; cannot self-autoprovision"
+fi
+
+if [[ "${CONTROL_DIR}" == "${APP_DIR}" || "${CONTROL_DIR}" == "${APP_DIR}/"* ]]; then
+  fail "control checkout must be separate from and outside bot_app_dir"
+fi
+
+if [[ "${CONTROL_DIR}" != /* || "${CONTROL_DIR}" == "/" ]]; then
+  fail "control checkout must be an absolute non-root path"
+fi
+
+if [[ ! -r "${DEPLOY_KEY}" ]]; then
+  fail "readonly deploy key is missing or unreadable at ${DEPLOY_KEY}"
+fi
+
+if [[ ! -r "${KNOWN_HOSTS_FILE}" ]]; then
+  fail "pinned known_hosts file is missing or unreadable at ${KNOWN_HOSTS_FILE}"
+fi
+
+mkdir -p "$(dirname "${LOCK_FILE}")" "$(dirname "${STATE_FILE}")"
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+  log "another autoprovision run is active; exiting"
+  exit 0
+fi
+
+export GIT_SSH_COMMAND="ssh -i ${DEPLOY_KEY} -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile=${KNOWN_HOSTS_FILE} -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no"
+
+missing_vars_count=0
+missing_vars_files=()
+insecure_vars_files=()
+for vars_file in "${EXTRA_VARS_FILES[@]}"; do
+  if [[ -z "${vars_file}" ]]; then
+    continue
+  fi
+  if [[ ! -r "${vars_file}" ]]; then
+    missing_vars_files+=("${vars_file}")
+    missing_vars_count=$((missing_vars_count + 1))
+    continue
+  fi
+
+  if ! root_owned_not_group_world_writable "${vars_file}"; then
+    insecure_vars_files+=("${vars_file}")
+  fi
+done
+
+if (( missing_vars_count > 0 )); then
+  log "production vars/secrets are missing or unreadable; skipping autoprovision this tick"
+  for vars_file in "${missing_vars_files[@]}"; do
+    log "missing vars file: ${vars_file}"
+  done
+  exit 0
+fi
+
+insecure_vars_count=0
+for vars_file in "${insecure_vars_files[@]}"; do
+  insecure_vars_count=$((insecure_vars_count + 1))
+done
+
+if (( insecure_vars_count > 0 )); then
+  log "production vars/secrets are not root-owned or are group/world-writable; skipping autoprovision this tick"
+  for vars_file in "${insecure_vars_files[@]}"; do
+    log "insecure vars file: ${vars_file}"
+  done
+  exit 0
+fi
+
+remote_query="refs/heads/${REPO_VERSION}"
+remote_sha="$(git ls-remote "${REPO_URL}" "${remote_query}" | awk 'NR == 1 { print $1 }')"
+if [[ -z "${remote_sha}" ]]; then
+  fail "could not resolve ${remote_query} from ${REPO_URL}"
+fi
+
+last_successful_sha=""
+if [[ -r "${STATE_FILE}" ]]; then
+  last_successful_sha="$(tr -d '[:space:]' < "${STATE_FILE}")"
+fi
+
+if [[ "${last_successful_sha}" == "${remote_sha}" ]]; then
+  log "repository already successfully provisioned at ${remote_sha}; nothing to do"
+  exit 0
+fi
+
+if [[ -e "${CONTROL_DIR}" && ! -d "${CONTROL_DIR}" ]]; then
+  fail "control checkout path exists but is not a directory: ${CONTROL_DIR}"
+fi
+
+if [[ -d "${CONTROL_DIR}" ]]; then
+  control_checkout_insecure=false
+  if ! root_owned_not_group_world_writable "${CONTROL_DIR}"; then
+    control_checkout_insecure=true
+  fi
+  if [[ -e "${CONTROL_DIR}/.git" ]]; then
+    if ! root_owned_not_group_world_writable "${CONTROL_DIR}/.git"; then
+      control_checkout_insecure=true
+    fi
+    insecure_git_entry="$(find "${CONTROL_DIR}/.git" \( ! -user 0 -o -perm /022 \) -print -quit 2>/dev/null || true)"
+    if [[ -n "${insecure_git_entry}" ]]; then
+      control_checkout_insecure=true
+    fi
+  fi
+  if [[ "${control_checkout_insecure}" == "true" ]]; then
+    log "control checkout is not root-controlled; replacing before running git"
+    rm -rf "${CONTROL_DIR}"
+  fi
+fi
+
+current_control_sha=""
+if [[ -d "${CONTROL_DIR}/.git" ]]; then
+  current_control_sha="$(git -C "${CONTROL_DIR}" rev-parse HEAD 2>/dev/null || true)"
+fi
+
+log "repository update detected: ${last_successful_sha:-never} -> ${remote_sha}"
+
+if [[ ! -d "${CONTROL_DIR}/.git" ]]; then
+  mkdir -p "$(dirname "${CONTROL_DIR}")"
+  rm -rf "${CONTROL_DIR}"
+  git clone --branch "${REPO_VERSION}" --single-branch "${REPO_URL}" "${CONTROL_DIR}"
+else
+  git -C "${CONTROL_DIR}" remote set-url origin "${REPO_URL}"
+  git -C "${CONTROL_DIR}" fetch --prune origin "${REPO_VERSION}"
+  git -C "${CONTROL_DIR}" reset --hard "${remote_sha}"
+  git -C "${CONTROL_DIR}" clean -ffdx
+fi
+
+chown -R root:root "${CONTROL_DIR}"
+
+if [[ -f "${REQUIREMENTS}" ]]; then
+  ansible-galaxy collection install -r "${REQUIREMENTS}"
+fi
+
+ansible_args=(
+  --inventory "${INVENTORY}"
+)
+
+if [[ -n "${VAULT_PASSWORD_FILE}" ]]; then
+  if [[ ! -r "${VAULT_PASSWORD_FILE}" ]]; then
+    log "vault password file is configured but unreadable at ${VAULT_PASSWORD_FILE}; skipping autoprovision this tick"
+    exit 0
+  fi
+  if ! root_only_secret_file "${VAULT_PASSWORD_FILE}"; then
+    log "vault password file is not a root-owned 0600-style file at ${VAULT_PASSWORD_FILE}; skipping autoprovision this tick"
+    exit 0
+  fi
+  ansible_args+=(--vault-password-file "${VAULT_PASSWORD_FILE}")
+fi
+
+for vars_file in "${EXTRA_VARS_FILES[@]}"; do
+  if [[ -z "${vars_file}" ]]; then
+    continue
+  fi
+  ansible_args+=(--extra-vars "@${vars_file}")
+done
+
+ansible_args+=("${PLAYBOOK}")
+
+log "running ansible-playbook against localhost inventory"
+ansible-playbook "${ansible_args[@]}"
+printf '%s\n' "${remote_sha}" > "${STATE_FILE}"
+chmod 0600 "${STATE_FILE}"
+log "autoprovision complete at ${remote_sha}"

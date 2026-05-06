@@ -28,6 +28,30 @@ bot_repo_url: ""
 bot_repo_version: main
 bot_repo_update: false
 
+bot_autoprovision_enabled: false
+bot_autoprovision_interval: 15min
+bot_autoprovision_on_boot_sec: 5min
+bot_autoprovision_randomized_delay_sec: 60s
+bot_autoprovision_service_name: goodkiddo-autoprovision
+bot_autoprovision_script_path: /usr/local/sbin/goodkiddo-autoprovision
+bot_autoprovision_inventory_file: "{{ bot_env_dir }}/autoprovision.inventory"
+bot_autoprovision_known_hosts_file: "{{ bot_env_dir }}/autoprovision_known_hosts"
+bot_autoprovision_vars_dir: "{{ bot_env_dir }}/ansible-vars"
+bot_autoprovision_extra_vars_files:
+  - "{{ bot_autoprovision_vars_dir }}/10-env.yml"
+  - "{{ bot_autoprovision_vars_dir }}/20-secrets.vault.yml"
+bot_autoprovision_repo_dir: /opt/goodkiddo/autoprovision-repo
+bot_autoprovision_state_file: /var/lib/goodkiddo/autoprovision-last-successful-sha
+bot_autoprovision_deploy_key_path: "{{ bot_env_dir }}/deploy_readonly_key"
+bot_autoprovision_deploy_key_private: ""
+bot_autoprovision_vault_password_file: ""
+bot_autoprovision_lock_file: /run/goodkiddo-autoprovision.lock
+bot_autoprovision_git_host: github.com
+bot_autoprovision_known_hosts:
+  - github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl
+  - github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=
+  - github.com ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCj7ndNxQowgcQnjshcLrqPEiiphnt+VTTvDP6mHBL9j1aNUkY4Ue1gvwnGLVlOhGeYrnZaMgRK6+PKCUXaDbC7qtbW8gIkhL7aGCsOr/C56SJMy/BCZfxd1nWzAOxSDPgVsmerOBYfNqltV9/hWCqBywINIR+5dIg6JTJ72pcEpEjcYgXkE2YEFXV1JHnsKgbLWNlhScqb2UmyRkQyytRLtL+38TGxkxCflmO+5Z8CSSNY7GidjMIZ7Q4zMjA2n1nGrlTDkzwDCsw+wqFPGQA179cnfGWOWRVruj16z6XyvxvjJwbz0wQZ75XK5tKSb7FNyeIEs4TT4jk+S4dhPeAUC5y+bDYirYgM4GC7uEnztnZyaVWQ7B381AK4Qdrwt51ZqExKbQpTUNn+EjqoTwvqNj4kqx5QUCI0ThS/YkOxJCXmPUWZbhjpCg56i+2aB6CmK2JGhn57K5mj0MNdBXA4/WnwH6XoPWJzK5Nyu2zB3nAZp+S5hpQs+p1vN1/wsjk=
+
 bun_version: 1.3.11
 bun_install_dir: /opt/bun
 bun_download_base: "https://github.com/oven-sh/bun/releases/download/bun-v{{ bun_version }}"

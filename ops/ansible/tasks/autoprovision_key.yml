@@ -1,0 +1,67 @@
+---
+- name: Ensure autoprovision secret directory exists
+  ansible.builtin.file:
+    path: "{{ bot_env_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0750"
+  when: bot_autoprovision_enabled | bool
+
+- name: Ensure root SSH directory exists for readonly deploy key host checks
+  ansible.builtin.file:
+    path: /root/.ssh
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: bot_autoprovision_enabled | bool
+
+- name: Require pinned Git host SSH keys
+  ansible.builtin.assert:
+    that:
+      - bot_autoprovision_known_hosts is defined
+      - (bot_autoprovision_known_hosts | length) > 0
+    fail_msg: >-
+      Self-autoprovisioning requires pinned SSH known_hosts entries. Do not use
+      ssh-keyscan output blindly in production; set bot_autoprovision_known_hosts
+      to operator-verified host keys for {{ bot_autoprovision_git_host }}.
+  when: bot_autoprovision_enabled | bool
+
+- name: Install pinned Git host SSH keys for strict host checking
+  ansible.builtin.copy:
+    content: "{{ bot_autoprovision_known_hosts | join('\n') }}\n"
+    dest: "{{ bot_autoprovision_known_hosts_file }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when: bot_autoprovision_enabled | bool
+
+- name: Render readonly deploy key from Vault when provided
+  ansible.builtin.copy:
+    content: "{{ bot_autoprovision_deploy_key_private | trim }}\n"
+    dest: "{{ bot_autoprovision_deploy_key_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+  no_log: true
+  when:
+    - bot_autoprovision_enabled | bool
+    - (bot_autoprovision_deploy_key_private | default('') | trim) != ""
+
+- name: Check readonly deploy key exists
+  ansible.builtin.stat:
+    path: "{{ bot_autoprovision_deploy_key_path }}"
+  register: bot_autoprovision_deploy_key_stat
+  when: bot_autoprovision_enabled | bool
+
+- name: Fail when readonly deploy key is missing
+  ansible.builtin.assert:
+    that:
+      - bot_autoprovision_deploy_key_stat.stat.exists
+      - bot_autoprovision_deploy_key_stat.stat.readable
+    fail_msg: >-
+      Missing readable deploy key at {{ bot_autoprovision_deploy_key_path }}.
+      Add a GitHub read-only deploy key and store its private half in
+      bot_autoprovision_deploy_key_private or place it manually on the host.
+  when: bot_autoprovision_enabled | bool

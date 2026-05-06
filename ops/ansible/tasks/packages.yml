@@ -3,6 +3,7 @@
   ansible.builtin.apt:
     name:
       - acl
+      - ansible
       - ca-certificates
       - curl
       - gnupg
@@ -27,6 +28,8 @@
       - docker-compose
       - docker.io
       - nginx
+      - openssh-client
+      - rsync
       - unzip
     state: present
     update_cache: true
