@@ -329,7 +329,7 @@ describe("buildRuntimeContext — with checkpoint", () => {
 		expect(ctx.messages).toHaveLength(6);
 	});
 
-	test("recentTurnCount defaults to 2", () => {
+	test("recentTurnCount defaults to 4", () => {
 		const history = makeMessages(
 			["t1", "r1"],
 			["t2", "r2"],
@@ -341,11 +341,11 @@ describe("buildRuntimeContext — with checkpoint", () => {
 			checkpoint: FULL_SUMMARY,
 			allMessages: history,
 			currentInput: "t5",
-			// no recentTurnCount — should default to 2
+			// no recentTurnCount — should default to 4
 		});
 
-		// 1 system + 4 (2 turns) + 1 current = 6
-		expect(ctx.messages).toHaveLength(6);
+		// 1 system + 8 (4 turns) + 1 current = 10
+		expect(ctx.messages).toHaveLength(10);
 	});
 
 	test("handles empty stored history — no crash", () => {
