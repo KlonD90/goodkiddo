@@ -329,7 +329,11 @@ describe("memory_maintain", () => {
 		await ensureMemoryBootstrapped(backend);
 		const tool = createMemoryMaintainTool(backend);
 
-		await overwrite(backend, "/memory/notes/alpha.md", "# Alpha\n\n## Actuel\nInitial.\n");
+		await overwrite(
+			backend,
+			"/memory/notes/alpha.md",
+			"# Alpha\n\n## Actuel\nInitial.\n",
+		);
 
 		const result = await callTool(tool, {
 			action: "touch",
@@ -370,12 +374,16 @@ describe("memory_maintain", () => {
 		expect(result).toContain("/memory/notes/");
 	});
 
-	test("archive copies file to .archived and deletes original", async () => {
+	test("archive copies file to .archived and keeps original as backup", async () => {
 		const backend = createBackend("mm-archive");
 		await ensureMemoryBootstrapped(backend);
 		const tool = createMemoryMaintainTool(backend);
 
-		await overwrite(backend, "/memory/notes/beta.md", "# Beta\n\n## Actuel\nOld content.\n");
+		await overwrite(
+			backend,
+			"/memory/notes/beta.md",
+			"# Beta\n\n## Actuel\nOld content.\n",
+		);
 
 		const result = await callTool(tool, {
 			action: "archive",
@@ -384,10 +392,13 @@ describe("memory_maintain", () => {
 
 		expect(result).toContain("Archived");
 		expect(result).toContain(".archived");
-		const archived = await readOrEmpty(backend, "/memory/notes/beta.md.archived");
+		const archived = await readOrEmpty(
+			backend,
+			"/memory/notes/beta.md.archived",
+		);
 		expect(archived).toContain("Old content.");
-		const gone = await readOrEmpty(backend, "/memory/notes/beta.md");
-		expect(gone).toBe("");
+		const original = await readOrEmpty(backend, "/memory/notes/beta.md");
+		expect(original).toContain("Old content.");
 	});
 
 	test("archive returns error for non-existent file", async () => {
@@ -409,7 +420,11 @@ describe("memory_maintain", () => {
 		await ensureMemoryBootstrapped(backend);
 		const tool = createMemoryMaintainTool(backend);
 
-		await overwrite(backend, "/memory/notes/gamma.md", "# Gamma\n\n## Actuel\nReference doc.\n");
+		await overwrite(
+			backend,
+			"/memory/notes/gamma.md",
+			"# Gamma\n\n## Actuel\nReference doc.\n",
+		);
 
 		const result = await callTool(tool, {
 			action: "mark_permanent",
@@ -417,7 +432,10 @@ describe("memory_maintain", () => {
 		});
 
 		expect(result).toContain("permanent");
-		const marker = await readOrEmpty(backend, "/memory/notes/gamma.md.permanent");
+		const marker = await readOrEmpty(
+			backend,
+			"/memory/notes/gamma.md.permanent",
+		);
 		expect(marker).toBe("");
 	});
 
@@ -426,7 +444,11 @@ describe("memory_maintain", () => {
 		await ensureMemoryBootstrapped(backend);
 		const tool = createMemoryMaintainTool(backend);
 
-		await overwrite(backend, "/skills/deploy.md", "# deploy\n\n## Steps\n1. deploy\n");
+		await overwrite(
+			backend,
+			"/skills/deploy.md",
+			"# deploy\n\n## Steps\n1. deploy\n",
+		);
 
 		const result = await callTool(tool, {
 			action: "mark_permanent",

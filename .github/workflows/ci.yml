@@ -10,8 +10,8 @@ permissions:
   contents: read
 
 jobs:
-  smoke-tests:
-    name: Smoke tests
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,17 +25,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # The full test/typecheck/check gates are not green on current main yet.
-      # Keep CI useful by gating stable smoke coverage until those baseline issues are fixed.
-      - name: Run stable bot and web smoke tests
-        run: >-
-          bun test
-          bot/src/config.test.ts
-          bot/src/channels/telegram.test.ts
-          bot/src/channels/session_commands.test.ts
-          bot/src/permissions/commands.test.ts
-          web/src/text.test.ts
-          web/src/paths.test.ts
+      - name: Run all tests
+        run: bun run test
 
       - name: Run web Biome check
         run: bun run --filter goodkiddo-web check
