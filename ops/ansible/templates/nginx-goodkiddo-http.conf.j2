@@ -20,8 +20,12 @@ server {
         add_header Cache-Control "public, immutable";
     }
 
+    location = /fs {
+        return 308 /fs/$is_args$args;
+    }
+
     location /fs/ {
-        root {{ bot_web_dist_dir }};
+        alias {{ bot_web_dist_dir }}/;
         try_files $uri $uri/ /fs/index.html;
     }
 
