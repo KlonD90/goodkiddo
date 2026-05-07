@@ -13,6 +13,19 @@
     shell: /usr/sbin/nologin
     system: true
 
+- name: Validate self-autoprovision app/control checkout separation
+  ansible.builtin.assert:
+    that:
+      - (bot_autoprovision_repo_dir | default('') | trim) != ""
+      - (bot_autoprovision_repo_dir | string).startswith('/')
+      - bot_autoprovision_repo_dir != "/"
+      - bot_autoprovision_repo_dir != bot_app_dir
+      - not ((bot_autoprovision_repo_dir | string).startswith((bot_app_dir | string) ~ '/'))
+    fail_msg: >-
+      bot_autoprovision_repo_dir must be an absolute path outside bot_app_dir so
+      root-run playbooks and Git metadata cannot become bot-owned.
+  when: bot_autoprovision_enabled | bool
+
 - name: Ensure application directories exist
   ansible.builtin.file:
     path: "{{ item.path }}"
@@ -35,16 +48,151 @@
     recurse: true
     owner: "{{ bot_user }}"
     group: "{{ bot_group }}"
-  when: bot_repo_url | length > 0
+  when:
+    - bot_repo_url | length > 0
+    - not (bot_autoprovision_enabled | bool)
 
-- name: Optionally sync repository checkout
+- name: Optionally sync repository checkout as service user
   ansible.builtin.git:
     repo: "{{ bot_repo_url }}"
     dest: "{{ bot_app_dir }}"
     version: "{{ bot_repo_version }}"
     update: "{{ bot_repo_update }}"
   become_user: "{{ bot_user }}"
-  when: bot_repo_url | length > 0
+  when:
+    - bot_repo_url | length > 0
+    - not (bot_autoprovision_enabled | bool)
+  notify:
+    - restart bot service
+    - restart searxng stack
+
+- name: Ensure self-autoprovision control checkout parent exists
+  ansible.builtin.file:
+    path: "{{ bot_autoprovision_repo_dir | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+
+- name: Check existing self-autoprovision control checkout path
+  ansible.builtin.stat:
+    path: "{{ bot_autoprovision_repo_dir }}"
+  register: bot_autoprovision_control_dir_stat
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+
+- name: Check existing self-autoprovision control checkout Git metadata
+  ansible.builtin.stat:
+    path: "{{ bot_autoprovision_repo_dir }}/.git"
+  register: bot_autoprovision_control_git_stat
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+    - bot_autoprovision_control_dir_stat.stat.exists | default(false)
+
+- name: Look for unsafe entries in existing control checkout Git metadata
+  ansible.builtin.command:
+    argv:
+      - find
+      - "{{ bot_autoprovision_repo_dir }}/.git"
+      - "("
+      - "!"
+      - -user
+      - "0"
+      - -o
+      - -perm
+      - /022
+      - ")"
+      - -print
+      - -quit
+  register: bot_autoprovision_control_insecure_git_entries
+  changed_when: false
+  failed_when: false
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+    - bot_autoprovision_control_git_stat.stat.isdir | default(false)
+
+- name: Remove unsafe existing self-autoprovision control checkout before Git sync
+  ansible.builtin.file:
+    path: "{{ bot_autoprovision_repo_dir }}"
+    state: absent
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+    - bot_autoprovision_control_dir_stat.stat.exists | default(false)
+    - >-
+      (not (bot_autoprovision_control_dir_stat.stat.isdir | default(false)))
+      or ((bot_autoprovision_control_dir_stat.stat.uid | default(-1)) != 0)
+      or (bot_autoprovision_control_dir_stat.stat.wgrp | default(true))
+      or (bot_autoprovision_control_dir_stat.stat.woth | default(true))
+      or ((bot_autoprovision_control_git_stat.stat.exists | default(false)) and (
+        (not (bot_autoprovision_control_git_stat.stat.isdir | default(false)))
+        or ((bot_autoprovision_control_git_stat.stat.uid | default(-1)) != 0)
+        or (bot_autoprovision_control_git_stat.stat.wgrp | default(true))
+        or (bot_autoprovision_control_git_stat.stat.woth | default(true))
+      ))
+      or ((bot_autoprovision_control_insecure_git_entries.stdout | default('')) != '')
+
+- name: Sync root-owned control checkout with readonly deploy key
+  ansible.builtin.git:
+    repo: "{{ bot_repo_url }}"
+    dest: "{{ bot_autoprovision_repo_dir }}"
+    version: "{{ bot_repo_version }}"
+    update: true
+    key_file: "{{ bot_autoprovision_deploy_key_path }}"
+    accept_hostkey: false
+    ssh_opts: "-o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile={{ bot_autoprovision_known_hosts_file }} -o GlobalKnownHostsFile=/dev/null -o UpdateHostKeys=no"
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+
+- name: Remove ignored and untracked files from root-owned control checkout
+  ansible.builtin.command:
+    argv:
+      - git
+      - -C
+      - "{{ bot_autoprovision_repo_dir }}"
+      - clean
+      - -ffdx
+  register: bot_autoprovision_control_clean
+  changed_when: bot_autoprovision_control_clean.stdout | length > 0
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+
+- name: Ensure self-autoprovision control checkout is root-owned
+  ansible.builtin.file:
+    path: "{{ bot_autoprovision_repo_dir }}"
+    state: directory
+    recurse: true
+    owner: root
+    group: root
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
+
+- name: Sync application tree from root-owned control checkout
+  ansible.builtin.command:
+    argv:
+      - rsync
+      - -a
+      - --delete
+      - --itemize-changes
+      - --exclude
+      - .git
+      - "--chown={{ bot_user }}:{{ bot_group }}"
+      - "{{ bot_autoprovision_repo_dir }}/"
+      - "{{ bot_app_dir }}/"
+  register: bot_autoprovision_app_rsync
+  changed_when: bot_autoprovision_app_rsync.stdout | length > 0
+  when:
+    - bot_repo_url | length > 0
+    - bot_autoprovision_enabled | bool
   notify:
     - restart bot service
     - restart searxng stack

@@ -10,6 +10,9 @@
     - name: Install packages and runtimes
       ansible.builtin.include_tasks: tasks/packages.yml
 
+    - name: Prepare self-autoprovision deploy key
+      ansible.builtin.include_tasks: tasks/autoprovision_key.yml
+
     - name: Prepare application checkout and landing
       ansible.builtin.include_tasks: tasks/app.yml
 
@@ -24,6 +27,9 @@
 
     - name: Configure nginx
       ansible.builtin.include_tasks: tasks/nginx.yml
+
+    - name: Configure production self-autoprovisioning
+      ansible.builtin.include_tasks: tasks/autoprovision.yml
 
   handlers:
     - name: reload nginx

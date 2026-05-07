@@ -1,0 +1,92 @@
+---
+- name: Stop self-autoprovision timer when disabled
+  ansible.builtin.systemd_service:
+    name: "{{ bot_autoprovision_service_name }}.timer"
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (bot_autoprovision_enabled | bool)
+
+- name: Stop self-autoprovision service when disabled
+  ansible.builtin.systemd_service:
+    name: "{{ bot_autoprovision_service_name }}.service"
+    enabled: false
+    state: stopped
+  failed_when: false
+  when: not (bot_autoprovision_enabled | bool)
+
+- name: Validate self-autoprovision settings
+  ansible.builtin.assert:
+    that:
+      - (bot_repo_url | default('') | trim) != ""
+      - (bot_repo_version | default('') | trim) != ""
+      - (bot_autoprovision_interval | default('') | trim) != ""
+      - (bot_autoprovision_repo_dir | string).startswith('/')
+      - bot_autoprovision_repo_dir != "/"
+      - bot_autoprovision_repo_dir != bot_app_dir
+      - not ((bot_autoprovision_repo_dir | string).startswith((bot_app_dir | string) ~ '/'))
+      - bot_autoprovision_state_file != ""
+    fail_msg: >-
+      Self-autoprovisioning requires bot_repo_url, bot_repo_version, and
+      bot_autoprovision_interval. Use a read-only GitHub deploy key for bot_repo_url.
+  when: bot_autoprovision_enabled | bool
+
+- name: Re-check self-autoprovision deploy key material
+  ansible.builtin.include_tasks: tasks/autoprovision_key.yml
+  when: bot_autoprovision_enabled | bool
+
+- name: Install Ansible collections on the production host for future self-runs
+  ansible.builtin.command:
+    cmd: ansible-galaxy collection install -r "{{ bot_autoprovision_repo_dir }}/ops/ansible/requirements.yml"
+  register: bot_autoprovision_galaxy
+  changed_when: "'Installing' in bot_autoprovision_galaxy.stdout or 'Downloading' in bot_autoprovision_galaxy.stdout"
+  when: bot_autoprovision_enabled | bool
+
+- name: Render localhost inventory for self-autoprovisioning
+  ansible.builtin.template:
+    src: templates/goodkiddo-autoprovision.inventory.j2
+    dest: "{{ bot_autoprovision_inventory_file }}"
+    owner: root
+    group: root
+    mode: "0644"
+  when: bot_autoprovision_enabled | bool
+
+- name: Render self-autoprovision script
+  ansible.builtin.template:
+    src: templates/goodkiddo-autoprovision.sh.j2
+    dest: "{{ bot_autoprovision_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+  when: bot_autoprovision_enabled | bool
+
+- name: Render self-autoprovision systemd service
+  ansible.builtin.template:
+    src: templates/goodkiddo-autoprovision.service.j2
+    dest: "/etc/systemd/system/{{ bot_autoprovision_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd
+  when: bot_autoprovision_enabled | bool
+
+- name: Render self-autoprovision systemd timer
+  ansible.builtin.template:
+    src: templates/goodkiddo-autoprovision.timer.j2
+    dest: "/etc/systemd/system/{{ bot_autoprovision_service_name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: reload systemd
+  when: bot_autoprovision_enabled | bool
+
+- name: Flush systemd reload before enabling self-autoprovision timer
+  ansible.builtin.meta: flush_handlers
+  when: bot_autoprovision_enabled | bool
+
+- name: Enable and start self-autoprovision timer
+  ansible.builtin.systemd_service:
+    name: "{{ bot_autoprovision_service_name }}.timer"
+    enabled: true
+    state: started
+  when: bot_autoprovision_enabled | bool

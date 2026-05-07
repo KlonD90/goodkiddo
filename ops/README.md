@@ -39,7 +39,11 @@ forwards requests to the origin over HTTP.
 - [`ansible/examples/goodkiddo_prod.20-secrets.vault.yml.example`](./ansible/examples/goodkiddo_prod.20-secrets.vault.yml.example) - starter secret vars
 - [`ansible/templates/searxng.env.j2`](./ansible/templates/searxng.env.j2) - local SearXNG runtime env
 - [`ansible/templates/goodkiddo-searxng.service.j2`](./ansible/templates/goodkiddo-searxng.service.j2) - systemd unit for the SearXNG stack
-- `ansible/tasks/` - split task files for preflight, packages, app, search stack, PostgreSQL, bot service, and nginx
+- [`ansible/tasks/autoprovision_key.yml`](./ansible/tasks/autoprovision_key.yml) - readonly deploy key and Git host setup
+- [`ansible/tasks/autoprovision.yml`](./ansible/tasks/autoprovision.yml) - optional production self-autoprovisioning from a readonly deploy key
+- [`ansible/templates/goodkiddo-autoprovision.sh.j2`](./ansible/templates/goodkiddo-autoprovision.sh.j2) - update detector + local Ansible runner
+- [`ansible/templates/goodkiddo-autoprovision.service.j2`](./ansible/templates/goodkiddo-autoprovision.service.j2) and [`ansible/templates/goodkiddo-autoprovision.timer.j2`](./ansible/templates/goodkiddo-autoprovision.timer.j2) - systemd service/timer pair
+- `ansible/tasks/` - split task files for preflight, packages, app, search stack, PostgreSQL, bot service, nginx, and self-autoprovisioning
 
 ## Safer Layout
 
@@ -105,7 +109,75 @@ Vault file and installs `uvx` so the runtime can launch
    ansible-playbook -i ops/ansible/inventory/production.ini ops/ansible/production.yml --ask-vault-pass
    ```
 
-8. After the service is up, provision Telegram chats with the existing admin CLI:
+8. Optional: enable self-autoprovisioning after the first successful manual run.
+
+   Create a GitHub deploy key with **read-only** access to this repository. Put
+   the private key either in the encrypted Vault var
+   `bot_autoprovision_deploy_key_private` or manually on the host at
+   `bot_autoprovision_deploy_key_path` with `0600 root:root` permissions. The
+   timer uses a separate root-owned control checkout (`bot_autoprovision_repo_dir`)
+   to run Ansible; keep it different from `bot_app_dir` so a compromised bot
+   process cannot mutate root-run playbooks/templates.
+
+   Copy the real production vars to a root-owned location outside the app and
+   control checkouts. The timer passes these files to `ansible-playbook` as
+   explicit extra-vars; if any configured file is missing, unreadable, not
+   root-owned, or group/world-writable, the timer skips that tick without
+   recording the repo SHA as deployed.
+
+   In `ops/ansible/group_vars/goodkiddo_prod/10-env.yml`:
+
+   ```yaml
+   bot_repo_url: git@github.com:KlonD90/goodkiddo.git
+   bot_repo_version: main
+   bot_autoprovision_enabled: true
+   bot_autoprovision_interval: 15min
+   bot_autoprovision_vars_dir: /etc/goodkiddo/ansible-vars
+   bot_autoprovision_extra_vars_files:
+     - "{{ bot_autoprovision_vars_dir }}/10-env.yml"
+     - "{{ bot_autoprovision_vars_dir }}/20-secrets.vault.yml"
+   bot_autoprovision_repo_dir: /opt/goodkiddo/autoprovision-repo
+   bot_autoprovision_state_file: /var/lib/goodkiddo/autoprovision-last-successful-sha
+   bot_autoprovision_deploy_key_path: /etc/goodkiddo/deploy_readonly_key
+   bot_autoprovision_known_hosts_file: /etc/goodkiddo/autoprovision_known_hosts
+   bot_autoprovision_vault_password_file: /etc/goodkiddo/ansible-vault-pass
+   ```
+
+   `bot_autoprovision_known_hosts` defaults to GitHub's published SSH host keys,
+   written to the dedicated `bot_autoprovision_known_hosts_file` used by the
+   deploy-key Git commands. Override it only with operator-verified keys for a
+   different Git host; do not bootstrap production trust from unaudited
+   `ssh-keyscan` output.
+
+   If production vars remain Vault-encrypted, create the vault password file on
+   the server as root-only:
+
+   ```bash
+   sudo install -m 0600 -o root -g root /dev/null /etc/goodkiddo/ansible-vault-pass
+   sudo editor /etc/goodkiddo/ansible-vault-pass
+   ```
+
+   Then run the playbook once manually again. It installs
+   `goodkiddo-autoprovision.timer`. Every 15 minutes the host checks that the
+   root-owned vars/secrets files listed in `bot_autoprovision_extra_vars_files`
+   are readable and root-controlled. If any are missing or insecure, that timer
+   tick logs the path and skips deployment without recording success. When vars
+   are present, it checks the readonly deploy key against `bot_repo_version`;
+   when the SHA changed, it updates the root-owned control checkout, runs the
+   production playbook locally through a localhost inventory with those extra
+   vars, and records the SHA only after Ansible succeeds so failed or skipped
+   runs retry on the next timer tick.
+
+   Useful production checks:
+
+   ```bash
+   sudo systemctl list-timers goodkiddo-autoprovision.timer
+   sudo systemctl status goodkiddo-autoprovision.timer
+   sudo journalctl -u goodkiddo-autoprovision.service -n 100 --no-pager
+   sudo systemctl start goodkiddo-autoprovision.service
+   ```
+
+9. After the service is up, provision Telegram chats with the existing admin CLI:
 
    ```bash
    sudo systemd-run --wait --pipe \

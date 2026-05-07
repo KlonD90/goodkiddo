@@ -1,0 +1,11 @@
+[Unit]
+Description=GoodKiddo self-autoprovision from readonly deploy key
+Documentation=file://{{ bot_app_dir }}/ops/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart={{ bot_autoprovision_script_path }}
+Nice=5
+IOSchedulingClass=best-effort

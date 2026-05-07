@@ -1,0 +1,12 @@
+[Unit]
+Description=Run GoodKiddo self-autoprovision every {{ bot_autoprovision_interval }}
+
+[Timer]
+OnBootSec={{ bot_autoprovision_on_boot_sec }}
+OnUnitActiveSec={{ bot_autoprovision_interval }}
+RandomizedDelaySec={{ bot_autoprovision_randomized_delay_sec }}
+Persistent=true
+Unit={{ bot_autoprovision_service_name }}.service
+
+[Install]
+WantedBy=timers.target

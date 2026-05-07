@@ -16,6 +16,30 @@ bot_repo_url: ""
 bot_repo_version: main
 bot_repo_update: false
 
+# Optional: let production poll the readonly deploy key every 15 minutes and
+# run this Ansible playbook against itself when bot_repo_version changes.
+bot_autoprovision_enabled: false
+bot_autoprovision_interval: 15min
+# The timer skips a deployment tick without recording success if any configured
+# vars/secrets file below is missing or unreadable on the host, or if a file is
+# not root-owned / is group- or world-writable.
+bot_autoprovision_vars_dir: /etc/goodkiddo/ansible-vars
+bot_autoprovision_extra_vars_files:
+  - "{{ bot_autoprovision_vars_dir }}/10-env.yml"
+  - "{{ bot_autoprovision_vars_dir }}/20-secrets.vault.yml"
+# Separate root-owned control checkout used only to run Ansible. Keep it
+# different from bot_app_dir so the bot service cannot mutate root-run playbooks.
+bot_autoprovision_repo_dir: /opt/goodkiddo/autoprovision-repo
+bot_autoprovision_state_file: /var/lib/goodkiddo/autoprovision-last-successful-sha
+bot_autoprovision_deploy_key_path: /etc/goodkiddo/deploy_readonly_key
+bot_autoprovision_known_hosts_file: /etc/goodkiddo/autoprovision_known_hosts
+# Defaults pin GitHub's published SSH host keys. Override this for another host;
+# do not replace it with unaudited ssh-keyscan output.
+# bot_autoprovision_known_hosts:
+#   - github.com ssh-ed25519 ...
+# If the Vault vars stay encrypted, create this root-only file on the server.
+bot_autoprovision_vault_password_file: /etc/goodkiddo/ansible-vault-pass
+
 bot_manage_postgres: true
 bot_postgres_db: goodkiddo
 bot_postgres_user: goodkiddo

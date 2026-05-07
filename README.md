@@ -90,7 +90,9 @@ vars, and Vault-backed secret vars so you do not need to edit production values
 inside the playbook. It intentionally leaves Firecracker and execution sandbox
 setup out for now; the example production vars keep `ENABLE_EXECUTE=false`.
 
-Start with [`ops/README.md`](./ops/README.md).
+Start with [`ops/README.md`](./ops/README.md). It also documents optional
+self-autoprovisioning: production can poll the repository every 15 minutes with
+a read-only deploy key and run the playbook locally when `main` changes.
 
 For release checks, run:
 
