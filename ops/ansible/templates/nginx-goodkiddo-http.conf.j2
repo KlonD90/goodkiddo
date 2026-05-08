@@ -3,6 +3,18 @@ server {
     listen [::]:80;
     server_name {{ bot_main_domain }};
 
+    location ~* \.(?:js|mjs|css)$ {
+        root {{ bot_landing_dir }}/dist;
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location ~* \.(?:avif|gif|ico|jpe?g|png|svg|webp|woff2?|ttf|otf)$ {
+        root {{ bot_landing_dir }}/dist;
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=2592000" always;
+    }
+
     location / {
         root {{ bot_landing_dir }}/dist;
         try_files $uri $uri/ /index.html;
@@ -14,10 +26,14 @@ server {
     listen [::]:80;
     server_name {{ bot_app_domain }};
 
-    location /assets/ {
-        root {{ bot_web_dist_dir }};
-        expires 30d;
-        add_header Cache-Control "public, immutable";
+    location ~* ^/fs/(?<asset_path>.+\.(?:js|mjs|css))$ {
+        alias {{ bot_web_dist_dir }}/$asset_path;
+        add_header Cache-Control "public, max-age=31536000, immutable" always;
+    }
+
+    location ~* ^/fs/(?<asset_path>.+\.(?:avif|gif|ico|jpe?g|png|svg|webp|woff2?|ttf|otf))$ {
+        alias {{ bot_web_dist_dir }}/$asset_path;
+        add_header Cache-Control "public, max-age=2592000" always;
     }
 
     location = /fs {
