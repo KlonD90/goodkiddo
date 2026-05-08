@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "bun build index.html --outdir dist --production",
+    "build": "bun build index.html --outdir dist --production --asset-naming '[name].[ext]'",
     "test": "bun test",
     "check": "biome check src",
     "format": "biome check --write src --unsafe",
