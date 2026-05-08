@@ -22,6 +22,10 @@ import {
 	isImageMimeType,
 	processTelegramFile,
 } from "./files";
+import {
+	errorFieldsForLog,
+	summarizeTelegramUpdateForLog,
+} from "./logging";
 import { sendTelegramMessage, TelegramOutboundChannel } from "./outbound";
 import { ensureTelegramSession } from "./session";
 import {
@@ -470,8 +474,8 @@ export const telegramChannel: AppChannel = {
 		bot.catch(async (error) => {
 			const err = error.error;
 			log.error("bot error", {
-				error: err instanceof Error ? err.message : String(err),
-				updateId: error.ctx?.update?.update_id,
+				...errorFieldsForLog(err),
+				...summarizeTelegramUpdateForLog(error.ctx?.update),
 			});
 		});
 

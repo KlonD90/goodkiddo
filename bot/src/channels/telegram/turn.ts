@@ -9,7 +9,7 @@ import type {
 import { persistAlwaysRule } from "../../permissions/approval";
 import { maybeHandleCommand } from "../../permissions/commands";
 import type { PermissionsStore } from "../../permissions/store";
-import type { Caller } from "../../permissions/types";
+import type { Caller, UserRecord } from "../../permissions/types";
 import { maybeHandleSessionCommand } from "../session_commands";
 import {
 	clearPendingTaskCheckContext,
@@ -19,6 +19,7 @@ import {
 } from "../shared";
 import type { ChannelRunOptions } from "../types";
 import { applyTelegramAttachmentBudget } from "./attachment";
+import { errorFieldsForLog } from "./logging";
 import { escapeTelegramHtml } from "./markdown";
 import { sendTelegramMessage, startTelegramTypingLoop } from "./outbound";
 import {
@@ -166,7 +167,18 @@ export async function getTelegramCaller(
 	store: PermissionsStore,
 	chatId: string,
 ): Promise<{ caller: Caller; isNew: boolean } | null> {
-	const user = await store.getUser("telegram", chatId);
+	let user: UserRecord | null;
+	try {
+		user = await store.getUser("telegram", chatId);
+	} catch (error) {
+		log.error("telegram caller lookup failed", {
+			stage: "getUser",
+			chatId,
+			callerId: `telegram:${chatId}`,
+			...errorFieldsForLog(error),
+		});
+		throw error;
+	}
 	if (user) {
 		if (user.status === "suspended") return null;
 		return {
@@ -179,12 +191,36 @@ export async function getTelegramCaller(
 			isNew: false,
 		};
 	}
-	await store.createUserFree({
-		entrypoint: "telegram",
-		externalId: chatId,
-	});
+	const createdAtMs = Date.now();
+	try {
+		await store.createUserFree({
+			entrypoint: "telegram",
+			externalId: chatId,
+		});
+	} catch (error) {
+		log.error("telegram caller auto-create failed", {
+			stage: "createUserFree",
+			chatId,
+			callerId: `telegram:${chatId}`,
+			createdAtMs,
+			createdAtIso: new Date(createdAtMs).toISOString(),
+			...errorFieldsForLog(error),
+		});
+		throw error;
+	}
 	trackUserCreated(chatId, "telegram");
-	const newUser = await store.getUser("telegram", chatId);
+	let newUser: UserRecord | null;
+	try {
+		newUser = await store.getUser("telegram", chatId);
+	} catch (error) {
+		log.error("telegram caller lookup failed", {
+			stage: "getUserAfterCreate",
+			chatId,
+			callerId: `telegram:${chatId}`,
+			...errorFieldsForLog(error),
+		});
+		throw error;
+	}
 	if (!newUser) return null;
 	return {
 		caller: {
