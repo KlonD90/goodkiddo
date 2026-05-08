@@ -21,3 +21,8 @@ Source root for the harness.
 - `guest/` — runner that executes inside the sandbox
 - `identities/` — system prompts
 - `utils/` — small shared helpers
+
+PostgreSQL stores that persist millisecond timestamps from `Date.now()` use
+`BIGINT` columns. Store initialization also migrates older Postgres timestamp
+columns from `INTEGER` to `BIGINT` so production tables can accept current
+epoch-millisecond values.

@@ -1,6 +1,6 @@
 # permissions
 
-Multi-tenant tool permissions. Per-user rules in SQLite, default decision is `allow`, except `execute_*` tools which default to `ask`.
+Multi-tenant tool permissions. Per-user rules in SQLite/PostgreSQL, default decision is `allow`, except `execute_*` tools which default to `ask`.
 
 Users have two independent attributes: `tier` (free/paid) and `status` (active/suspended). Tier controls commercial account level; status controls access. A free user can be suspended, and a paid user can be suspended.
 
@@ -12,3 +12,8 @@ Users have two independent attributes: `tier` (free/paid) and `status` (active/s
 - `commands.ts` — `/policy /allow /deny /ask /reset` for self-service rule management
 
 Usage: instantiate `PermissionsStore`, hand it to the broker + tool guard, route slash-commands via `maybeHandleCommand` before invoking the agent.
+
+PostgreSQL user records store `created_at` as `BIGINT` because the value is an
+epoch-millisecond timestamp from `Date.now()`. `PermissionsStore` startup
+migrates older Postgres `harness_users.created_at` columns from `INTEGER` to
+`BIGINT`.

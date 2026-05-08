@@ -1,4 +1,5 @@
 import { normalizeMatcher } from "./matcher";
+import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
 import {
 	type ArgumentMatcher,
 	type Caller,
@@ -79,20 +80,21 @@ export class PermissionsStore {
 
 	private async _init(): Promise<void> {
 		const db = this.database;
-		await db`
-      CREATE TABLE IF NOT EXISTS harness_users (
-        id TEXT PRIMARY KEY,
-        entrypoint TEXT NOT NULL,
-        external_id TEXT NOT NULL,
-        display_name TEXT,
-        tier TEXT NOT NULL DEFAULT 'paid',
-        status TEXT NOT NULL DEFAULT 'active',
-        created_at INTEGER NOT NULL,
-        identity_id TEXT,
-        UNIQUE(entrypoint, external_id)
-      )
-    `;
 		if (this.dialect === "postgres") {
+			await db`
+        CREATE TABLE IF NOT EXISTS harness_users (
+          id TEXT PRIMARY KEY,
+          entrypoint TEXT NOT NULL,
+          external_id TEXT NOT NULL,
+          display_name TEXT,
+          tier TEXT NOT NULL DEFAULT 'paid',
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at BIGINT NOT NULL,
+          identity_id TEXT,
+          UNIQUE(entrypoint, external_id)
+        )
+      `;
+			await ensurePostgresBigintColumn(db, "harness_users", "created_at");
 			await db`
         CREATE TABLE IF NOT EXISTS tool_permissions (
           id SERIAL PRIMARY KEY,
@@ -104,6 +106,19 @@ export class PermissionsStore {
         )
       `;
 		} else {
+			await db`
+        CREATE TABLE IF NOT EXISTS harness_users (
+          id TEXT PRIMARY KEY,
+          entrypoint TEXT NOT NULL,
+          external_id TEXT NOT NULL,
+          display_name TEXT,
+          tier TEXT NOT NULL DEFAULT 'paid',
+          status TEXT NOT NULL DEFAULT 'active',
+          created_at INTEGER NOT NULL,
+          identity_id TEXT,
+          UNIQUE(entrypoint, external_id)
+        )
+      `;
 			await db`
         CREATE TABLE IF NOT EXISTS tool_permissions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
