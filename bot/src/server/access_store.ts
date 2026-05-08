@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { normalizePath } from "../backends/state_backend";
+import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
 
 type SQL = InstanceType<typeof Bun.SQL>;
 
@@ -83,18 +84,36 @@ export class AccessStore {
 
 	private async _init(): Promise<void> {
 		const db = this.database;
-		await db`
-      CREATE TABLE IF NOT EXISTS fs_access_grants (
-        link_uuid TEXT PRIMARY KEY,
-        bearer_token TEXT NOT NULL UNIQUE,
-        user_id TEXT NOT NULL,
-        scope_path TEXT NOT NULL,
-        scope_kind TEXT NOT NULL,
-        expires_at INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,
-        revoked_at INTEGER
-      )
-    `;
+		if (this.dialect === "postgres") {
+			await db`
+        CREATE TABLE IF NOT EXISTS fs_access_grants (
+          link_uuid TEXT PRIMARY KEY,
+          bearer_token TEXT NOT NULL UNIQUE,
+          user_id TEXT NOT NULL,
+          scope_path TEXT NOT NULL,
+          scope_kind TEXT NOT NULL,
+          expires_at BIGINT NOT NULL,
+          created_at BIGINT NOT NULL,
+          revoked_at BIGINT
+        )
+      `;
+			await ensurePostgresBigintColumn(db, "fs_access_grants", "expires_at");
+			await ensurePostgresBigintColumn(db, "fs_access_grants", "created_at");
+			await ensurePostgresBigintColumn(db, "fs_access_grants", "revoked_at");
+		} else {
+			await db`
+        CREATE TABLE IF NOT EXISTS fs_access_grants (
+          link_uuid TEXT PRIMARY KEY,
+          bearer_token TEXT NOT NULL UNIQUE,
+          user_id TEXT NOT NULL,
+          scope_path TEXT NOT NULL,
+          scope_kind TEXT NOT NULL,
+          expires_at INTEGER NOT NULL,
+          created_at INTEGER NOT NULL,
+          revoked_at INTEGER
+        )
+      `;
+		}
 		await db`
       CREATE INDEX IF NOT EXISTS idx_fs_access_grants_user ON fs_access_grants(user_id)
     `;

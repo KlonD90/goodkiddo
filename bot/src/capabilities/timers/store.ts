@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { ensurePostgresBigintColumn } from "../../db/postgres_bigint_columns";
 import { createLogger } from "../../logger";
 
 const log = createLogger("timers.store");
@@ -157,6 +158,9 @@ export class TimerStore {
 
 	private async migrateTimerColumns(): Promise<void> {
 		if (this.dialect === "postgres") {
+			await ensurePostgresBigintColumn(this.db, "timers", "last_run_at");
+			await ensurePostgresBigintColumn(this.db, "timers", "next_run_at");
+			await ensurePostgresBigintColumn(this.db, "timers", "created_at");
 			await this.db`
 				ALTER TABLE timers
 				ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'always'

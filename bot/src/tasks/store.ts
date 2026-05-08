@@ -1,3 +1,4 @@
+import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
 import { createLogger } from "../logger";
 import { compactInline } from "../utils/text";
 
@@ -183,6 +184,8 @@ export class TaskStore {
 			`;
 		}
 
+		await this.migrateTimestampColumns();
+
 		await this.db`
 			CREATE INDEX IF NOT EXISTS idx_tasks_user_status_updated_at
 			ON tasks(user_id, status, updated_at DESC)
@@ -195,6 +198,15 @@ export class TaskStore {
 		if (this.dialect === "sqlite") {
 			await this.db`PRAGMA journal_mode = WAL`;
 		}
+	}
+
+	private async migrateTimestampColumns(): Promise<void> {
+		if (this.dialect !== "postgres") return;
+
+		await ensurePostgresBigintColumn(this.db, "tasks", "created_at");
+		await ensurePostgresBigintColumn(this.db, "tasks", "updated_at");
+		await ensurePostgresBigintColumn(this.db, "tasks", "completed_at");
+		await ensurePostgresBigintColumn(this.db, "tasks", "dismissed_at");
 	}
 
 	async ready(): Promise<void> {
