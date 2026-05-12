@@ -2,8 +2,9 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import posthog from 'posthog-js';
 
-const posthogKey = process.env.POSTHOG_KEY || '';
-const posthogHost = process.env.POSTHOG_HOST || 'https://us.i.posthog.com';
+const env = import.meta.env ?? globalThis.process?.env ?? {};
+const posthogKey = env.POSTHOG_KEY || '';
+const posthogHost = env.POSTHOG_HOST || 'https://us.i.posthog.com';
 
 if (posthogKey) {
   posthog.init(posthogKey, {

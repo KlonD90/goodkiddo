@@ -10,6 +10,7 @@ import HeroStickerBurstImage from './hero-sticker-burst.png';
 import HeroStickerCloudImage from './hero-sticker-cloud.png';
 
 const TELEGRAM_URL = 'https://t.me/goodkiddo_bot';
+const GITHUB_URL = 'https://github.com/KlonD90/goodkiddo';
 
 const proofItems = [
   {
@@ -138,6 +139,17 @@ function PettableDog({ className = '', label = 'Pet GoodKiddo' }) {
   );
 }
 
+function GitHubIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        d="M12 1.5a10.5 10.5 0 0 0-3.32 20.46c.53.1.72-.23.72-.52v-1.83c-2.95.64-3.57-1.25-3.57-1.25-.48-1.2-1.16-1.52-1.16-1.52-.95-.65.07-.64.07-.64 1.05.08 1.6 1.08 1.6 1.08.94 1.6 2.46 1.14 3.06.87.1-.68.36-1.14.65-1.4-2.35-.27-4.82-1.18-4.82-5.22 0-1.15.41-2.09 1.08-2.83-.1-.27-.47-1.37.1-2.85 0 0 .89-.28 2.92 1.08a10.2 10.2 0 0 1 5.32 0c2.03-1.36 2.91-1.08 2.91-1.08.58 1.48.21 2.58.1 2.85.68.74 1.08 1.68 1.08 2.83 0 4.05-2.47 4.94-4.84 5.2.37.33.7.96.7 1.94v2.87c0 .29.19.63.73.52A10.5 10.5 0 0 0 12 1.5Z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function Nav() {
   return (
     <header className="gk-nav">
@@ -149,6 +161,16 @@ function Nav() {
         <a href="#work">Work</a>
         <a href="#values">Values</a>
         <a href="#start">Start</a>
+        <a
+          className="gk-github-link"
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open GoodKiddo on GitHub"
+          onClick={() => capture('header_github_clicked', { location: 'nav' })}
+        >
+          <GitHubIcon />
+        </a>
       </nav>
       <a
         className="gk-button gk-button-dark"
@@ -401,6 +423,29 @@ function FinalCTA() {
   );
 }
 
+function Footer() {
+  return (
+    <footer className="gk-footer">
+      <div className="gk-footer-meta">
+        <p>GoodKiddo © 2026</p>
+        <p className="gk-footer-open-source">Fully open-source.</p>
+      </div>
+      <div className="gk-footer-links">
+        <a
+          className="gk-github-link"
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label="Open GoodKiddo on GitHub"
+          onClick={() => capture('footer_github_clicked', { location: 'footer' })}
+        >
+          <GitHubIcon />
+        </a>
+      </div>
+    </footer>
+  );
+}
+
 function LandingPage() {
   return (
     <main className="gk-page overflow-x-hidden w-full max-w-full">
@@ -410,6 +455,7 @@ function LandingPage() {
       <UseCases />
       <Values />
       <FinalCTA />
+      <Footer />
     </main>
   );
 }
