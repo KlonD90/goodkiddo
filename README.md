@@ -103,6 +103,13 @@ bun run web:build
 bun run landing:build
 ```
 
+To run just the frontend builds with explicit environment values:
+
+```bash
+POSTHOG_KEY=ci-public-placeholder POSTHOG_HOST=https://us.i.posthog.com bun run landing:build
+bun run web:build
+```
+
 ## Plans
 
 - [`docs/features/`](./docs/features/) — high-level feature descriptions

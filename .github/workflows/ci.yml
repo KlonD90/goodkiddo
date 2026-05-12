@@ -30,3 +30,12 @@ jobs:
 
       - name: Run web Biome check
         run: bun run --filter goodkiddo-web check
+
+      - name: Build landing site
+        env:
+          POSTHOG_KEY: ci-public-placeholder
+          POSTHOG_HOST: https://us.i.posthog.com
+        run: bun run landing:build
+
+      - name: Build web app
+        run: bun run web:build

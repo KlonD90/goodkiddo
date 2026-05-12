@@ -124,7 +124,21 @@ a {
 }
 
 .gk-nav-links a {
+  display: inline-flex;
+  align-items: center;
   text-decoration: none;
+}
+
+.gk-github-link {
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--ink);
+}
+
+.gk-github-link svg {
+  width: 100%;
+  height: 100%;
 }
 
 .gk-nav > .gk-button {
@@ -3365,6 +3379,50 @@ a {
   font-size: 1.08rem;
 }
 
+.gk-footer {
+  width: min(1180px, calc(100% - 32px));
+  margin: 0 auto 72px;
+  padding-top: 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.gk-footer p {
+  margin: 0;
+}
+
+.gk-footer-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gk-footer-open-source {
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.gk-footer-links {
+  display: inline-flex;
+  align-items: center;
+  gap: 22px;
+}
+
+.gk-footer a {
+  color: inherit;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.gk-footer a:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 1120px) {
   .gk-hero {
     --hero-column-height: auto;
@@ -4008,6 +4066,13 @@ a {
   .gk-final {
     margin-bottom: 34px;
     padding: 28px;
+  }
+
+  .gk-footer {
+    width: calc(100% - 20px);
+    margin-bottom: 34px;
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 
