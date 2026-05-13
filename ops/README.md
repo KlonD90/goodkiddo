@@ -128,7 +128,8 @@ artifact to the nginx-served directory:
 /opt/goodkiddo/app/landing/dist
 ```
 
-Configure these repository secrets before enabling the workflow:
+The deployment job uses the GitHub Actions `production` environment. Configure
+these environment secrets before enabling the workflow:
 
 - `HOST`: SSH host or IP address, without a username
 - `KEY`: private SSH key for the `ubuntu` user on that host
