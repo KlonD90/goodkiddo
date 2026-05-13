@@ -1,0 +1,86 @@
+name: Deploy Landing
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "landing/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-landing-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy landing
+    runs-on: ubuntu-latest
+    env:
+      LANDING_REMOTE_DIR: /opt/goodkiddo/app/landing/dist
+      LANDING_REMOTE_USER: ubuntu
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build landing
+        run: bun run landing:build
+
+      - name: Prepare SSH
+        env:
+          DEPLOY_HOST: ${{ secrets.HOST }}
+          DEPLOY_KEY: ${{ secrets.KEY }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DEPLOY_HOST}" ]]; then
+            echo "::error::Missing required HOST repository secret."
+            exit 1
+          fi
+
+          if [[ -z "${DEPLOY_KEY}" ]]; then
+            echo "::error::Missing required KEY repository secret."
+            exit 1
+          fi
+
+          if [[ "${DEPLOY_HOST}" == *@* ]]; then
+            echo "::error::HOST must be only the host or IP address. The workflow connects as ubuntu."
+            exit 1
+          fi
+
+          mkdir -p "${HOME}/.ssh"
+          chmod 700 "${HOME}/.ssh"
+
+          printf "%s\n" "${DEPLOY_KEY}" > "${RUNNER_TEMP}/landing_deploy_key"
+          chmod 600 "${RUNNER_TEMP}/landing_deploy_key"
+
+          ssh-keyscan -H "${DEPLOY_HOST}" >> "${HOME}/.ssh/known_hosts"
+          chmod 600 "${HOME}/.ssh/known_hosts"
+
+      - name: Deploy landing dist
+        env:
+          DEPLOY_HOST: ${{ secrets.HOST }}
+        run: |
+          set -euo pipefail
+          remote="${LANDING_REMOTE_USER}@${DEPLOY_HOST}"
+          remote_tmp="/tmp/goodkiddo-landing-dist-${GITHUB_SHA}"
+
+          ssh -i "${RUNNER_TEMP}/landing_deploy_key" "${remote}" \
+            "rm -rf '${remote_tmp}' && mkdir -p '${remote_tmp}'"
+
+          rsync -az --delete --delay-updates \
+            -e "ssh -i ${RUNNER_TEMP}/landing_deploy_key" \
+            landing/dist/ "${remote}:${remote_tmp}/"
+
+          ssh -i "${RUNNER_TEMP}/landing_deploy_key" "${remote}" \
+            "sudo mkdir -p '${LANDING_REMOTE_DIR}' && sudo rsync -a --delete '${remote_tmp}/' '${LANDING_REMOTE_DIR}/' && sudo chown -R goodkiddo:goodkiddo '${LANDING_REMOTE_DIR}' && rm -rf '${remote_tmp}'"
