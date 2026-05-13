@@ -27,6 +27,7 @@
       - docker-compose
       - docker.io
       - nginx
+      - rsync
       - unzip
     state: present
     update_cache: true

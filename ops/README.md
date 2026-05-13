@@ -115,6 +115,31 @@ Vault file and installs `uvx` so the runtime can launch
      /usr/local/bin/bun src/bin/admin.ts add-user telegram <chat-id> "Display name"
    ```
 
+## Landing CI Deployment
+
+The landing site can be deployed by GitHub Actions after production has been
+provisioned once with Ansible. The workflow in
+`.github/workflows/deploy-landing.yml` runs on pushes to `main` when any file
+under `landing/` changes, builds `landing/dist/` in CI, and rsyncs the built
+artifact to the nginx-served directory:
+
+```text
+/opt/goodkiddo/app/landing/dist
+```
+
+Configure these repository secrets before enabling the workflow:
+
+- `HOST`: SSH host or IP address, without a username
+- `KEY`: private SSH key for the `ubuntu` user on that host
+
+The workflow connects as `ubuntu`, uploads the built files to a temporary
+directory, then uses passwordless `sudo rsync` to mirror them into
+`/opt/goodkiddo/app/landing/dist`. The tracked Ansible defaults make
+`/opt/goodkiddo/app` owned by the `goodkiddo` service user, so the workflow
+restores `goodkiddo:goodkiddo` ownership after deployment. The playbook installs
+`rsync` on the host because the deployment workflow uses it to mirror deleted
+files as well as new and changed files.
+
 ## Notes
 
 - The playbook expects Ubuntu with `apt`.
