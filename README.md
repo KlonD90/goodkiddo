@@ -15,6 +15,16 @@ Requirements: `bun`, `docker`, model API access.
 This repository uses Bun workspaces: `bot/` for the runtime, `web/` for the
 embedded authenticated bot browser UI, and `landing/` for the public marketing
 site. Run workspace commands from the repository root.
+Optimize checked-in landing and web image assets with:
+
+```bash
+bun run images:optimize
+```
+
+The optimizer uses `sharp`, skips generated `dist/` folders, and only rewrites
+an image when the optimized output is meaningfully smaller. Use
+`bun run images:check` in review flows to detect images that still need
+optimization.
 
 Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
@@ -99,6 +109,7 @@ bun run check
 bun run lint
 bun run test
 bun run typecheck
+bun run images:check
 bun run web:build
 bun run landing:build
 ```

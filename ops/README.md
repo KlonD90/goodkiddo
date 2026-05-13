@@ -14,6 +14,7 @@ The playbook provisions:
 - local PostgreSQL with a dedicated database and role
 - nginx as the only public entrypoint
 - an HTTP-only nginx origin intended to sit behind Cloudflare Flexible SSL
+- cache headers for generated image, font, script, and style assets served by nginx
 - the generated `landing/dist/` bundle served by nginx after running the
   landing `bun build` script
 - the `web/` bot UI bundle served by nginx after running `bun run web:build`
@@ -157,6 +158,9 @@ files as well as new and changed files.
   through systemd instead of a one-off `docker-compose up -d` task.
 - nginx serves the generated `landing/dist/` bundle for `bot_main_domain` and
   the generated `web/dist` file-share UI under `/fs` for `bot_app_domain`.
+  Static image/font assets get a 30-day public cache policy, while generated
+  scripts and styles get a one-year immutable cache policy. HTML routes still
+  fall back to their entrypoints instead of being cached as static assets.
 - `/api/fs/...` and `/_dl` are proxied to the Bun web server for authenticated
   boot, browse, preview, and download operations.
 - Landing analytics are embedded at build time. Set `landing_posthog_key` and
