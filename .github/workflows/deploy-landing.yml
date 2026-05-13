@@ -18,6 +18,7 @@ jobs:
   deploy:
     name: Build and deploy landing
     runs-on: ubuntu-latest
+    environment: production
     env:
       LANDING_REMOTE_DIR: /opt/goodkiddo/app/landing/dist
       LANDING_REMOTE_USER: ubuntu
@@ -44,12 +45,12 @@ jobs:
           set -euo pipefail
 
           if [[ -z "${DEPLOY_HOST}" ]]; then
-            echo "::error::Missing required HOST repository secret."
+            echo "::error::Missing required HOST secret in the production environment."
             exit 1
           fi
 
           if [[ -z "${DEPLOY_KEY}" ]]; then
-            echo "::error::Missing required KEY repository secret."
+            echo "::error::Missing required KEY secret in the production environment."
             exit 1
           fi
 
