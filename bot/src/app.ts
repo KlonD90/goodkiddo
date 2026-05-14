@@ -6,12 +6,12 @@ import type { ImageUnderstandingProvider } from "./capabilities/image/types";
 import type { createTimerTools } from "./capabilities/timers/tools";
 import type { OutboundChannel } from "./channels/outbound";
 import type { AppConfig } from "./config";
+import type { AppPrisma } from "./db/prisma";
 import type { SupportedLocale } from "./i18n/locale";
 import { resolveDefaultPreset } from "./identities/registry";
 import { ensureMemoryBootstrapped } from "./memory/bootstrap";
 import { buildSystemPrompt } from "./memory/session_loader";
 import { modelChooser } from "./model/model_chooser";
-import type { ApprovalBroker } from "./permissions/approval";
 import type { PermissionsStore } from "./permissions/store";
 import type { Caller } from "./permissions/types";
 import { TaskStore } from "./tasks/store";
@@ -27,9 +27,7 @@ type TimerTools = ReturnType<typeof createTimerTools>;
 export interface CreateAppAgentOptions {
 	caller: Caller;
 	store: PermissionsStore;
-	broker: ApprovalBroker;
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	threadId: string;
 	currentUserText?: string;
 	taskStore?: TaskStore;
@@ -47,11 +45,6 @@ export interface CreateAppAgentOptions {
 	/** Maximum recursion depth for the main agent. Defaults to LangGraph's built-in limit. */
 	recursionLimit?: number;
 }
-
-// Memory-scoped agent bits that the channel layer also needs access to — the
-// model (for /new-thread summarization) and the workspace backend (for log
-// writes and direct reads). Returned alongside the agent.
-type SQL = InstanceType<typeof Bun.SQL>;
 
 export type AppAgentBundle = {
 	agent: Awaited<ReturnType<typeof createAgent>>;
@@ -79,8 +72,7 @@ export const createAppAgent = async (
 	);
 
 	const workspace = new SqliteStateBackend({
-		db: options.db,
-		dialect: options.dialect,
+		prisma: options.prisma,
 		namespace: options.caller.id,
 	});
 
@@ -88,8 +80,7 @@ export const createAppAgent = async (
 	const taskStore =
 		options.taskStore ??
 		new TaskStore({
-			db: options.db,
-			dialect: options.dialect,
+			prisma: options.prisma,
 		});
 	const activeTaskSnapshot = await taskStore.composeActiveTaskSnapshot(
 		options.caller.id,
@@ -97,8 +88,6 @@ export const createAppAgent = async (
 
 	const guard: GuardContext = {
 		caller: options.caller,
-		store: options.store,
-		broker: options.broker,
 		statusEmitter: options.statusEmitter,
 		locale: options.locale,
 	};

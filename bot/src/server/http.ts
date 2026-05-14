@@ -1,4 +1,5 @@
 import type { AppConfig } from "../config";
+import type { AppPrisma } from "../db/prisma";
 import { createLogger } from "../logger";
 import { AccessStore } from "./access_store";
 import { createWebHandler } from "./routes";
@@ -6,7 +7,6 @@ import { createWebHandler } from "./routes";
 const log = createLogger("http");
 
 type BunServer = ReturnType<typeof Bun.serve>;
-type SQL = InstanceType<typeof Bun.SQL>;
 
 export interface WebServerHandle {
 	access: AccessStore;
@@ -20,18 +20,17 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 export async function startWebServer(
 	config: AppConfig,
-	options: { db: SQL; dialect: "sqlite" | "postgres" },
+	options: { prisma: AppPrisma },
 ): Promise<WebServerHandle> {
 	if (!config.webPublicBaseUrl) {
 		throw new Error("WEB_PUBLIC_BASE_URL must not be empty");
 	}
 
-	const { db, dialect } = options;
-	const access = new AccessStore({ db, dialect });
+	const { prisma } = options;
+	const access = new AccessStore({ prisma });
 	const handler = createWebHandler({
 		access,
-		db,
-		dialect,
+		prisma,
 		publicBaseUrl: config.webPublicBaseUrl,
 	});
 

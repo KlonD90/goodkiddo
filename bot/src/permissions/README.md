@@ -1,19 +1,20 @@
 # permissions
 
-Multi-tenant tool permissions. Per-user rules in SQLite/PostgreSQL, default decision is `allow`, except `execute_*` tools which default to `ask`.
+This module now stores user access state only.
 
-Users have two independent attributes: `tier` (free/paid) and `status` (active/suspended). Tier controls commercial account level; status controls access. A free user can be suspended, and a paid user can be suspended.
+Users have two independent attributes: `tier` (free/paid) and `status`
+(active/suspended). Tier controls commercial account level; status controls
+whether a user can access the bot. A free user can be suspended, and a paid user
+can be suspended.
 
-- `types.ts` — `Caller`, `ToolRule`, `ArgumentMatcher` (eq/in/glob/regex), `UserTier`, `UserStatus`
-- `store.ts` — `harness_users` + `tool_permissions` tables; CRUD with tier and status support
-- `engine.ts` — `resolveDecision(rules, tool, args)` — first match wins, default `allow` except `execute_*` uses `ask`
-- `matcher.ts` — argument matcher evaluator (dotted paths, mini-glob)
-- `approval.ts` — `ApprovalBroker` interface + CLI broker; outcomes `approve-once|always`, `deny-once|always`
-- `commands.ts` — `/policy /allow /deny /ask /reset` for self-service rule management
-
-Usage: instantiate `PermissionsStore`, hand it to the broker + tool guard, route slash-commands via `maybeHandleCommand` before invoking the agent.
+- `types.ts` — `Caller`, `UserTier`, `UserStatus`, and user identity types
+- `store.ts` — `harness_users` CRUD with tier, status, and identity support
 
 PostgreSQL user records store `created_at` as `BIGINT` because the value is an
 epoch-millisecond timestamp from `Date.now()`. `PermissionsStore` startup
 migrates older Postgres `harness_users.created_at` columns from `INTEGER` to
 `BIGINT`.
+
+Tool-level permission rules and approval prompts have been removed. Enabled
+tools execute directly; coarse access is handled by user status and feature
+configuration such as `ENABLE_EXECUTE`.

@@ -10,8 +10,7 @@ import type {
 	CheckpointListOptions,
 	PendingWrite,
 } from "@langchain/langgraph-checkpoint";
-
-type SQL = InstanceType<typeof Bun.SQL>;
+import type { AppPrisma } from "../db/prisma";
 
 const ERROR_CHANNEL = "__error__";
 const SCHEDULED_CHANNEL = "__scheduled__";
@@ -25,33 +24,28 @@ const WRITE_INDEX_BY_CHANNEL: Record<string, number> = {
 	[RESUME_CHANNEL]: -4,
 };
 
+type PrismaBytes = Uint8Array<ArrayBuffer>;
 type SqlBinary = Uint8Array | ArrayBuffer | string;
 
 type SerializedRow = {
 	type: string;
-	data: Uint8Array;
+	data: PrismaBytes;
 };
 
 type CheckpointRow = {
-	checkpoint_type: string;
-	checkpoint_data: SqlBinary;
-	metadata_type: string;
-	metadata_data: SqlBinary;
-	parent_checkpoint_id: string | null;
-};
-
-type CheckpointLookupRow = CheckpointRow & {
-	thread_id: string;
-	checkpoint_ns: string;
-	checkpoint_id: string;
+	checkpointType: string;
+	checkpointData: SqlBinary;
+	metadataType: string;
+	metadataData: SqlBinary;
+	parentCheckpointId: string | null;
 };
 
 type PendingWriteRow = {
-	task_id: string;
+	taskId: string;
 	channel: string;
-	value_type: string;
-	value_data: SqlBinary;
-	write_idx: number;
+	valueType: string;
+	valueData: SqlBinary;
+	writeIdx: number;
 };
 
 function getCheckpointId(config: RunnableConfig): string {
@@ -62,8 +56,10 @@ function getCheckpointId(config: RunnableConfig): string {
 	);
 }
 
-function toBytes(value: Uint8Array | ArrayBuffer | string): Uint8Array {
-	if (value instanceof Uint8Array) return value;
+function toBytes(value: Uint8Array | ArrayBuffer | string): PrismaBytes {
+	if (value instanceof Uint8Array) {
+		return new Uint8Array(Array.from(value));
+	}
 	if (value instanceof ArrayBuffer) return new Uint8Array(value);
 	return new TextEncoder().encode(value);
 }
@@ -80,65 +76,11 @@ function metadataMatchesFilter(
 }
 
 export class SqlSaver extends MemorySaver {
-	public readonly db: SQL;
+	public readonly prisma: AppPrisma;
 
-	private readonly dialect: "sqlite" | "postgres";
-	private readonly _ready: Promise<void>;
-
-	constructor(db: SQL, dialect: "sqlite" | "postgres") {
+	constructor(prisma: AppPrisma) {
 		super();
-		this.db = db;
-		this.dialect = dialect;
-		this._ready = this.init();
-		this._ready.catch(() => {});
-	}
-
-	private async init(): Promise<void> {
-		const binaryType = this.dialect === "postgres" ? "BYTEA" : "BLOB";
-		if (this.dialect === "sqlite") {
-			await this.db`PRAGMA journal_mode = WAL`;
-		}
-
-		await this.db.unsafe(`
-			CREATE TABLE IF NOT EXISTS langgraph_checkpoints (
-				thread_id TEXT NOT NULL,
-				checkpoint_ns TEXT NOT NULL,
-				checkpoint_id TEXT NOT NULL,
-				checkpoint_type TEXT NOT NULL,
-				checkpoint_data ${binaryType} NOT NULL,
-				metadata_type TEXT NOT NULL,
-				metadata_data ${binaryType} NOT NULL,
-				parent_checkpoint_id TEXT,
-				PRIMARY KEY (thread_id, checkpoint_ns, checkpoint_id)
-			)
-		`);
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_langgraph_checkpoints_lookup
-			ON langgraph_checkpoints(thread_id, checkpoint_ns, checkpoint_id)
-		`;
-		await this.db.unsafe(`
-			CREATE TABLE IF NOT EXISTS langgraph_checkpoint_writes (
-				thread_id TEXT NOT NULL,
-				checkpoint_ns TEXT NOT NULL,
-				checkpoint_id TEXT NOT NULL,
-				task_id TEXT NOT NULL,
-				write_idx INTEGER NOT NULL,
-				channel TEXT NOT NULL,
-				value_type TEXT NOT NULL,
-				value_data ${binaryType} NOT NULL,
-				PRIMARY KEY (
-					thread_id,
-					checkpoint_ns,
-					checkpoint_id,
-					task_id,
-					write_idx
-				)
-			)
-		`);
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_langgraph_checkpoint_writes_lookup
-			ON langgraph_checkpoint_writes(thread_id, checkpoint_ns, checkpoint_id)
-		`;
+		this.prisma = prisma;
 	}
 
 	close(): void {
@@ -162,20 +104,14 @@ export class SqlSaver extends MemorySaver {
 		checkpointNamespace: string,
 		checkpointId: string,
 	): Promise<PendingWriteRow[]> {
-		await this._ready;
-		return this.db<PendingWriteRow[]>`
-			SELECT
-				task_id,
-				channel,
-				value_type,
-				value_data,
-				write_idx
-			FROM langgraph_checkpoint_writes
-			WHERE thread_id = ${threadId}
-				AND checkpoint_ns = ${checkpointNamespace}
-				AND checkpoint_id = ${checkpointId}
-			ORDER BY task_id ASC, write_idx ASC
-		`;
+		return this.prisma.langGraphCheckpointWrite.findMany({
+			where: {
+				threadId,
+				checkpointNs: checkpointNamespace,
+				checkpointId,
+			},
+			orderBy: [{ taskId: "asc" }, { writeIdx: "asc" }],
+		});
 	}
 
 	private async buildCheckpointTuple(
@@ -194,23 +130,23 @@ export class SqlSaver extends MemorySaver {
 			).map(
 				async (write) =>
 					[
-						write.task_id,
-						write.channel,
-						await this.deserialize({
-							type: write.value_type,
-							data: toBytes(write.value_data),
-						}),
+							write.taskId,
+							write.channel,
+							await this.deserialize({
+								type: write.valueType,
+								data: toBytes(write.valueData),
+							}),
 					] as [string, string, unknown],
 			),
 		);
 
 		const checkpoint = await this.deserialize<Checkpoint>({
-			type: row.checkpoint_type,
-			data: toBytes(row.checkpoint_data),
+			type: row.checkpointType,
+			data: toBytes(row.checkpointData),
 		});
 		const metadata = await this.deserialize<CheckpointMetadata>({
-			type: row.metadata_type,
-			data: toBytes(row.metadata_data),
+			type: row.metadataType,
+			data: toBytes(row.metadataData),
 		});
 
 		const tuple: CheckpointTuple = {
@@ -226,12 +162,12 @@ export class SqlSaver extends MemorySaver {
 			pendingWrites,
 		};
 
-		if (row.parent_checkpoint_id) {
+		if (row.parentCheckpointId) {
 			tuple.parentConfig = {
 				configurable: {
 					thread_id: threadId,
 					checkpoint_ns: checkpointNamespace,
-					checkpoint_id: row.parent_checkpoint_id,
+					checkpoint_id: row.parentCheckpointId,
 				},
 			};
 		}
@@ -240,7 +176,6 @@ export class SqlSaver extends MemorySaver {
 	}
 
 	async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
-		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) return undefined;
 
@@ -249,19 +184,15 @@ export class SqlSaver extends MemorySaver {
 		const checkpointId = getCheckpointId(config);
 
 		if (checkpointId) {
-			const rows = await this.db<CheckpointRow[]>`
-				SELECT
-					checkpoint_type,
-					checkpoint_data,
-					metadata_type,
-					metadata_data,
-					parent_checkpoint_id
-				FROM langgraph_checkpoints
-				WHERE thread_id = ${threadId}
-					AND checkpoint_ns = ${checkpointNamespace}
-					AND checkpoint_id = ${checkpointId}
-			`;
-			const row = rows[0] ?? null;
+			const row = await this.prisma.langGraphCheckpoint.findUnique({
+				where: {
+					threadId_checkpointNs_checkpointId: {
+						threadId,
+						checkpointNs: checkpointNamespace,
+						checkpointId,
+					},
+				},
+			});
 			if (!row) return undefined;
 			return this.buildCheckpointTuple(
 				threadId,
@@ -271,29 +202,16 @@ export class SqlSaver extends MemorySaver {
 			);
 		}
 
-		const latestRows = await this.db<
-			(CheckpointRow & { checkpoint_id: string })[]
-		>`
-			SELECT
-				checkpoint_id,
-				checkpoint_type,
-				checkpoint_data,
-				metadata_type,
-				metadata_data,
-				parent_checkpoint_id
-			FROM langgraph_checkpoints
-			WHERE thread_id = ${threadId}
-				AND checkpoint_ns = ${checkpointNamespace}
-			ORDER BY checkpoint_id DESC
-			LIMIT 1
-		`;
-		const latest = latestRows[0] ?? null;
+		const latest = await this.prisma.langGraphCheckpoint.findFirst({
+			where: { threadId, checkpointNs: checkpointNamespace },
+			orderBy: { checkpointId: "desc" },
+		});
 		if (!latest) return undefined;
 
 		return this.buildCheckpointTuple(
 			threadId,
 			checkpointNamespace,
-			latest.checkpoint_id,
+			latest.checkpointId,
 			latest,
 		);
 	}
@@ -302,7 +220,6 @@ export class SqlSaver extends MemorySaver {
 		config: RunnableConfig,
 		options?: CheckpointListOptions,
 	): AsyncGenerator<CheckpointTuple> {
-		await this._ready;
 		const requestedThreadId = config.configurable?.thread_id as
 			| string
 			| undefined;
@@ -316,46 +233,40 @@ export class SqlSaver extends MemorySaver {
 			| string
 			| undefined;
 
-		const rows = await this.db<CheckpointLookupRow[]>`
-			SELECT
-				thread_id,
-				checkpoint_ns,
-				checkpoint_id,
-				checkpoint_type,
-				checkpoint_data,
-				metadata_type,
-				metadata_data,
-				parent_checkpoint_id
-			FROM langgraph_checkpoints
-			ORDER BY thread_id ASC, checkpoint_ns ASC, checkpoint_id DESC
-		`;
+		const rows = await this.prisma.langGraphCheckpoint.findMany({
+			orderBy: [
+				{ threadId: "asc" },
+				{ checkpointNs: "asc" },
+				{ checkpointId: "desc" },
+			],
+		});
 
 		let remaining = options?.limit;
 		for (const row of rows) {
-			if (requestedThreadId && row.thread_id !== requestedThreadId) continue;
+			if (requestedThreadId && row.threadId !== requestedThreadId) continue;
 			if (
 				requestedNamespace !== undefined &&
-				row.checkpoint_ns !== requestedNamespace
+				row.checkpointNs !== requestedNamespace
 			) {
 				continue;
 			}
 			if (
 				requestedCheckpointId !== undefined &&
-				row.checkpoint_id !== requestedCheckpointId
+				row.checkpointId !== requestedCheckpointId
 			) {
 				continue;
 			}
 			if (
 				beforeCheckpointId !== undefined &&
-				row.checkpoint_id >= beforeCheckpointId
+				row.checkpointId >= beforeCheckpointId
 			) {
 				continue;
 			}
 
 			const tuple = await this.buildCheckpointTuple(
-				row.thread_id,
-				row.checkpoint_ns,
-				row.checkpoint_id,
+				row.threadId,
+				row.checkpointNs,
+				row.checkpointId,
 				row,
 			);
 			if (!metadataMatchesFilter(tuple.metadata, options?.filter)) continue;
@@ -373,7 +284,6 @@ export class SqlSaver extends MemorySaver {
 		checkpoint: Checkpoint,
 		metadata: CheckpointMetadata,
 	): Promise<RunnableConfig> {
-		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) {
 			throw new Error(
@@ -388,34 +298,32 @@ export class SqlSaver extends MemorySaver {
 		const parentCheckpointId =
 			(config.configurable?.checkpoint_id as string | undefined) ?? null;
 
-		await this.db`
-			INSERT INTO langgraph_checkpoints (
-				thread_id,
-				checkpoint_ns,
-				checkpoint_id,
-				checkpoint_type,
-				checkpoint_data,
-				metadata_type,
-				metadata_data,
-				parent_checkpoint_id
-			) VALUES (
-				${threadId},
-				${checkpointNamespace},
-				${checkpoint.id},
-				${serializedCheckpoint.type},
-				${serializedCheckpoint.data},
-				${serializedMetadata.type},
-				${serializedMetadata.data},
-				${parentCheckpointId}
-			)
-			ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id)
-			DO UPDATE SET
-				checkpoint_type = excluded.checkpoint_type,
-				checkpoint_data = excluded.checkpoint_data,
-				metadata_type = excluded.metadata_type,
-				metadata_data = excluded.metadata_data,
-				parent_checkpoint_id = excluded.parent_checkpoint_id
-		`;
+		await this.prisma.langGraphCheckpoint.upsert({
+			where: {
+				threadId_checkpointNs_checkpointId: {
+					threadId,
+					checkpointNs: checkpointNamespace,
+					checkpointId: checkpoint.id,
+				},
+			},
+			update: {
+				checkpointType: serializedCheckpoint.type,
+				checkpointData: serializedCheckpoint.data,
+				metadataType: serializedMetadata.type,
+				metadataData: serializedMetadata.data,
+				parentCheckpointId,
+			},
+			create: {
+				threadId,
+				checkpointNs: checkpointNamespace,
+				checkpointId: checkpoint.id,
+				checkpointType: serializedCheckpoint.type,
+				checkpointData: serializedCheckpoint.data,
+				metadataType: serializedMetadata.type,
+				metadataData: serializedMetadata.data,
+				parentCheckpointId,
+			},
+		});
 
 		return {
 			configurable: {
@@ -431,7 +339,6 @@ export class SqlSaver extends MemorySaver {
 		writes: PendingWrite[],
 		taskId: string,
 	): Promise<void> {
-		await this._ready;
 		const threadId = config.configurable?.thread_id as string | undefined;
 		if (!threadId) {
 			throw new Error(
@@ -453,62 +360,61 @@ export class SqlSaver extends MemorySaver {
 		for (const [index, [channel, value]] of writes.entries()) {
 			const writeIndex = WRITE_INDEX_BY_CHANNEL[channel] ?? index;
 			if (writeIndex >= 0) {
-				const existingRows = await this.db<Array<{ present: number }>>`
-					SELECT 1 AS present
-					FROM langgraph_checkpoint_writes
-					WHERE thread_id = ${threadId}
-						AND checkpoint_ns = ${checkpointNamespace}
-						AND checkpoint_id = ${checkpointId}
-						AND task_id = ${taskId}
-						AND write_idx = ${writeIndex}
-				`;
-				if (existingRows.length > 0) continue;
+				const existing =
+					await this.prisma.langGraphCheckpointWrite.findUnique({
+						where: {
+							threadId_checkpointNs_checkpointId_taskId_writeIdx: {
+								threadId,
+								checkpointNs: checkpointNamespace,
+								checkpointId,
+								taskId,
+								writeIdx: writeIndex,
+							},
+						},
+					});
+				if (existing) continue;
 			}
 
 			const serialized = await this.serialize(value);
-			await this.db`
-				INSERT INTO langgraph_checkpoint_writes (
-					thread_id,
-					checkpoint_ns,
-					checkpoint_id,
-					task_id,
-					write_idx,
+			await this.prisma.langGraphCheckpointWrite.upsert({
+				where: {
+					threadId_checkpointNs_checkpointId_taskId_writeIdx: {
+						threadId,
+						checkpointNs: checkpointNamespace,
+						checkpointId,
+						taskId,
+						writeIdx: writeIndex,
+					},
+				},
+				update: {
 					channel,
-					value_type,
-					value_data
-				) VALUES (
-					${threadId},
-					${checkpointNamespace},
-					${checkpointId},
-					${taskId},
-					${writeIndex},
-					${channel},
-					${serialized.type},
-					${serialized.data}
-				)
-				ON CONFLICT(thread_id, checkpoint_ns, checkpoint_id, task_id, write_idx)
-				DO UPDATE SET
-					channel = excluded.channel,
-					value_type = excluded.value_type,
-					value_data = excluded.value_data
-			`;
+					valueType: serialized.type,
+					valueData: serialized.data,
+				},
+				create: {
+					threadId,
+					checkpointNs: checkpointNamespace,
+					checkpointId,
+					taskId,
+					writeIdx: writeIndex,
+					channel,
+					valueType: serialized.type,
+					valueData: serialized.data,
+				},
+			});
 		}
 	}
 
 	async deleteThread(threadId: string): Promise<void> {
-		await this._ready;
-		await this.db`
-			DELETE FROM langgraph_checkpoint_writes WHERE thread_id = ${threadId}
-		`;
-		await this.db`
-			DELETE FROM langgraph_checkpoints WHERE thread_id = ${threadId}
-		`;
+		await this.prisma.langGraphCheckpointWrite.deleteMany({
+			where: { threadId },
+		});
+		await this.prisma.langGraphCheckpoint.deleteMany({
+			where: { threadId },
+		});
 	}
 }
 
-export function createPersistentCheckpointer(
-	db: SQL,
-	dialect: "sqlite" | "postgres",
-): BaseCheckpointSaver {
-	return new SqlSaver(db, dialect);
+export function createPersistentCheckpointer(prisma: AppPrisma): BaseCheckpointSaver {
+	return new SqlSaver(prisma);
 }

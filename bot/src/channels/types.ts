@@ -5,6 +5,7 @@ import type { SchedulerOptions } from "../capabilities/timers/scheduler";
 import type { TimerStore } from "../capabilities/timers/store";
 import type { Transcriber } from "../capabilities/voice/transcriber";
 import type { AppConfig } from "../config";
+import type { AppPrisma } from "../db/prisma";
 import type { AccessStore } from "../server/access_store";
 import type { AppEntrypoint } from "../types";
 
@@ -14,8 +15,7 @@ export interface WebShareRuntime {
 }
 
 export interface ChannelRunOptions {
-	db?: ReturnType<typeof import("../db/index").createDb>;
-	dialect?: "sqlite" | "postgres";
+	prisma?: AppPrisma | null;
 	webShare?: WebShareRuntime;
 	transcriber?: Transcriber;
 	pdfExtractor?: PdfExtractor;

@@ -64,6 +64,14 @@
       Put it in ops/ansible/group_vars/goodkiddo_prod/10-env.yml or the Vault file.
   when: not bot_manage_postgres
 
+- name: Fail when DATABASE_URL is not PostgreSQL
+  ansible.builtin.assert:
+    that:
+      - bot_database_url is match('^postgres(ql)?://')
+    fail_msg: >-
+      bot_database_url must start with postgres:// or postgresql://.
+      SQLite runtime databases are not supported.
+
 - name: Set Bun archive suffix
   ansible.builtin.set_fact:
     bun_archive_suffix: "{{ 'x64' if ansible_architecture == 'x86_64' else 'aarch64' }}"

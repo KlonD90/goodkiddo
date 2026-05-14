@@ -26,7 +26,24 @@ an image when the optimized output is meaningfully smaller. Use
 `bun run images:check` in review flows to detect images that still need
 optimization.
 
-Database config uses `DATABASE_URL` only, for example `sqlite://./state.db`.
+Database config uses `DATABASE_URL` only and expects PostgreSQL. Local
+development uses Prisma Dev/PGlite when `DATABASE_URL` is unset: bot startup
+starts the local database, uses the generated TCP URL, lazily runs
+`db:generate` if the Prisma client is missing, applies committed migrations with
+`db:migrate`, and then starts normal runtime. To run
+those steps manually:
+
+```bash
+bun run db:dev
+export DATABASE_URL='<postgres URL printed by db:dev>'
+bun run db:migrate
+```
+
+Use `bun run db:dev:stop` to stop the local PGlite server. Production should set
+`DATABASE_URL` to the real PostgreSQL database and apply committed migrations
+with `bun run db:migrate`. The runtime starts a Prisma client and routes user
+state through a model mapped to the existing
+`harness_users` table. `sqlite://...` runtime URLs are no longer supported.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
 endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
 Agent sampling uses `AI_TEMPERATURE=1.0` for the main agent and
@@ -71,6 +88,19 @@ checkpoint context. The web UI binds to `WEB_HOST=127.0.0.1` by default; set
 
 ```bash
 ./dev.sh
+```
+
+Prisma is used for the PostgreSQL production path. Regenerate the client after
+schema changes from the bot workspace with:
+
+```bash
+bun run --filter goodkiddo-bot db:generate
+```
+
+Apply committed Prisma migrations to a production PostgreSQL database with:
+
+```bash
+DATABASE_URL='postgresql://...' bun run --filter goodkiddo-bot db:migrate
 ```
 
 If config is missing, the app starts an interactive setup wizard.
@@ -133,5 +163,5 @@ bun run web:build
 - [`web/`](./web/) for the embedded authenticated bot browser UI workspace
 - [`bot/src/channels/README.md`](./bot/src/channels/README.md) for the CLI and Telegram channels, including Telegram formatting and troubleshooting
 - [`bot/src/bin/README.md`](./bot/src/bin/README.md) for entrypoints
-- [`bot/src/permissions/README.md`](./bot/src/permissions/README.md) for the permission model
+- [`bot/src/permissions/README.md`](./bot/src/permissions/README.md) for user access state
 - [`bot/src/memory/README.md`](./bot/src/memory/README.md) for the memory subsystem

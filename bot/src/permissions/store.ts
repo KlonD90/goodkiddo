@@ -1,176 +1,70 @@
-import { normalizeMatcher } from "./matcher";
-import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
+import type { AppPrisma } from "../db/prisma";
 import {
-	type ArgumentMatcher,
 	type Caller,
 	callerId,
 	type Entrypoint,
-	type NewToolRule,
-	type PermissionDecision,
-	type ToolRule,
 	type UserRecord,
 	type UserStatus,
 	type UserTier,
 } from "./types";
 
-type SQL = InstanceType<typeof Bun.SQL>;
+export interface PermissionsStoreOptions {
+	prisma: AppPrisma;
+}
 
-type UserRow = {
+type PrismaUser = {
 	id: string;
 	entrypoint: string;
-	external_id: string;
-	display_name: string | null;
+	externalId: string;
+	displayName: string | null;
 	tier: string;
 	status: string;
-	created_at: number;
-	identity_id: string | null;
+	createdAt: bigint | number;
+	identityId: string | null;
 };
 
-type RuleRow = {
-	id: number;
-	user_id: string;
-	priority: number;
-	tool_name: string;
-	args_matcher: string | null;
-	decision: string;
-};
-
-export interface PermissionsStoreOptions {
-	db: SQL;
-	dialect: "sqlite" | "postgres";
-}
-
-function rowToUser(row: UserRow): UserRecord {
+function prismaUserToRecord(user: PrismaUser): UserRecord {
 	return {
-		id: row.id,
-		entrypoint: row.entrypoint as Entrypoint,
-		externalId: row.external_id,
-		displayName: row.display_name,
-		tier: row.tier as UserTier,
-		status: row.status as UserStatus,
-		createdAt: row.created_at,
-		identityId: row.identity_id ?? null,
-	};
-}
-
-function rowToRule(row: RuleRow): ToolRule {
-	return {
-		id: row.id,
-		userId: row.user_id,
-		priority: row.priority,
-		toolName: row.tool_name,
-		args: row.args_matcher
-			? (JSON.parse(row.args_matcher) as ArgumentMatcher)
-			: null,
-		decision: row.decision as PermissionDecision,
+		id: user.id,
+		entrypoint: user.entrypoint as Entrypoint,
+		externalId: user.externalId,
+		displayName: user.displayName ?? null,
+		tier: user.tier as UserTier,
+		status: user.status as UserStatus,
+		createdAt: Number(user.createdAt),
+		identityId: user.identityId ?? null,
 	};
 }
 
 export class PermissionsStore {
-	private readonly database: SQL;
-	private readonly dialect: "sqlite" | "postgres";
-	private readonly _ready: Promise<void>;
+	private readonly prisma: AppPrisma;
 
 	constructor(options: PermissionsStoreOptions) {
-		this.database = options.db;
-		this.dialect = options.dialect;
-		this._ready = this._init();
-		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
-	}
-
-	private async _init(): Promise<void> {
-		const db = this.database;
-		if (this.dialect === "postgres") {
-			await db`
-        CREATE TABLE IF NOT EXISTS harness_users (
-          id TEXT PRIMARY KEY,
-          entrypoint TEXT NOT NULL,
-          external_id TEXT NOT NULL,
-          display_name TEXT,
-          tier TEXT NOT NULL DEFAULT 'paid',
-          status TEXT NOT NULL DEFAULT 'active',
-          created_at BIGINT NOT NULL,
-          identity_id TEXT,
-          UNIQUE(entrypoint, external_id)
-        )
-      `;
-			await ensurePostgresBigintColumn(db, "harness_users", "created_at");
-			await db`
-        CREATE TABLE IF NOT EXISTS tool_permissions (
-          id SERIAL PRIMARY KEY,
-          user_id TEXT NOT NULL REFERENCES harness_users(id) ON DELETE CASCADE,
-          priority INTEGER NOT NULL DEFAULT 100,
-          tool_name TEXT NOT NULL,
-          args_matcher TEXT,
-          decision TEXT NOT NULL CHECK(decision IN ('allow','ask','deny'))
-        )
-      `;
-		} else {
-			await db`
-        CREATE TABLE IF NOT EXISTS harness_users (
-          id TEXT PRIMARY KEY,
-          entrypoint TEXT NOT NULL,
-          external_id TEXT NOT NULL,
-          display_name TEXT,
-          tier TEXT NOT NULL DEFAULT 'paid',
-          status TEXT NOT NULL DEFAULT 'active',
-          created_at INTEGER NOT NULL,
-          identity_id TEXT,
-          UNIQUE(entrypoint, external_id)
-        )
-      `;
-			await db`
-        CREATE TABLE IF NOT EXISTS tool_permissions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          user_id TEXT NOT NULL REFERENCES harness_users(id) ON DELETE CASCADE,
-          priority INTEGER NOT NULL DEFAULT 100,
-          tool_name TEXT NOT NULL,
-          args_matcher TEXT,
-          decision TEXT NOT NULL CHECK(decision IN ('allow','ask','deny'))
-        )
-      `;
-		}
-		await db`
-      CREATE INDEX IF NOT EXISTS idx_tool_permissions_user
-        ON tool_permissions(user_id, priority)
-    `;
-		if (this.dialect === "sqlite") {
-			await db`PRAGMA foreign_keys = ON`;
-			await db`PRAGMA journal_mode = WAL`;
-		}
+		this.prisma = options.prisma;
 	}
 
 	async getUser(
 		entrypoint: Entrypoint,
 		externalId: string,
 	): Promise<UserRecord | null> {
-		await this._ready;
-		const db = this.database;
-		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
-      FROM harness_users WHERE entrypoint = ${entrypoint} AND external_id = ${externalId}
-    `;
-		return rows[0] ? rowToUser(rows[0]) : null;
+		const user = await this.prisma.harnessUser.findUnique({
+			where: { entrypoint_externalId: { entrypoint, externalId } },
+		});
+		return user ? prismaUserToRecord(user) : null;
 	}
 
 	async getUserById(userId: string): Promise<UserRecord | null> {
-		await this._ready;
-		const db = this.database;
-		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
-      FROM harness_users WHERE id = ${userId}
-    `;
-		return rows[0] ? rowToUser(rows[0]) : null;
+		const user = await this.prisma.harnessUser.findUnique({
+			where: { id: userId },
+		});
+		return user ? prismaUserToRecord(user) : null;
 	}
 
 	async listUsers(): Promise<UserRecord[]> {
-		await this._ready;
-		const db = this.database;
-		const rows = await db<UserRow[]>`
-      SELECT id, entrypoint, external_id, display_name, tier, status, created_at, identity_id
-      FROM harness_users ORDER BY created_at ASC
-    `;
-		return rows.map(rowToUser);
+		const users = await this.prisma.harnessUser.findMany({
+			orderBy: { createdAt: "asc" },
+		});
+		return users.map(prismaUserToRecord);
 	}
 
 	async upsertUser(params: {
@@ -178,19 +72,35 @@ export class PermissionsStore {
 		externalId: string;
 		displayName?: string | null;
 	}): Promise<UserRecord> {
-		await this._ready;
 		const id = callerId(params.entrypoint, params.externalId);
 		const now = Date.now();
 		const displayName = params.displayName ?? null;
-		const db = this.database;
-		await db`
-      INSERT INTO harness_users (id, entrypoint, external_id, display_name, status, created_at)
-      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'active', ${now})
-      ON CONFLICT(id) DO UPDATE SET display_name = COALESCE(excluded.display_name, harness_users.display_name)
-    `;
-		const user = await this.getUserById(id);
-		if (!user) throw new Error(`Failed to upsert user ${id}`);
-		return user;
+		const existing = await this.prisma.harnessUser.findUnique({
+			where: { id },
+		});
+		const user = existing
+			? await this.prisma.harnessUser.update({
+					where: { id },
+					data:
+						displayName === null
+							? {}
+							: {
+									displayName,
+								},
+				})
+			: await this.prisma.harnessUser.create({
+					data: {
+						id,
+						entrypoint: params.entrypoint,
+						externalId: params.externalId,
+						displayName,
+						tier: "paid",
+						status: "active",
+						createdAt: BigInt(now),
+						identityId: null,
+					},
+				});
+		return prismaUserToRecord(user);
 	}
 
 	async createUserFree(params: {
@@ -198,36 +108,36 @@ export class PermissionsStore {
 		externalId: string;
 		displayName?: string | null;
 	}): Promise<UserRecord> {
-		await this._ready;
 		const id = callerId(params.entrypoint, params.externalId);
 		const now = Date.now();
 		const displayName = params.displayName ?? null;
-		const db = this.database;
-		await db`
-      INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
-      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'free', 'active', ${now})
-      ON CONFLICT(id) DO NOTHING
-    `;
-		const user = await this.getUserById(id);
-		if (!user) {
-			await db`
-        INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
-        VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'free', 'active', ${now})
-      `;
-			const user2 = await this.getUserById(id);
-			if (!user2) throw new Error(`Failed to create free user ${id}`);
-			return user2;
+		const existing = await this.prisma.harnessUser.findUnique({
+			where: { id },
+		});
+		if (existing) {
+			return prismaUserToRecord(existing);
 		}
-		return user;
+		const user = await this.prisma.harnessUser.create({
+			data: {
+				id,
+				entrypoint: params.entrypoint,
+				externalId: params.externalId,
+				displayName,
+				tier: "free",
+				status: "active",
+				createdAt: BigInt(now),
+				identityId: null,
+			},
+		});
+		return prismaUserToRecord(user);
 	}
 
 	async upgradeToPaid(userId: string): Promise<UserRecord> {
-		await this._ready;
-		const db = this.database;
-		await db`UPDATE harness_users SET tier = 'paid' WHERE id = ${userId}`;
-		const user = await this.getUserById(userId);
-		if (!user) throw new Error(`Failed to upgrade user ${userId}`);
-		return user;
+		const user = await this.prisma.harnessUser.update({
+			where: { id: userId },
+			data: { tier: "paid" },
+		});
+		return prismaUserToRecord(user);
 	}
 
 	async upsertUserPaid(params: {
@@ -235,101 +145,48 @@ export class PermissionsStore {
 		externalId: string;
 		displayName?: string | null;
 	}): Promise<UserRecord> {
-		await this._ready;
 		const id = callerId(params.entrypoint, params.externalId);
 		const now = Date.now();
 		const displayName = params.displayName ?? null;
-		const db = this.database;
-		const existing = await this.getUser(params.entrypoint, params.externalId);
+		const existing = await this.prisma.harnessUser.findUnique({
+			where: {
+				entrypoint_externalId: {
+					entrypoint: params.entrypoint,
+					externalId: params.externalId,
+				},
+			},
+		});
 		if (existing) {
-			await db`UPDATE harness_users SET display_name = COALESCE(${displayName}, display_name), tier = 'paid', status = 'active' WHERE id = ${id}`;
-			const user = await this.getUserById(id);
-			if (!user) throw new Error(`Failed to upgrade user ${id}`);
-			return user;
+			const user = await this.prisma.harnessUser.update({
+				where: { id: existing.id },
+				data: {
+					...(displayName === null ? {} : { displayName }),
+					tier: "paid",
+					status: "active",
+				},
+			});
+			return prismaUserToRecord(user);
 		}
-		await db`
-      INSERT INTO harness_users (id, entrypoint, external_id, display_name, tier, status, created_at)
-      VALUES (${id}, ${params.entrypoint}, ${params.externalId}, ${displayName}, 'paid', 'active', ${now})
-    `;
-		const user = await this.getUserById(id);
-		if (!user) throw new Error(`Failed to create paid user ${id}`);
-		return user;
+		const user = await this.prisma.harnessUser.create({
+			data: {
+				id,
+				entrypoint: params.entrypoint,
+				externalId: params.externalId,
+				displayName,
+				tier: "paid",
+				status: "active",
+				createdAt: BigInt(now),
+				identityId: null,
+			},
+		});
+		return prismaUserToRecord(user);
 	}
 
 	async setUserStatus(userId: string, status: UserStatus): Promise<void> {
-		await this._ready;
-		const db = this.database;
-		await db`UPDATE harness_users SET status = ${status} WHERE id = ${userId}`;
-	}
-
-	async listRulesForUser(userId: string): Promise<ToolRule[]> {
-		await this._ready;
-		const db = this.database;
-		const rows = await db<RuleRow[]>`
-      SELECT id, user_id, priority, tool_name, args_matcher, decision
-      FROM tool_permissions WHERE user_id = ${userId} ORDER BY priority ASC, id ASC
-    `;
-		return rows.map(rowToRule);
-	}
-
-	async upsertRule(userId: string, rule: NewToolRule): Promise<ToolRule> {
-		await this._ready;
-		const argsJson = normalizeMatcher(rule.args);
-		const db = this.database;
-		const existingRows = await db<RuleRow[]>`
-      SELECT id, user_id, priority, tool_name, args_matcher, decision
-      FROM tool_permissions
-      WHERE user_id = ${userId} AND tool_name = ${rule.toolName}
-        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
-    `;
-		const existing = existingRows[0] ?? null;
-
-		if (existing) {
-			await db`
-        UPDATE tool_permissions SET decision = ${rule.decision}, priority = ${rule.priority} WHERE id = ${existing.id}
-      `;
-		} else {
-			await db`
-        INSERT INTO tool_permissions (user_id, priority, tool_name, args_matcher, decision)
-        VALUES (${userId}, ${rule.priority}, ${rule.toolName}, ${argsJson}, ${rule.decision})
-      `;
-		}
-
-		const updatedRows = await db<RuleRow[]>`
-      SELECT id, user_id, priority, tool_name, args_matcher, decision
-      FROM tool_permissions
-      WHERE user_id = ${userId} AND tool_name = ${rule.toolName}
-        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
-    `;
-		const row = updatedRows[0];
-		if (!row) throw new Error("Failed to upsert rule");
-		return rowToRule(row);
-	}
-
-	async deleteMatchingRules(
-		userId: string,
-		toolName: string,
-		args: ArgumentMatcher | null,
-	): Promise<number> {
-		await this._ready;
-		const argsJson = normalizeMatcher(args);
-		const db = this.database;
-		const result = await db<RuleRow[]>`
-      DELETE FROM tool_permissions
-      WHERE user_id = ${userId} AND tool_name = ${toolName}
-        AND COALESCE(args_matcher, '') = COALESCE(${argsJson}, '')
-      RETURNING id
-    `;
-		return result.length;
-	}
-
-	async deleteAllRulesForUser(userId: string): Promise<number> {
-		await this._ready;
-		const db = this.database;
-		const result = await db<RuleRow[]>`
-      DELETE FROM tool_permissions WHERE user_id = ${userId} RETURNING id
-    `;
-		return result.length;
+		await this.prisma.harnessUser.update({
+			where: { id: userId },
+			data: { status },
+		});
 	}
 
 	async ensureUser(caller: Caller): Promise<UserRecord> {
@@ -343,18 +200,20 @@ export class PermissionsStore {
 	}
 
 	async setUserIdentity(userId: string, identityId: string): Promise<void> {
-		await this._ready;
-		const db = this.database;
-		await db`UPDATE harness_users SET identity_id = ${identityId} WHERE id = ${userId}`;
+		await this.prisma.harnessUser.update({
+			where: { id: userId },
+			data: { identityId },
+		});
 	}
 
 	async clearUserIdentity(userId: string): Promise<void> {
-		await this._ready;
-		const db = this.database;
-		await db`UPDATE harness_users SET identity_id = NULL WHERE id = ${userId}`;
+		await this.prisma.harnessUser.update({
+			where: { id: userId },
+			data: { identityId: null },
+		});
 	}
 
 	close(): void {
-		// No-op: lifecycle is managed by the injected db connection
+		// No-op: lifecycle is managed by the injected Prisma client.
 	}
 }

@@ -90,9 +90,9 @@ Only allowlisted args are interpolated. Values are truncated to 100 chars max, n
 
 When a tool has no entry in `ALLOWLISTED_ARGS`, `renderStatus` returns `null` and no status is emitted for that tool.
 
-- `factory.ts` — `createExecutionToolset` assembles all tools, optionally wrapping each with the permissions guard
+- `factory.ts` — `createExecutionToolset` assembles all tools, optionally wrapping each with status emission
 - `filesystem_tools.ts` — `ls`, `read_file`, `write_file`, `edit_file`, `glob`, `grep`
 - `execute_tools.ts` — `execute_workspace`, `execute_script` (sandbox-backed)
 - `memory_tools.ts` — `memory_write`, `skill_write`, `memory_append_log` (see [`src/memory/`](../memory))
 - `task_tools.ts` — `task_add`, `task_complete`, `task_dismiss`, `task_list_active` backed by the shared SQL task store (`task_dismiss` requires explicit confirmation in the current user turn)
-- `guard.ts` — `wrapToolWithGuard` — checks per-user policy, asks the broker, returns a denial string when blocked
+- `guard.ts` — `wrapToolWithGuard` emits tool status and invokes tools directly

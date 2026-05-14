@@ -16,7 +16,7 @@ Current Telegram behavior:
 - voice audio is downloaded into memory and discarded after transcription
 - the Telegram channel sends `audio/ogg` bytes to the configured transcriber
 - transcripts are injected back into the normal text-turn flow as `_Transcribed: ..._`
-- Telegram control handling keeps using the raw transcript so approvals and commands behave like text turns
+- Telegram control handling keeps using the raw transcript so commands behave like text turns
 - caption text is appended after the transcript when present
 
 Configuration:

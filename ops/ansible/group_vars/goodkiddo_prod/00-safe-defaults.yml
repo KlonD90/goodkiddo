@@ -47,7 +47,6 @@ landing_posthog_host: https://us.i.posthog.com
 
 telegram_allowed_chat_id: ""
 blocked_user_message: Access not configured. Contact the admin.
-permissions_mode: enforce
 using_mode: single
 ai_temperature: 1.0
 ai_sub_agent_temperature: 0.4

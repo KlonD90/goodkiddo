@@ -1,13 +1,7 @@
-import { type Bot, InlineKeyboard } from "grammy";
+import type { Bot } from "grammy";
 import { trackBotStarted, trackUserCreated } from "../../analytics";
 import { createLogger } from "../../logger";
 import { readThreadMessages } from "../../memory/rotate_thread";
-import type {
-	ApprovalOutcome,
-	ApprovalRequest,
-} from "../../permissions/approval";
-import { persistAlwaysRule } from "../../permissions/approval";
-import { maybeHandleCommand } from "../../permissions/commands";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller, UserRecord } from "../../permissions/types";
 import { maybeHandleSessionCommand } from "../session_commands";
@@ -37,7 +31,6 @@ import type {
 	TelegramUserInput,
 } from "./types";
 import {
-	APPROVAL_TIMEOUT_MS,
 	TELEGRAM_COMMANDS,
 	TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS,
 } from "./types";
@@ -233,77 +226,6 @@ export async function getTelegramCaller(
 	};
 }
 
-// --- Approval ---
-
-function summarizeArgs(args: unknown): string {
-	try {
-		const json = JSON.stringify(args);
-		if (json.length <= 180) return json;
-		return `${json.slice(0, 177)}...`;
-	} catch {
-		return String(args);
-	}
-}
-
-export function maybeHandleTelegramApprovalReply(
-	session: TelegramAgentSession,
-	text: string,
-): { handled: boolean; reply?: string } {
-	const pendingCount = session.pendingApprovals.size;
-	const pending = session.pendingApprovals.values().next().value;
-	if (!pending) return { handled: false };
-	const normalized = text.trim().toLowerCase();
-	if (["yes", "y", "approve"].includes(normalized)) {
-		if (pendingCount > 1) {
-			return {
-				handled: true,
-				reply:
-					"Several approvals are pending. Use the buttons on the specific prompt instead of plain text.",
-			};
-		}
-		session.pendingApprovals.delete(pending.promptId);
-		void pending.resolve("approve-once");
-		return { handled: true };
-	}
-	if (["always", "a"].includes(normalized)) {
-		if (pendingCount > 1) {
-			return {
-				handled: true,
-				reply:
-					"Several approvals are pending. Use the buttons on the specific prompt instead of plain text.",
-			};
-		}
-		session.pendingApprovals.delete(pending.promptId);
-		void pending.resolve("approve-always");
-		return { handled: true };
-	}
-	if (["no", "n", "deny"].includes(normalized)) {
-		if (pendingCount > 1) {
-			return {
-				handled: true,
-				reply:
-					"Several approvals are pending. Use the buttons on the specific prompt instead of plain text.",
-			};
-		}
-		session.pendingApprovals.delete(pending.promptId);
-		void pending.resolve("deny-once");
-		return { handled: true };
-	}
-	if (["never", "d"].includes(normalized)) {
-		if (pendingCount > 1) {
-			return {
-				handled: true,
-				reply:
-					"Several approvals are pending. Use the buttons on the specific prompt instead of plain text.",
-			};
-		}
-		session.pendingApprovals.delete(pending.promptId);
-		void pending.resolve("deny-always");
-		return { handled: true };
-	}
-	return { handled: false };
-}
-
 // --- Control input ---
 
 export async function handleTelegramControlInput(
@@ -316,17 +238,6 @@ export async function handleTelegramControlInput(
 	webShare: ChannelRunOptions["webShare"],
 ): Promise<boolean> {
 	if (commandText !== "") {
-		const approvalReply = maybeHandleTelegramApprovalReply(
-			session,
-			commandText,
-		);
-		if (approvalReply.handled) {
-			if (approvalReply.reply) {
-				await sendTelegramMessage(bot, chatId, approvalReply.reply);
-			}
-			return true;
-		}
-
 		if (session.running) {
 			return false;
 		}
@@ -356,12 +267,6 @@ export async function handleTelegramControlInput(
 		});
 		if (sessionCommand.handled) {
 			await sendTelegramMessage(bot, chatId, sessionCommand.reply);
-			return true;
-		}
-
-		const command = await maybeHandleCommand(commandText, caller, store);
-		if (command.handled) {
-			await sendTelegramMessage(bot, chatId, command.reply);
 			return true;
 		}
 

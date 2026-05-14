@@ -1,10 +1,5 @@
-import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
-import { createLogger } from "../logger";
+import type { AppPrisma } from "../db/prisma";
 import { compactInline } from "../utils/text";
-
-const log = createLogger("tasks.store");
-
-type SQL = InstanceType<typeof Bun.SQL>;
 
 export type TaskStatus = "active" | "completed" | "dismissed";
 
@@ -24,25 +19,24 @@ export interface TaskRecord {
 	dismissedAt: number | null;
 }
 
-type TaskRow = {
+type TaskModel = {
 	id: number;
-	user_id: string;
-	thread_id_created: string;
-	thread_id_completed: string | null;
-	list_name: string;
+	userId: string;
+	threadIdCreated: string;
+	threadIdCompleted: string | null;
+	listName: string;
 	title: string;
 	note: string | null;
 	status: string;
-	status_reason: string | null;
-	created_at: number;
-	updated_at: number;
-	completed_at: number | null;
-	dismissed_at: number | null;
+	statusReason: string | null;
+	createdAt: bigint | number;
+	updatedAt: bigint | number;
+	completedAt: bigint | number | null;
+	dismissedAt: bigint | number | null;
 };
 
 export interface TaskStoreOptions {
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	now?: () => number;
 }
 
@@ -79,21 +73,26 @@ function compactOptionalField(value?: string | null): string | null {
 	return compacted === "" ? null : compacted;
 }
 
-function rowToTask(row: TaskRow): TaskRecord {
+function toNumber(value: bigint | number | null): number | null {
+	if (value === null) return null;
+	return Number(value);
+}
+
+function modelToTask(row: TaskModel): TaskRecord {
 	return {
 		id: row.id,
-		userId: row.user_id,
-		threadIdCreated: row.thread_id_created,
-		threadIdCompleted: row.thread_id_completed,
-		listName: row.list_name,
+		userId: row.userId,
+		threadIdCreated: row.threadIdCreated,
+		threadIdCompleted: row.threadIdCompleted,
+		listName: row.listName,
 		title: row.title,
 		note: row.note,
 		status: row.status as TaskStatus,
-		statusReason: row.status_reason,
-		createdAt: row.created_at,
-		updatedAt: row.updated_at,
-		completedAt: row.completed_at,
-		dismissedAt: row.dismissed_at,
+		statusReason: row.statusReason,
+		createdAt: Number(row.createdAt),
+		updatedAt: Number(row.updatedAt),
+		completedAt: toNumber(row.completedAt),
+		dismissedAt: toNumber(row.dismissedAt),
 	};
 }
 
@@ -128,167 +127,48 @@ export function formatActiveTaskSnapshot(
 }
 
 export class TaskStore {
-	private readonly db: SQL;
-	private readonly dialect: "sqlite" | "postgres";
+	private readonly prisma: AppPrisma;
 	private readonly now: () => number;
-	private readonly _ready: Promise<void>;
 
 	constructor(options: TaskStoreOptions) {
-		this.db = options.db;
-		this.dialect = options.dialect;
+		this.prisma = options.prisma;
 		this.now = options.now ?? (() => Date.now());
-		this._ready = this.init();
-		this._ready.catch((err) => {
-			log.error("initialization failed", {
-				error: err instanceof Error ? err.message : String(err),
-			});
-		});
-	}
-
-	private async init(): Promise<void> {
-		if (this.dialect === "postgres") {
-			await this.db`
-				CREATE TABLE IF NOT EXISTS tasks (
-					id SERIAL PRIMARY KEY,
-					user_id TEXT NOT NULL,
-					thread_id_created TEXT NOT NULL,
-					thread_id_completed TEXT,
-					list_name TEXT NOT NULL,
-					title TEXT NOT NULL,
-					note TEXT,
-					status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'dismissed')),
-					status_reason TEXT,
-					created_at BIGINT NOT NULL,
-					updated_at BIGINT NOT NULL,
-					completed_at BIGINT,
-					dismissed_at BIGINT
-				)
-			`;
-		} else {
-			await this.db`
-				CREATE TABLE IF NOT EXISTS tasks (
-					id INTEGER PRIMARY KEY AUTOINCREMENT,
-					user_id TEXT NOT NULL,
-					thread_id_created TEXT NOT NULL,
-					thread_id_completed TEXT,
-					list_name TEXT NOT NULL,
-					title TEXT NOT NULL,
-					note TEXT,
-					status TEXT NOT NULL CHECK(status IN ('active', 'completed', 'dismissed')),
-					status_reason TEXT,
-					created_at INTEGER NOT NULL,
-					updated_at INTEGER NOT NULL,
-					completed_at INTEGER,
-					dismissed_at INTEGER
-				)
-			`;
-		}
-
-		await this.migrateTimestampColumns();
-
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_tasks_user_status_updated_at
-			ON tasks(user_id, status, updated_at DESC)
-		`;
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_tasks_user_list_status
-			ON tasks(user_id, list_name, status)
-		`;
-
-		if (this.dialect === "sqlite") {
-			await this.db`PRAGMA journal_mode = WAL`;
-		}
-	}
-
-	private async migrateTimestampColumns(): Promise<void> {
-		if (this.dialect !== "postgres") return;
-
-		await ensurePostgresBigintColumn(this.db, "tasks", "created_at");
-		await ensurePostgresBigintColumn(this.db, "tasks", "updated_at");
-		await ensurePostgresBigintColumn(this.db, "tasks", "completed_at");
-		await ensurePostgresBigintColumn(this.db, "tasks", "dismissed_at");
 	}
 
 	async ready(): Promise<void> {
-		await this._ready;
+		return;
 	}
 
 	async addTask(input: AddTaskInput): Promise<TaskRecord> {
-		await this._ready;
 		const listName = requireCompactField(input.listName, "Task list name");
 		const title = requireCompactField(input.title, "Task title");
 		const note = compactOptionalField(input.note);
 		const now = this.now();
-		const rows = await this.db<TaskRow[]>`
-			INSERT INTO tasks (
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-			) VALUES (
-				${input.userId},
-				${input.threadIdCreated},
-				NULL,
-				${listName},
-				${title},
-				${note},
-				'active',
-				NULL,
-				${now},
-				${now},
-				NULL,
-				NULL
-			)
-			RETURNING
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-		`;
-		const row = rows[0];
-		if (!row) throw new Error("Failed to add task");
-		return rowToTask(row);
+		return modelToTask(
+			await this.prisma.task.create({
+				data: {
+					userId: input.userId,
+					threadIdCreated: input.threadIdCreated,
+					threadIdCompleted: null,
+					listName,
+					title,
+					note,
+					status: "active",
+					statusReason: null,
+					createdAt: BigInt(now),
+					updatedAt: BigInt(now),
+					completedAt: null,
+					dismissedAt: null,
+				},
+			}),
+		);
 	}
 
 	async getTask(taskId: number, userId: string): Promise<TaskRecord | null> {
-		await this._ready;
-		const rows = await this.db<TaskRow[]>`
-			SELECT
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-			FROM tasks
-			WHERE id = ${taskId} AND user_id = ${userId}
-			LIMIT 1
-		`;
-		return rows[0] ? rowToTask(rows[0]) : null;
+		const row = await this.prisma.task.findFirst({
+			where: { id: taskId, userId },
+		});
+		return row ? modelToTask(row) : null;
 	}
 
 	async listTasksForUser(
@@ -299,102 +179,17 @@ export class TaskStore {
 			limit?: number;
 		} = {},
 	): Promise<TaskRecord[]> {
-		await this._ready;
 		const limit = options.limit ?? 100;
-		if (options.status && options.listName) {
-			const rows = await this.db<TaskRow[]>`
-				SELECT
-					id,
-					user_id,
-					thread_id_created,
-					thread_id_completed,
-					list_name,
-					title,
-					note,
-					status,
-					status_reason,
-					created_at,
-					updated_at,
-					completed_at,
-					dismissed_at
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND status = ${options.status}
-					AND list_name = ${options.listName}
-				ORDER BY updated_at DESC, id DESC
-				LIMIT ${limit}
-			`;
-			return rows.map(rowToTask);
-		}
-		if (options.status) {
-			const rows = await this.db<TaskRow[]>`
-				SELECT
-					id,
-					user_id,
-					thread_id_created,
-					thread_id_completed,
-					list_name,
-					title,
-					note,
-					status,
-					status_reason,
-					created_at,
-					updated_at,
-					completed_at,
-					dismissed_at
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND status = ${options.status}
-				ORDER BY updated_at DESC, id DESC
-				LIMIT ${limit}
-			`;
-			return rows.map(rowToTask);
-		}
-		if (options.listName) {
-			const rows = await this.db<TaskRow[]>`
-				SELECT
-					id,
-					user_id,
-					thread_id_created,
-					thread_id_completed,
-					list_name,
-					title,
-					note,
-					status,
-					status_reason,
-					created_at,
-					updated_at,
-					completed_at,
-					dismissed_at
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND list_name = ${options.listName}
-				ORDER BY updated_at DESC, id DESC
-				LIMIT ${limit}
-			`;
-			return rows.map(rowToTask);
-		}
-		const rows = await this.db<TaskRow[]>`
-			SELECT
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-			FROM tasks
-			WHERE user_id = ${userId}
-			ORDER BY updated_at DESC, id DESC
-			LIMIT ${limit}
-		`;
-		return rows.map(rowToTask);
+		const rows = await this.prisma.task.findMany({
+			where: {
+				userId,
+				...(options.status ? { status: options.status } : {}),
+				...(options.listName ? { listName: options.listName } : {}),
+			},
+			orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+			take: limit,
+		});
+		return rows.map(modelToTask);
 	}
 
 	async listActiveTasks(userId: string, limit = 100): Promise<TaskRecord[]> {
@@ -408,73 +203,30 @@ export class TaskStore {
 			listName?: string;
 		} = {},
 	): Promise<number> {
-		await this._ready;
-		if (options.status && options.listName) {
-			const rows = await this.db<Array<{ count: number | bigint }>>`
-				SELECT COUNT(*) AS count
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND status = ${options.status}
-					AND list_name = ${options.listName}
-			`;
-			return Number(rows[0]?.count ?? 0);
-		}
-		if (options.status) {
-			const rows = await this.db<Array<{ count: number | bigint }>>`
-				SELECT COUNT(*) AS count
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND status = ${options.status}
-			`;
-			return Number(rows[0]?.count ?? 0);
-		}
-		if (options.listName) {
-			const rows = await this.db<Array<{ count: number | bigint }>>`
-				SELECT COUNT(*) AS count
-				FROM tasks
-				WHERE user_id = ${userId}
-					AND list_name = ${options.listName}
-			`;
-			return Number(rows[0]?.count ?? 0);
-		}
-		const rows = await this.db<Array<{ count: number | bigint }>>`
-			SELECT COUNT(*) AS count
-			FROM tasks
-			WHERE user_id = ${userId}
-		`;
-		return Number(rows[0]?.count ?? 0);
+		return this.prisma.task.count({
+			where: {
+				userId,
+				...(options.status ? { status: options.status } : {}),
+				...(options.listName ? { listName: options.listName } : {}),
+			},
+		});
 	}
 
 	async listRecentlyCompletedTasks(
 		userId: string,
 		options: RecentCompletedTaskOptions,
 	): Promise<TaskRecord[]> {
-		await this._ready;
 		const limit = options.limit ?? 100;
-		const rows = await this.db<TaskRow[]>`
-			SELECT
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-			FROM tasks
-			WHERE user_id = ${userId}
-				AND status = 'completed'
-				AND completed_at IS NOT NULL
-				AND completed_at >= ${options.completedSince}
-			ORDER BY completed_at DESC, id DESC
-			LIMIT ${limit}
-		`;
-		return rows.map(rowToTask);
+		const rows = await this.prisma.task.findMany({
+			where: {
+				userId,
+				status: "completed",
+				completedAt: { gte: BigInt(options.completedSince) },
+			},
+			orderBy: [{ completedAt: "desc" }, { id: "desc" }],
+			take: limit,
+		});
+		return rows.map(modelToTask);
 	}
 
 	async composeActiveTaskSnapshot(
@@ -498,36 +250,24 @@ export class TaskStore {
 		userId: string;
 		threadIdCompleted: string;
 	}): Promise<TaskRecord | null> {
-		await this._ready;
 		const now = this.now();
-		const rows = await this.db<TaskRow[]>`
-			UPDATE tasks
-			SET
-				status = 'completed',
-				thread_id_completed = ${params.threadIdCompleted},
-				status_reason = NULL,
-				updated_at = ${now},
-				completed_at = ${now},
-				dismissed_at = NULL
-			WHERE id = ${params.taskId}
-				AND user_id = ${params.userId}
-				AND status = 'active'
-			RETURNING
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-		`;
-		return rows[0] ? rowToTask(rows[0]) : null;
+		const result = await this.prisma.task.updateMany({
+			where: { id: params.taskId, userId: params.userId, status: "active" },
+			data: {
+				status: "completed",
+				threadIdCompleted: params.threadIdCompleted,
+				statusReason: null,
+				updatedAt: BigInt(now),
+				completedAt: BigInt(now),
+				dismissedAt: null,
+			},
+		});
+		if (result.count === 0) return null;
+		const task = await this.prisma.task.findUnique({
+			where: { id: params.taskId },
+		});
+		if (!task) return null;
+		return modelToTask(task);
 	}
 
 	async dismissTask(params: {
@@ -535,39 +275,27 @@ export class TaskStore {
 		userId: string;
 		reason?: string | null;
 	}): Promise<TaskRecord | null> {
-		await this._ready;
 		const reason = compactOptionalField(params.reason);
 		const now = this.now();
-		const rows = await this.db<TaskRow[]>`
-			UPDATE tasks
-			SET
-				status = 'dismissed',
-				status_reason = ${reason},
-				updated_at = ${now},
-				completed_at = NULL,
-				dismissed_at = ${now}
-			WHERE id = ${params.taskId}
-				AND user_id = ${params.userId}
-				AND status = 'active'
-			RETURNING
-				id,
-				user_id,
-				thread_id_created,
-				thread_id_completed,
-				list_name,
-				title,
-				note,
-				status,
-				status_reason,
-				created_at,
-				updated_at,
-				completed_at,
-				dismissed_at
-		`;
-		return rows[0] ? rowToTask(rows[0]) : null;
+		const result = await this.prisma.task.updateMany({
+			where: { id: params.taskId, userId: params.userId, status: "active" },
+			data: {
+				status: "dismissed",
+				statusReason: reason,
+				updatedAt: BigInt(now),
+				completedAt: null,
+				dismissedAt: BigInt(now),
+			},
+		});
+		if (result.count === 0) return null;
+		const task = await this.prisma.task.findUnique({
+			where: { id: params.taskId },
+		});
+		if (!task) return null;
+		return modelToTask(task);
 	}
 
 	close(): void {
-		// No-op: lifecycle is managed by the injected db connection.
+		// No-op: lifecycle is managed by the injected Prisma client.
 	}
 }

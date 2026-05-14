@@ -60,13 +60,11 @@ export {
 	getTelegramCaller,
 	handleTelegramQueuedTurn,
 	isTelegramStartCommand,
-	maybeHandleTelegramApprovalReply,
 	maybeHandleTelegramStartCommand,
 	renderTelegramWelcomeMessage,
 } from "./telegram/turn";
 export type {
 	MarkdownTableBlock,
-	PendingApproval,
 	ProcessTelegramFileHelpers,
 	TelegramAgentSession,
 	TelegramAttachmentBudget,
@@ -82,7 +80,6 @@ export type {
 // Re-export constants
 // Re-export helpers
 export {
-	APPROVAL_TIMEOUT_MS,
 	ATTACHMENT_COMPACTION_NOTICE,
 	dateFromTelegramMessage,
 	normalizeTelegramCommandText,

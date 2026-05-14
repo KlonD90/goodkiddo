@@ -9,7 +9,6 @@ import type { AppConfig } from "../config";
 import { createDb } from "../db/index";
 import type { CheckpointSummary } from "../memory/checkpoint_compaction";
 import type { ThreadMessage } from "../memory/summarize";
-import type { ApprovalBroker } from "../permissions/approval";
 import { PermissionsStore } from "../permissions/store";
 import { TaskStore } from "../tasks/store";
 import type { ChannelAgentSession } from "./shared";
@@ -79,11 +78,11 @@ const TEST_CONFIG: AppConfig = {
 	contextReserveSummaryTokens: 2000,
 	contextReserveRecentTurnTokens: 2000,
 	contextReserveNextTurnTokens: 2000,
-	permissionsMode: "disabled",
-	databaseUrl: "sqlite://:memory:",
+	databaseUrl: "postgresql://127.0.0.1:5432/goodkiddo_test",
 	enableExecute: false,
 	enablePdfDocuments: true,
 	enableSpreadsheets: true,
+	enableTabular: true,
 	enableImageUnderstanding: false,
 	enableToolStatus: true,
 	enableAttachmentCompactionNotice: true,
@@ -100,10 +99,6 @@ const TEST_CONFIG: AppConfig = {
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
 	recursionLimit: 60,
-};
-
-const NOOP_BROKER: ApprovalBroker = {
-	requestApproval: async () => "deny-once",
 };
 
 function makeMessages(...pairs: Array<[string, string]>): ThreadMessage[] {
@@ -155,7 +150,6 @@ describe("channel task-check state", () => {
 					displayName: "Tester",
 				},
 				store,
-				broker: NOOP_BROKER,
 				threadId: "cli-tester",
 			});
 
@@ -180,7 +174,6 @@ describe("channel task-check state", () => {
 					displayName: "Tester",
 				},
 				store,
-				broker: NOOP_BROKER,
 				threadId: "cli-tester",
 			});
 			const taskStore = session.taskCheckConfig?.store;

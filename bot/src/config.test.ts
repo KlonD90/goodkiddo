@@ -36,7 +36,6 @@ const CONFIG_KEYS = [
 	"MAX_CONTEXT_WINDOW_TOKENS",
 	"MINIMAX_API_HOST",
 	"MINIMAX_API_KEY",
-	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
@@ -130,8 +129,7 @@ describe("config", () => {
 					contextReserveSummaryTokens: 2000,
 					contextReserveRecentTurnTokens: 2000,
 					contextReserveNextTurnTokens: 2000,
-					permissionsMode: "enforce",
-					databaseUrl: "sqlite://./state.db",
+					databaseUrl: "postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable",
 					enableExecute: true,
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
@@ -616,7 +614,9 @@ describe("config", () => {
 		process.env.STATE_DB_PATH = "./legacy.db";
 
 		try {
-			expect(readConfigFromEnv().databaseUrl).toBe("sqlite://./state.db");
+			expect(readConfigFromEnv().databaseUrl).toBe(
+				"postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable",
+			);
 		} finally {
 			if (previousStateDbPath === undefined) {
 				delete process.env.STATE_DB_PATH;
@@ -624,6 +624,21 @@ describe("config", () => {
 				process.env.STATE_DB_PATH = previousStateDbPath;
 			}
 		}
+	});
+
+	test("rejects sqlite database URLs", async () => {
+		await withEnv(
+			{
+				DATABASE_URL: "sqlite://./state.db",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "DATABASE_URL",
+					reason:
+						"DATABASE_URL must start with postgres:// or postgresql://. SQLite is not supported.",
+				});
+			},
+		);
 	});
 
 	test("requires telegram token when telegram entrypoint is selected", async () => {
@@ -679,8 +694,7 @@ describe("config", () => {
 					contextReserveSummaryTokens: 2000,
 					contextReserveRecentTurnTokens: 2000,
 					contextReserveNextTurnTokens: 2000,
-					permissionsMode: "enforce",
-					databaseUrl: "sqlite://./state.db",
+					databaseUrl: "postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable",
 					enableExecute: true,
 					enablePdfDocuments: true,
 					enableSpreadsheets: true,
@@ -751,8 +765,7 @@ describe("config", () => {
 				contextReserveSummaryTokens: 2000,
 				contextReserveRecentTurnTokens: 2000,
 				contextReserveNextTurnTokens: 2000,
-				permissionsMode: "enforce",
-				databaseUrl: "sqlite://./state.db",
+				databaseUrl: "postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable",
 				enableExecute: true,
 				enablePdfDocuments: true,
 				enableSpreadsheets: true,

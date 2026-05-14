@@ -149,6 +149,14 @@ files as well as new and changed files.
 - PostgreSQL is local by default. Override `bot_database_url` if you want to
   point the bot at a managed PostgreSQL instance instead, and set
   `bot_manage_postgres=false` so Ansible skips the local PostgreSQL tasks.
+- `bot_database_url` must be PostgreSQL. The bot uses Prisma models mapped to
+  the existing tables, so existing deployed databases do not need a reset before
+  this change.
+- Ansible runs `bun run db:generate` and `bun run db:migrate` after installing
+  production dependencies so the generated Prisma client is present and committed
+  Prisma migrations are applied before the bot service restarts. On a compatible
+  existing database without Prisma migration history, the initial migration is
+  marked as already applied before later migrations run.
 - `bot_main_domain` and `bot_app_domain` must be set correctly in Cloudflare
   and should be proxied when using Flexible SSL.
 - The browser/search stack is local-only: Chrome is installed on the host,

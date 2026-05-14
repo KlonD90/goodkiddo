@@ -29,7 +29,6 @@ export type AppConfig = {
 	contextReserveSummaryTokens: number;
 	contextReserveRecentTurnTokens: number;
 	contextReserveNextTurnTokens: number;
-	permissionsMode: "enforce" | "disabled";
 	databaseUrl: string;
 	enableExecute: boolean;
 	enableVoiceMessages: boolean;
@@ -61,7 +60,8 @@ const DEFAULT_MAX_CONTEXT_WINDOW_TOKENS = 150000;
 const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
-const DEFAULT_DATABASE_URL = "sqlite://./state.db";
+export const DEFAULT_DATABASE_URL =
+	"postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable";
 const DEFAULT_AI_TEMPERATURE = 1.0;
 const DEFAULT_AI_SUB_AGENT_TEMPERATURE = 0.4;
 const DEFAULT_WEB_HOST = "127.0.0.1";
@@ -83,6 +83,10 @@ const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
 	"openai",
 	"openrouter",
 ];
+
+const isPostgresDatabaseUrl = (value: string | undefined): boolean =>
+	value !== undefined &&
+	(value.startsWith("postgres://") || value.startsWith("postgresql://"));
 
 type ConfigIssueField =
 	| "AI_API_KEY"
@@ -109,7 +113,6 @@ type ConfigIssueField =
 	| "MAX_CONTEXT_WINDOW_TOKENS"
 	| "MINIMAX_API_HOST"
 	| "MINIMAX_API_KEY"
-	| "PERMISSIONS_MODE"
 	| "DATABASE_URL"
 	| "DEFAULT_STATUS_LOCALE"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
@@ -175,7 +178,6 @@ const PERSISTED_ENV_KEYS = [
 	"MAX_CONTEXT_WINDOW_TOKENS",
 	"MINIMAX_API_HOST",
 	"MINIMAX_API_KEY",
-	"PERMISSIONS_MODE",
 	"DATABASE_URL",
 	"DEFAULT_STATUS_LOCALE",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
@@ -294,10 +296,6 @@ export const readConfigFromEnv = (
 	const aiTypeValue = getEnv("AI_TYPE", persistedValues);
 	const usingModeValue = getEnv("USING_MODE", persistedValues);
 	const entrypointValue = getEnv("APP_ENTRYPOINT", persistedValues);
-
-	const permissionsModeRaw = getEnv("PERMISSIONS_MODE", persistedValues);
-	const permissionsMode =
-		permissionsModeRaw === "disabled" ? "disabled" : "enforce";
 
 	const enableExecuteRaw = getEnv("ENABLE_EXECUTE", persistedValues);
 	const enableExecute = enableExecuteRaw !== "false";
@@ -467,7 +465,6 @@ export const readConfigFromEnv = (
 		contextReserveSummaryTokens,
 		contextReserveRecentTurnTokens,
 		contextReserveNextTurnTokens,
-		permissionsMode,
 		databaseUrl:
 			getEnv("DATABASE_URL", persistedValues) || DEFAULT_DATABASE_URL,
 		enableExecute,
@@ -568,6 +565,19 @@ export const findConfigIssues = (
 		issues.push({
 			field: "TELEGRAM_BOT_TOKEN",
 			reason: "TELEGRAM_BOT_TOKEN is required when APP_ENTRYPOINT is telegram.",
+		});
+	}
+
+	if (config.databaseUrl === undefined || config.databaseUrl === "") {
+		issues.push({
+			field: "DATABASE_URL",
+			reason: "DATABASE_URL is required and must be a PostgreSQL URL.",
+		});
+	} else if (!isPostgresDatabaseUrl(config.databaseUrl)) {
+		issues.push({
+			field: "DATABASE_URL",
+			reason:
+				"DATABASE_URL must start with postgres:// or postgresql://. SQLite is not supported.",
 		});
 	}
 
@@ -992,6 +1002,19 @@ Press enter to allow any chat the bot is added to.> `,
 				)
 			: (initialConfig.telegramAllowedChatId ?? "");
 
+	const databaseUrl =
+		initialConfig.databaseUrl && isPostgresDatabaseUrl(initialConfig.databaseUrl)
+			? initialConfig.databaseUrl
+			: promptRequiredValue(
+					promptUser,
+					`Database step. Enter DATABASE_URL.
+Example: postgresql://goodkiddo:password@127.0.0.1:5432/goodkiddo> `,
+					(value) =>
+						isPostgresDatabaseUrl(value)
+							? null
+							: "DATABASE_URL must start with postgres:// or postgresql://.",
+				);
+
 	if (
 		telegramAllowedChatId !== "" &&
 		!/^[-]?\d+$/.test(telegramAllowedChatId)
@@ -1007,6 +1030,7 @@ Press enter to allow any chat the bot is added to.> `,
 				aiBaseUrl,
 				aiModelName,
 				aiType,
+				databaseUrl,
 				telegramBotToken,
 				usingMode,
 			},
@@ -1047,8 +1071,7 @@ Press enter to allow any chat the bot is added to.> `,
 		contextReserveNextTurnTokens:
 			initialConfig.contextReserveNextTurnTokens ??
 			DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
-		permissionsMode: initialConfig.permissionsMode ?? "enforce",
-		databaseUrl: initialConfig.databaseUrl ?? DEFAULT_DATABASE_URL,
+		databaseUrl,
 		enableExecute: initialConfig.enableExecute ?? true,
 		enableVoiceMessages:
 			initialConfig.enableVoiceMessages ?? DEFAULT_ENABLE_VOICE_MESSAGES,
@@ -1160,8 +1183,6 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.minimaxApiHost)}`;
 		case "MINIMAX_API_KEY":
 			return `${key}=${escapeEnvValue(config.minimaxApiKey)}`;
-		case "PERMISSIONS_MODE":
-			return `${key}=${escapeEnvValue(config.permissionsMode)}`;
 		case "DATABASE_URL":
 			return `${key}=${escapeEnvValue(config.databaseUrl)}`;
 		case "TELEGRAM_BOT_ALLOWED_CHAT_ID":
@@ -1313,7 +1334,6 @@ export const resolveConfig = async (
 			contextReserveNextTurnTokens:
 				config.contextReserveNextTurnTokens ??
 				DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS,
-			permissionsMode: config.permissionsMode ?? "enforce",
 			databaseUrl: config.databaseUrl ?? DEFAULT_DATABASE_URL,
 			enableExecute: config.enableExecute ?? true,
 			enableVoiceMessages:

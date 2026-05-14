@@ -14,6 +14,7 @@ import {
 import { ForcedCheckpointStore } from "../checkpoints/forced_checkpoint_store";
 import { createPersistentCheckpointer } from "../checkpoints/sql_saver";
 import type { AppConfig } from "../config";
+import type { AppPrisma } from "../db/prisma";
 import { compactionStatusMessage, type SupportedLocale } from "../i18n/locale";
 import { createLogger } from "../logger";
 import {
@@ -34,7 +35,6 @@ import {
 	renderCompactionPromptContext,
 } from "../memory/runtime_context";
 import type { ThreadMessage } from "../memory/summarize";
-import type { ApprovalBroker } from "../permissions/approval";
 import type { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { reconcileActiveTasksAtBoundary } from "../tasks/reconcile";
@@ -103,16 +103,12 @@ export type ChannelAgentSession = {
 	recursionLimit: number;
 };
 
-type SQL = InstanceType<typeof Bun.SQL>;
-
 export async function createChannelAgentSession(
 	config: AppConfig,
 	options: {
-		db: SQL;
-		dialect: "sqlite" | "postgres";
+		prisma: AppPrisma;
 		caller: Caller;
 		store: PermissionsStore;
-		broker: ApprovalBroker;
 		threadId: string;
 		outbound?: OutboundChannel;
 		webShare?: WebShareOptions;
@@ -121,15 +117,11 @@ export async function createChannelAgentSession(
 		locale?: SupportedLocale;
 	},
 ): Promise<ChannelAgentSession> {
-	const checkpointer = createPersistentCheckpointer(
-		options.db,
-		options.dialect,
-	);
-	const forcedCheckpointStore = new ForcedCheckpointStore(options.db);
-	const activeThreadStore = new ActiveThreadStore(options.db);
+	const checkpointer = createPersistentCheckpointer(options.prisma);
+	const forcedCheckpointStore = new ForcedCheckpointStore(options.prisma);
+	const activeThreadStore = new ActiveThreadStore(options.prisma);
 	const taskStore = new TaskStore({
-		db: options.db,
-		dialect: options.dialect,
+		prisma: options.prisma,
 	});
 	await forcedCheckpointStore.ready();
 	await activeThreadStore.ready();
@@ -138,11 +130,9 @@ export async function createChannelAgentSession(
 	const makeBundle = () => {
 		const { preset } = resolveIdentityPrompt(session?.selectedIdentityId);
 		return createAppAgent(config, {
-			db: options.db,
-			dialect: options.dialect,
+			prisma: options.prisma,
 			caller: options.caller,
 			store: options.store,
-			broker: options.broker,
 			checkpointer,
 			threadId: session?.threadId ?? options.threadId,
 			currentUserText: session?.currentUserText,

@@ -6,8 +6,7 @@
 // table remains portable across SQLite and Postgres without a jsonb dependency.
 
 import { randomUUID } from "node:crypto";
-
-type SQL = InstanceType<typeof Bun.SQL>;
+import type { AppPrisma } from "../db/prisma";
 
 export type SourceBoundary =
 	| "new_thread"
@@ -34,148 +33,81 @@ export type CreateForcedCheckpointInput = {
 	summaryPayload: string;
 };
 
-type RawRow = {
+type ForcedCheckpointModel = {
 	id: string;
 	caller: string;
-	thread_id: string;
-	created_at: string;
-	source_boundary: string;
-	summary_payload: string;
+	threadId: string;
+	createdAt: string;
+	sourceBoundary: string;
+	summaryPayload: string;
 };
 
-function toForcedCheckpoint(row: RawRow): ForcedCheckpoint {
+function toForcedCheckpoint(row: ForcedCheckpointModel): ForcedCheckpoint {
 	return {
 		id: row.id,
 		caller: row.caller,
-		threadId: row.thread_id,
-		createdAt: row.created_at,
-		sourceBoundary: row.source_boundary as SourceBoundary,
-		summaryPayload: row.summary_payload,
+		threadId: row.threadId,
+		createdAt: row.createdAt,
+		sourceBoundary: row.sourceBoundary as SourceBoundary,
+		summaryPayload: row.summaryPayload,
 	};
 }
 
 export class ForcedCheckpointStore {
-	private readonly db: SQL;
-	private readonly _ready: Promise<void>;
+	private readonly prisma: AppPrisma;
 
-	constructor(db: SQL) {
-		this.db = db;
-		this._ready = this.init();
-		this._ready.catch(() => {});
-	}
-
-	private async init(): Promise<void> {
-		await this.db`
-			CREATE TABLE IF NOT EXISTS forced_checkpoints (
-				id TEXT NOT NULL PRIMARY KEY,
-				caller TEXT NOT NULL,
-				thread_id TEXT NOT NULL,
-				created_at TEXT NOT NULL,
-				source_boundary TEXT NOT NULL,
-				summary_payload TEXT NOT NULL
-			)
-		`;
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_forced_checkpoints_caller_thread
-			ON forced_checkpoints(caller, thread_id, created_at DESC)
-		`;
+	constructor(prisma: AppPrisma) {
+		this.prisma = prisma;
 	}
 
 	async ready(): Promise<void> {
-		return this._ready;
+		return;
 	}
 
 	async create(input: CreateForcedCheckpointInput): Promise<ForcedCheckpoint> {
-		await this._ready;
 		const id = randomUUID();
 		const createdAt = new Date().toISOString();
 
-		await this.db`
-			INSERT INTO forced_checkpoints (
+		const row = await this.prisma.forcedCheckpoint.create({
+			data: {
 				id,
-				caller,
-				thread_id,
-				created_at,
-				source_boundary,
-				summary_payload
-			) VALUES (
-				${id},
-				${input.caller},
-				${input.threadId},
-				${createdAt},
-				${input.sourceBoundary},
-				${input.summaryPayload}
-			)
-		`;
-
-		return {
-			id,
-			caller: input.caller,
-			threadId: input.threadId,
-			createdAt,
-			sourceBoundary: input.sourceBoundary,
-			summaryPayload: input.summaryPayload,
-		};
+				caller: input.caller,
+				threadId: input.threadId,
+				createdAt,
+				sourceBoundary: input.sourceBoundary,
+				summaryPayload: input.summaryPayload,
+			},
+		});
+		return toForcedCheckpoint(row);
 	}
 
 	async readLatest(
 		caller: string,
 		threadId: string,
 	): Promise<ForcedCheckpoint | null> {
-		await this._ready;
-		const rows = await this.db<RawRow[]>`
-			SELECT
-				id,
-				caller,
-				thread_id,
-				created_at,
-				source_boundary,
-				summary_payload
-			FROM forced_checkpoints
-			WHERE caller = ${caller}
-				AND thread_id = ${threadId}
-			ORDER BY created_at DESC
-			LIMIT 1
-		`;
-		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
+		const row = await this.prisma.forcedCheckpoint.findFirst({
+			where: { caller, threadId },
+			orderBy: { createdAt: "desc" },
+		});
+		return row ? toForcedCheckpoint(row) : null;
 	}
 
 	async readLatestForCaller(caller: string): Promise<ForcedCheckpoint | null> {
-		await this._ready;
-		const rows = await this.db<RawRow[]>`
-			SELECT
-				id,
-				caller,
-				thread_id,
-				created_at,
-				source_boundary,
-				summary_payload
-			FROM forced_checkpoints
-			WHERE caller = ${caller}
-			ORDER BY created_at DESC
-			LIMIT 1
-		`;
-		return rows[0] ? toForcedCheckpoint(rows[0]) : null;
+		const row = await this.prisma.forcedCheckpoint.findFirst({
+			where: { caller },
+			orderBy: { createdAt: "desc" },
+		});
+		return row ? toForcedCheckpoint(row) : null;
 	}
 
 	async listForThread(
 		caller: string,
 		threadId: string,
 	): Promise<ForcedCheckpoint[]> {
-		await this._ready;
-		const rows = await this.db<RawRow[]>`
-			SELECT
-				id,
-				caller,
-				thread_id,
-				created_at,
-				source_boundary,
-				summary_payload
-			FROM forced_checkpoints
-			WHERE caller = ${caller}
-				AND thread_id = ${threadId}
-			ORDER BY created_at DESC
-		`;
+		const rows = await this.prisma.forcedCheckpoint.findMany({
+			where: { caller, threadId },
+			orderBy: { createdAt: "desc" },
+		});
 		return rows.map(toForcedCheckpoint);
 	}
 }

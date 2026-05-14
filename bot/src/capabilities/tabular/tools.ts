@@ -162,8 +162,10 @@ export function createTabularDistinctTool({ engine, workspace }: TabularToolOpti
 				);
 				const serialized = JSON.stringify(result);
 				if (estimateTokens(serialized) > PER_TOOL_TOKEN_CAP) {
-					const { values, truncated } = truncateRows(result.values, (subset) =>
-						JSON.stringify({ column: result.column, values: subset }),
+					const { rows: values, truncated } = truncateRows(
+						result.values,
+						(subset) =>
+							JSON.stringify({ column: result.column, values: subset }),
 					);
 					const out = JSON.stringify({ column: result.column, values });
 					return truncated ? `${out}\n${TRUNCATION_HINT}` : out;
