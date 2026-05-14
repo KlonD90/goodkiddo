@@ -8,6 +8,7 @@ import HeroPiecePhoneImage from './hero-piece-phone.png';
 import HeroStickerBubbleImage from './hero-sticker-bubble.png';
 import HeroStickerBurstImage from './hero-sticker-burst.png';
 import HeroStickerCloudImage from './hero-sticker-cloud.png';
+import { NotCrmFetchDemo } from './not-crm-fetch-demo';
 
 const TELEGRAM_URL = 'https://t.me/goodkiddo_bot';
 const GITHUB_URL = 'https://github.com/KlonD90/goodkiddo';
@@ -451,6 +452,7 @@ function LandingPage() {
     <main className="gk-page overflow-x-hidden w-full max-w-full">
       <Nav />
       <Hero />
+      <NotCrmFetchDemo />
       <Systems />
       <UseCases />
       <Values />
