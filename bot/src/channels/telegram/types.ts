@@ -4,17 +4,14 @@ import type { CapabilityRegistry } from "../../capabilities/registry";
 import type { TimerStore } from "../../capabilities/timers/store";
 import type { FileMetadata } from "../../capabilities/types";
 import type { AppConfig } from "../../config";
-import type { ApprovalBroker, ApprovalOutcome, ApprovalRequest } from "../../permissions/approval";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller } from "../../permissions/types";
 import type { ChannelAgentSession } from "../shared";
 import type { OutboundChannel, OutboundSendFileArgs, OutboundSendResult } from "../outbound";
 import type { AppChannel, ChannelRunOptions } from "../types";
-import type { createDb } from "../../db";
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 export const TELEGRAM_MAX_CAPTION_LENGTH = 1024;
-export const APPROVAL_TIMEOUT_MS = 120_000;
 export const TELEGRAM_HTML_PARSE_MODE = "HTML";
 export const TELEGRAM_TYPING_INTERVAL_MS = 4_000;
 export const TELEGRAM_STREAM_PARAGRAPH_FLUSH_INTERVAL_MS = 2_500;
@@ -39,23 +36,15 @@ export const TELEGRAM_STREAM_OVERFLOW_BOUNDARY_PATTERNS = [
 ] as const;
 export const TELEGRAM_COMMANDS = [
 	{ command: "start", description: "Show how to start using the assistant" },
-	{ command: "help", description: "Show available permission commands" },
+	{ command: "help", description: "Show available commands" },
 	{ command: "new_thread", description: "Start a fresh conversation thread" },
 	{ command: "open_fs", description: "Open your files in a web browser" },
 	{ command: "revoke_fs", description: "Revoke all active file-share links" },
 ] as const;
 
-export type PendingApproval = {
-	request: ApprovalRequest;
-	resolve: (outcome: ApprovalOutcome) => Promise<void>;
-	timeout: NodeJS.Timeout;
-	promptId: string;
-};
-
 export type TelegramAgentSession = ChannelAgentSession & {
 	running: boolean;
 	queue: TelegramQueuedTurn[];
-	pendingApprovals: Map<string, PendingApproval>;
 };
 
 export type TelegramTextContentBlock = {

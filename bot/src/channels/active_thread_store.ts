@@ -1,68 +1,32 @@
-type SQL = InstanceType<typeof Bun.SQL>;
-
-type ActiveThreadRow = {
-	caller: string;
-	active_thread_id: string;
-	updated_at: string;
-};
+import type { AppPrisma } from "../db/prisma";
 
 export class ActiveThreadStore {
-	private readonly db: SQL;
-	private readonly _ready: Promise<void>;
+	private readonly prisma: AppPrisma;
 
-	constructor(db: SQL) {
-		this.db = db;
-		this._ready = this.init();
-		this._ready.catch(() => {});
-	}
-
-	private async init(): Promise<void> {
-		await this.db`
-			CREATE TABLE IF NOT EXISTS active_threads (
-				caller TEXT NOT NULL PRIMARY KEY,
-				active_thread_id TEXT NOT NULL,
-				updated_at TEXT NOT NULL
-			)
-		`;
+	constructor(prisma: AppPrisma) {
+		this.prisma = prisma;
 	}
 
 	async ready(): Promise<void> {
-		await this._ready;
+		return;
 	}
 
 	async getOrCreate(caller: string, defaultThreadId: string): Promise<string> {
-		await this._ready;
-		const rows = await this.db<ActiveThreadRow[]>`
-			SELECT caller, active_thread_id, updated_at
-			FROM active_threads
-			WHERE caller = ${caller}
-			LIMIT 1
-		`;
-		const existing = rows[0];
-		if (existing) return existing.active_thread_id;
+		const existing = await this.prisma.activeThread.findUnique({
+			where: { caller },
+		});
+		if (existing) return existing.activeThreadId;
 
 		await this.setActiveThread(caller, defaultThreadId);
 		return defaultThreadId;
 	}
 
 	async setActiveThread(caller: string, threadId: string): Promise<void> {
-		await this._ready;
 		const updatedAt = new Date().toISOString();
-
-		await this.db`
-			INSERT INTO active_threads (
-				caller,
-				active_thread_id,
-				updated_at
-			) VALUES (
-				${caller},
-				${threadId},
-				${updatedAt}
-			)
-			ON CONFLICT(caller)
-			DO UPDATE SET
-				active_thread_id = excluded.active_thread_id,
-				updated_at = excluded.updated_at
-		`;
+		await this.prisma.activeThread.upsert({
+			where: { caller },
+			update: { activeThreadId: threadId, updatedAt },
+			create: { caller, activeThreadId: threadId, updatedAt },
+		});
 	}
 }

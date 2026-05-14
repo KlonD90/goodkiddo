@@ -2,11 +2,9 @@ import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
 import type { AppConfig } from "../config";
-import { createDb, detectDialect } from "../db/index";
+import { createPrismaClient } from "../db/prisma";
 import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
 import { readThreadMessages } from "../memory/rotate_thread";
-import { CLIApprovalBroker } from "../permissions/approval";
-import { maybeHandleCommand } from "../permissions/commands";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { createStatusEmitter } from "../tools/status_emitter";
@@ -26,8 +24,6 @@ import {
 	refreshAgentIfPromptDirty,
 } from "./shared";
 import type { AppChannel, ChannelRunOptions } from "./types";
-
-const CLI_DEFAULT_POLICY = process.env.CLI_DEFAULT_POLICY ?? "permissive";
 
 export class CliOutboundChannel implements OutboundChannel {
 	constructor(
@@ -79,27 +75,19 @@ export async function seedCliUser(
 		externalId: caller.externalId,
 		displayName: caller.displayName ?? null,
 	});
-	if (CLI_DEFAULT_POLICY === "strict") {
-		await store.upsertRule(caller.id, {
-			priority: 1000,
-			toolName: "*",
-			args: null,
-			decision: "ask",
-		});
-	}
 }
 
 export const cliChannel: AppChannel = {
 	entrypoint: "cli",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const db = options?.db ?? createDb(config.databaseUrl);
-		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
-		const store = new PermissionsStore({ db, dialect });
+		const prisma = options?.prisma ?? createPrismaClient(config.databaseUrl);
+		const store = new PermissionsStore({
+			prisma,
+		});
 		const caller = resolveCliCaller();
 		await seedCliUser(store, caller);
 
-		const broker = new CLIApprovalBroker(store);
 		const outbound = new CliOutboundChannel();
 		const statusEmitter = createStatusEmitter(outbound);
 		const localeHint = extractLocaleFromCli();
@@ -109,11 +97,9 @@ export const cliChannel: AppChannel = {
 		);
 		const baseThreadId = `cli-${caller.id}`;
 		const session = await createChannelAgentSession(config, {
-			db,
-			dialect,
+			prisma,
 			caller,
 			store,
-			broker,
 			threadId: baseThreadId,
 			outbound,
 			webShare,
@@ -126,7 +112,7 @@ export const cliChannel: AppChannel = {
 		const rl = readline.createInterface({ input, output });
 
 		console.log(
-			`Chat started as ${caller.id}. Type "exit" to quit, "/help" for permission commands, "/new-thread" to start a fresh conversation.\n`,
+			`Chat started as ${caller.id}. Type "exit" to quit or "/new-thread" to start a fresh conversation.\n`,
 		);
 
 		process.on("SIGINT", () => {
@@ -168,13 +154,6 @@ export const cliChannel: AppChannel = {
 			});
 			if (sessionCommand.handled) {
 				console.log(sessionCommand.reply);
-				console.log();
-				continue;
-			}
-
-			const command = await maybeHandleCommand(userInput, caller, store);
-			if (command.handled) {
-				console.log(command.reply);
 				console.log();
 				continue;
 			}
@@ -245,8 +224,8 @@ export const cliChannel: AppChannel = {
 		}
 
 		rl.close();
-		if (!options?.db) {
-			await db.close();
+		if (!options?.prisma) {
+			await prisma.$disconnect();
 		}
 	},
 };

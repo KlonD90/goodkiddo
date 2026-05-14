@@ -39,13 +39,13 @@ describe("cli channel", () => {
 		});
 	});
 
-	test("seedCliUser leaves permissive mode to the global default policy", async () => {
+	test("seedCliUser is idempotent", async () => {
 		db = new Bun.SQL("sqlite://:memory:");
 		store = new PermissionsStore({ db, dialect: "sqlite" });
 		await seedCliUser(store, caller);
 		await seedCliUser(store, caller);
 
-		expect(await store.listRulesForUser(caller.id)).toEqual([]);
+		expect(await store.listUsers()).toHaveLength(1);
 	});
 });
 

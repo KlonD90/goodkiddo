@@ -81,6 +81,28 @@
   become_user: "{{ bot_user }}"
   notify: restart bot service
 
+- name: Generate Prisma client
+  ansible.builtin.command:
+    cmd: bun run db:generate
+    chdir: "{{ bot_app_dir }}"
+  environment:
+    HOME: "{{ bot_home }}"
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+    DATABASE_URL: "{{ bot_database_url }}"
+  become_user: "{{ bot_user }}"
+  notify: restart bot service
+
+- name: Apply Prisma migrations to PostgreSQL
+  ansible.builtin.command:
+    cmd: bun run db:migrate
+    chdir: "{{ bot_app_dir }}"
+  environment:
+    HOME: "{{ bot_home }}"
+    PATH: "/usr/local/bin:/usr/bin:/bin"
+    DATABASE_URL: "{{ bot_database_url }}"
+  become_user: "{{ bot_user }}"
+  notify: restart bot service
+
 - name: Build static landing bundle
   ansible.builtin.command:
     cmd: bun run build

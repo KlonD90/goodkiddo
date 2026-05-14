@@ -1,8 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { normalizePath } from "../backends/state_backend";
-import { ensurePostgresBigintColumn } from "../db/postgres_bigint_columns";
-
-type SQL = InstanceType<typeof Bun.SQL>;
+import type { AppPrisma } from "../db/prisma";
 
 export type ScopeKind = "root" | "dir" | "file";
 
@@ -30,103 +28,56 @@ export interface IssueOptions {
 	scopeKind?: ScopeKind;
 }
 
-type GrantRow = {
-	link_uuid: string;
-	bearer_token: string;
-	user_id: string;
-	scope_path: string;
-	scope_kind: string;
-	expires_at: number;
-	created_at: number;
-	revoked_at: number | null;
+type GrantModel = {
+	linkUuid: string;
+	bearerToken: string;
+	userId: string;
+	scopePath: string;
+	scopeKind: string;
+	expiresAt: bigint | number;
+	createdAt: bigint | number;
+	revokedAt: bigint | number | null;
 };
 
 function generateBearerToken(): string {
 	return randomBytes(32).toString("base64url");
 }
 
-function rowToGrant(row: GrantRow): AccessGrant {
+function rowToGrant(row: GrantModel): AccessGrant {
 	return {
-		linkUuid: row.link_uuid,
-		userId: row.user_id,
-		scopePath: row.scope_path,
-		scopeKind: row.scope_kind as ScopeKind,
-		expiresAt: row.expires_at,
+		linkUuid: row.linkUuid,
+		userId: row.userId,
+		scopePath: row.scopePath,
+		scopeKind: row.scopeKind as ScopeKind,
+		expiresAt: Number(row.expiresAt),
 	};
 }
 
-function rowToResolvedGrant(row: GrantRow): ResolvedGrant {
+function rowToResolvedGrant(row: GrantModel): ResolvedGrant {
 	return {
 		...rowToGrant(row),
-		bearerToken: row.bearer_token,
+		bearerToken: row.bearerToken,
 	};
 }
 
 export interface AccessStoreOptions {
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	now?: () => number;
 }
 
 export class AccessStore {
-	private readonly database: SQL;
-	private readonly dialect: "sqlite" | "postgres";
+	private readonly prisma: AppPrisma;
 	private readonly now: () => number;
-	private readonly _ready: Promise<void>;
 
 	constructor(options: AccessStoreOptions) {
-		this.database = options.db;
-		this.dialect = options.dialect;
+		this.prisma = options.prisma;
 		this.now = options.now ?? (() => Date.now());
-		this._ready = this._init();
-		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
-	}
-
-	private async _init(): Promise<void> {
-		const db = this.database;
-		if (this.dialect === "postgres") {
-			await db`
-        CREATE TABLE IF NOT EXISTS fs_access_grants (
-          link_uuid TEXT PRIMARY KEY,
-          bearer_token TEXT NOT NULL UNIQUE,
-          user_id TEXT NOT NULL,
-          scope_path TEXT NOT NULL,
-          scope_kind TEXT NOT NULL,
-          expires_at BIGINT NOT NULL,
-          created_at BIGINT NOT NULL,
-          revoked_at BIGINT
-        )
-      `;
-			await ensurePostgresBigintColumn(db, "fs_access_grants", "expires_at");
-			await ensurePostgresBigintColumn(db, "fs_access_grants", "created_at");
-			await ensurePostgresBigintColumn(db, "fs_access_grants", "revoked_at");
-		} else {
-			await db`
-        CREATE TABLE IF NOT EXISTS fs_access_grants (
-          link_uuid TEXT PRIMARY KEY,
-          bearer_token TEXT NOT NULL UNIQUE,
-          user_id TEXT NOT NULL,
-          scope_path TEXT NOT NULL,
-          scope_kind TEXT NOT NULL,
-          expires_at INTEGER NOT NULL,
-          created_at INTEGER NOT NULL,
-          revoked_at INTEGER
-        )
-      `;
-		}
-		await db`
-      CREATE INDEX IF NOT EXISTS idx_fs_access_grants_user ON fs_access_grants(user_id)
-    `;
-		if (this.dialect === "sqlite") {
-			await db`PRAGMA journal_mode = WAL`;
-		}
 	}
 
 	async issue(
 		userId: string,
 		options: IssueOptions = {},
 	): Promise<IssuedGrant> {
-		await this._ready;
 		const ttlMs = Math.min(options.ttlMs ?? MAX_TTL_MS, MAX_TTL_MS);
 		if (ttlMs <= 0) {
 			throw new Error("ttlMs must be positive");
@@ -144,81 +95,83 @@ export class AccessStore {
 		const createdAt = this.now();
 		const expiresAt = createdAt + ttlMs;
 
-		const db = this.database;
-		await db`
-      INSERT INTO fs_access_grants
-        (link_uuid, bearer_token, user_id, scope_path, scope_kind, expires_at, created_at, revoked_at)
-      VALUES (${linkUuid}, ${bearerToken}, ${userId}, ${scopePath}, ${scopeKind}, ${expiresAt}, ${createdAt}, NULL)
-    `;
+		await this.prisma.fsAccessGrant.create({
+			data: {
+				linkUuid,
+				bearerToken,
+				userId,
+				scopePath,
+				scopeKind,
+				expiresAt: BigInt(expiresAt),
+				createdAt: BigInt(createdAt),
+				revokedAt: null,
+			},
+		});
 
 		return { linkUuid, userId, scopePath, scopeKind, expiresAt, bearerToken };
 	}
 
 	async resolveLink(linkUuid: string): Promise<ResolvedGrant | null> {
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		const rows = await db<GrantRow[]>`
-      SELECT * FROM fs_access_grants
-      WHERE link_uuid = ${linkUuid} AND revoked_at IS NULL AND expires_at > ${now}
-    `;
-		return rows[0] ? rowToResolvedGrant(rows[0]) : null;
+		const row = await this.prisma.fsAccessGrant.findFirst({
+			where: {
+				linkUuid,
+				revokedAt: null,
+				expiresAt: { gt: BigInt(now) },
+			},
+		});
+		return row ? rowToResolvedGrant(row) : null;
 	}
 
 	async resolveBearer(bearerToken: string): Promise<ResolvedGrant | null> {
 		if (bearerToken === "") return null;
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		const rows = await db<GrantRow[]>`
-      SELECT * FROM fs_access_grants
-      WHERE bearer_token = ${bearerToken} AND revoked_at IS NULL AND expires_at > ${now}
-    `;
-		return rows[0] ? rowToResolvedGrant(rows[0]) : null;
+		const row = await this.prisma.fsAccessGrant.findFirst({
+			where: {
+				bearerToken,
+				revokedAt: null,
+				expiresAt: { gt: BigInt(now) },
+			},
+		});
+		return row ? rowToResolvedGrant(row) : null;
 	}
 
 	async revokeByLink(linkUuid: string): Promise<void> {
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		await db`
-      UPDATE fs_access_grants SET revoked_at = ${now}
-      WHERE link_uuid = ${linkUuid} AND revoked_at IS NULL
-    `;
+		await this.prisma.fsAccessGrant.updateMany({
+			where: { linkUuid, revokedAt: null },
+			data: { revokedAt: BigInt(now) },
+		});
 	}
 
 	async revokeByUser(userId: string): Promise<number> {
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		const result = await db<GrantRow[]>`
-      UPDATE fs_access_grants SET revoked_at = ${now}
-      WHERE user_id = ${userId} AND revoked_at IS NULL
-      RETURNING link_uuid
-    `;
-		return result.length;
+		const result = await this.prisma.fsAccessGrant.updateMany({
+			where: { userId, revokedAt: null },
+			data: { revokedAt: BigInt(now) },
+		});
+		return result.count;
 	}
 
 	async listActive(userId: string): Promise<AccessGrant[]> {
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		const rows = await db<GrantRow[]>`
-      SELECT * FROM fs_access_grants
-      WHERE user_id = ${userId} AND revoked_at IS NULL AND expires_at > ${now}
-      ORDER BY created_at DESC
-    `;
+		const rows = await this.prisma.fsAccessGrant.findMany({
+			where: {
+				userId,
+				revokedAt: null,
+				expiresAt: { gt: BigInt(now) },
+			},
+			orderBy: { createdAt: "desc" },
+		});
 		return rows.map(rowToGrant);
 	}
 
 	async sweepExpired(): Promise<number> {
-		await this._ready;
-		const db = this.database;
 		const now = this.now();
-		const result = await db<GrantRow[]>`
-      DELETE FROM fs_access_grants WHERE expires_at <= ${now} RETURNING link_uuid
-    `;
-		return result.length;
+		const result = await this.prisma.fsAccessGrant.deleteMany({
+			where: { expiresAt: { lte: BigInt(now) } },
+		});
+		return result.count;
 	}
 
 	close(): void {

@@ -9,9 +9,8 @@ import type {
 	GrepMatch,
 	WriteResult,
 } from "deepagents";
+import type { AppPrisma } from "../db/prisma";
 import { fileDataToString, formatReadResponse } from "../utils/filesystem";
-
-type SQL = InstanceType<typeof Bun.SQL>;
 
 const DEFAULT_NAMESPACE = "default";
 const BINARY_CONTENT_PREFIX = "__top_fedder_binary__:";
@@ -24,8 +23,7 @@ type SqliteFileRow = {
 };
 
 export interface SqliteStateBackendOptions {
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	namespace?: string;
 }
 
@@ -128,38 +126,12 @@ function relativeToDirectory(dirPath: string, filePath: string): string {
 }
 
 export class SqliteStateBackend implements BackendProtocol {
-	private readonly database: SQL;
-	private readonly dialect: "sqlite" | "postgres";
+	private readonly prisma: AppPrisma;
 	private readonly namespace: string;
-	private readonly _ready: Promise<void>;
 
 	constructor(options: SqliteStateBackendOptions) {
-		this.database = options.db;
-		this.dialect = options.dialect;
+		this.prisma = options.prisma;
 		this.namespace = options.namespace ?? DEFAULT_NAMESPACE;
-		this._ready = this._init();
-		this._ready.catch(() => {}); // prevent unhandledRejection; error surfaces when methods await this._ready
-	}
-
-	private async _init(): Promise<void> {
-		const db = this.database;
-		await db`
-      CREATE TABLE IF NOT EXISTS agent_files (
-        namespace TEXT NOT NULL,
-        path TEXT NOT NULL,
-        content TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        modified_at TEXT NOT NULL,
-        PRIMARY KEY (namespace, path)
-      )
-    `;
-		await db`
-      CREATE INDEX IF NOT EXISTS idx_agent_files_namespace_path
-      ON agent_files(namespace, path)
-    `;
-		if (this.dialect === "sqlite") {
-			await db`PRAGMA journal_mode = WAL`;
-		}
 	}
 
 	private mapRowToFileData(row: SqliteFileRow): FileData {
@@ -171,42 +143,48 @@ export class SqliteStateBackend implements BackendProtocol {
 	}
 
 	private async getRow(filePath: string): Promise<SqliteFileRow | null> {
-		await this._ready;
 		const normalizedPath = normalizePath(filePath, "file");
-		const db = this.database;
 		const ns = this.namespace;
-		const rows = await db<SqliteFileRow[]>`
-      SELECT path, content, created_at, modified_at
-      FROM agent_files
-      WHERE namespace = ${ns} AND path = ${normalizedPath}
-    `;
-		return rows[0] ?? null;
+		const row = await this.prisma.agentFile.findUnique({
+			where: { namespace_path: { namespace: ns, path: normalizedPath } },
+		});
+		return row
+			? {
+					path: row.path,
+					content: row.content,
+					created_at: row.createdAt,
+					modified_at: row.modifiedAt,
+				}
+			: null;
 	}
 
 	private async listRowsInDirectory(dirPath: string): Promise<SqliteFileRow[]> {
-		await this._ready;
 		const normalizedDir = normalizePath(dirPath, "dir");
-		const db = this.database;
 		const ns = this.namespace;
-		const prefix = `${normalizedDir}%`;
-		return db<SqliteFileRow[]>`
-      SELECT path, content, created_at, modified_at
-      FROM agent_files
-      WHERE namespace = ${ns} AND path LIKE ${prefix}
-      ORDER BY path ASC
-    `;
+		const rows = await this.prisma.agentFile.findMany({
+			where: { namespace: ns, path: { startsWith: normalizedDir } },
+			orderBy: { path: "asc" },
+		});
+		return rows.map((row) => ({
+			path: row.path,
+			content: row.content,
+			created_at: row.createdAt,
+			modified_at: row.modifiedAt,
+		}));
 	}
 
 	private async listAllRows(): Promise<SqliteFileRow[]> {
-		await this._ready;
-		const db = this.database;
 		const ns = this.namespace;
-		return db<SqliteFileRow[]>`
-      SELECT path, content, created_at, modified_at
-      FROM agent_files
-      WHERE namespace = ${ns}
-      ORDER BY path ASC
-    `;
+		const rows = await this.prisma.agentFile.findMany({
+			where: { namespace: ns },
+			orderBy: { path: "asc" },
+		});
+		return rows.map((row) => ({
+			path: row.path,
+			content: row.content,
+			created_at: row.createdAt,
+			modified_at: row.modifiedAt,
+		}));
 	}
 
 	async lsInfo(dirPath: string): Promise<FileInfo[]> {
@@ -265,7 +243,6 @@ export class SqliteStateBackend implements BackendProtocol {
 
 	async write(filePath: string, content: string): Promise<WriteResult> {
 		try {
-			await this._ready;
 			const normalizedPath = normalizePath(filePath, "file");
 			if (await this.getRow(normalizedPath)) {
 				return {
@@ -274,13 +251,17 @@ export class SqliteStateBackend implements BackendProtocol {
 			}
 
 			const fileData = createFileData(content);
-			const db = this.database;
 			const ns = this.namespace;
 			const contentStr = fileDataToString(fileData);
-			await db`
-        INSERT INTO agent_files (namespace, path, content, created_at, modified_at)
-        VALUES (${ns}, ${normalizedPath}, ${contentStr}, ${fileData.created_at}, ${fileData.modified_at})
-      `;
+			await this.prisma.agentFile.create({
+				data: {
+					namespace: ns,
+					path: normalizedPath,
+					content: contentStr,
+					createdAt: fileData.created_at,
+					modifiedAt: fileData.modified_at,
+				},
+			});
 
 			return {
 				path: normalizedPath,
@@ -299,7 +280,6 @@ export class SqliteStateBackend implements BackendProtocol {
 		replaceAll = false,
 	): Promise<EditResult> {
 		try {
-			await this._ready;
 			const normalizedPath = normalizePath(filePath, "file");
 			const row = await this.getRow(normalizedPath);
 			if (!row) return { error: `Error: File '${normalizedPath}' not found` };
@@ -315,14 +295,15 @@ export class SqliteStateBackend implements BackendProtocol {
 
 			const [updatedContent, occurrences] = replacement;
 			const updated = updateFileData(current, updatedContent);
-			const db = this.database;
 			const ns = this.namespace;
 			const contentStr = fileDataToString(updated);
-			await db`
-        UPDATE agent_files
-        SET content = ${contentStr}, modified_at = ${updated.modified_at}
-        WHERE namespace = ${ns} AND path = ${normalizedPath}
-      `;
+			await this.prisma.agentFile.update({
+				where: { namespace_path: { namespace: ns, path: normalizedPath } },
+				data: {
+					content: contentStr,
+					modifiedAt: updated.modified_at,
+				},
+			});
 
 			return {
 				path: normalizedPath,
@@ -386,8 +367,6 @@ export class SqliteStateBackend implements BackendProtocol {
 	async uploadFiles(
 		files: Array<[string, Uint8Array]>,
 	): Promise<FileUploadResponse[]> {
-		await this._ready;
-		const db = this.database;
 		const ns = this.namespace;
 
 		return Promise.all(
@@ -400,13 +379,20 @@ export class SqliteStateBackend implements BackendProtocol {
 						existing?.created_at,
 					);
 					const contentStr = fileDataToString(fileData);
-					await db`
-            INSERT INTO agent_files (namespace, path, content, created_at, modified_at)
-            VALUES (${ns}, ${normalizedPath}, ${contentStr}, ${fileData.created_at}, ${fileData.modified_at})
-            ON CONFLICT(namespace, path) DO UPDATE SET
-              content = excluded.content,
-              modified_at = excluded.modified_at
-          `;
+					await this.prisma.agentFile.upsert({
+						where: { namespace_path: { namespace: ns, path: normalizedPath } },
+						update: {
+							content: contentStr,
+							modifiedAt: fileData.modified_at,
+						},
+						create: {
+							namespace: ns,
+							path: normalizedPath,
+							content: contentStr,
+							createdAt: fileData.created_at,
+							modifiedAt: fileData.modified_at,
+						},
+					});
 					return { path: normalizedPath, error: null };
 				} catch {
 					return { path: filePath, error: "invalid_path" };

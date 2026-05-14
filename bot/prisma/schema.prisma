@@ -1,0 +1,137 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model HarnessUser {
+  id          String  @id
+  entrypoint  String
+  externalId  String  @map("external_id")
+  displayName String? @map("display_name")
+  tier        String  @default("paid")
+  status      String  @default("active")
+  createdAt   BigInt  @map("created_at")
+  identityId  String? @map("identity_id")
+
+  @@unique([entrypoint, externalId])
+  @@map("harness_users")
+}
+
+model Task {
+  id                Int     @id @default(autoincrement())
+  userId            String  @map("user_id")
+  threadIdCreated   String  @map("thread_id_created")
+  threadIdCompleted String? @map("thread_id_completed")
+  listName          String  @map("list_name")
+  title             String
+  note              String?
+  status            String
+  statusReason      String? @map("status_reason")
+  createdAt         BigInt  @map("created_at")
+  updatedAt         BigInt  @map("updated_at")
+  completedAt       BigInt? @map("completed_at")
+  dismissedAt       BigInt? @map("dismissed_at")
+
+  @@index([userId, status, updatedAt(sort: Desc)], map: "idx_tasks_user_status_updated_at")
+  @@index([userId, listName, status], map: "idx_tasks_user_list_status")
+  @@map("tasks")
+}
+
+model Timer {
+  id                  String  @id
+  userId              String  @map("user_id")
+  chatId              String  @map("chat_id")
+  mdFilePath          String  @map("md_file_path")
+  cronExpression      String  @map("cron_expression")
+  kind                String  @default("always")
+  message             String?
+  timezone            String  @default("UTC")
+  enabled             Int     @default(1)
+  lastRunAt           BigInt? @map("last_run_at")
+  lastError           String? @map("last_error")
+  consecutiveFailures Int     @default(0) @map("consecutive_failures")
+  nextRunAt           BigInt  @map("next_run_at")
+  createdAt           BigInt  @map("created_at")
+
+  @@index([enabled, nextRunAt], map: "idx_timers_enabled_next_run_at")
+  @@map("timers")
+}
+
+model AgentFile {
+  namespace  String
+  path       String
+  content    String
+  createdAt  String @map("created_at")
+  modifiedAt String @map("modified_at")
+
+  @@id([namespace, path])
+  @@index([namespace, path], map: "idx_agent_files_namespace_path")
+  @@map("agent_files")
+}
+
+model ActiveThread {
+  caller         String @id
+  activeThreadId String @map("active_thread_id")
+  updatedAt      String @map("updated_at")
+
+  @@map("active_threads")
+}
+
+model ForcedCheckpoint {
+  id             String @id
+  caller         String
+  threadId       String @map("thread_id")
+  createdAt      String @map("created_at")
+  sourceBoundary String @map("source_boundary")
+  summaryPayload String @map("summary_payload")
+
+  @@index([caller, threadId, createdAt(sort: Desc)], map: "idx_forced_checkpoints_caller_thread")
+  @@map("forced_checkpoints")
+}
+
+model FsAccessGrant {
+  linkUuid    String  @id @map("link_uuid")
+  bearerToken String  @unique @map("bearer_token")
+  userId      String  @map("user_id")
+  scopePath   String  @map("scope_path")
+  scopeKind   String  @map("scope_kind")
+  expiresAt   BigInt  @map("expires_at")
+  createdAt   BigInt  @map("created_at")
+  revokedAt   BigInt? @map("revoked_at")
+
+  @@index([userId], map: "idx_fs_access_grants_user")
+  @@map("fs_access_grants")
+}
+
+model LangGraphCheckpoint {
+  threadId           String @map("thread_id")
+  checkpointNs       String @map("checkpoint_ns")
+  checkpointId       String @map("checkpoint_id")
+  checkpointType     String @map("checkpoint_type")
+  checkpointData     Bytes  @map("checkpoint_data")
+  metadataType       String @map("metadata_type")
+  metadataData       Bytes  @map("metadata_data")
+  parentCheckpointId String? @map("parent_checkpoint_id")
+
+  @@id([threadId, checkpointNs, checkpointId])
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_langgraph_checkpoints_lookup")
+  @@map("langgraph_checkpoints")
+}
+
+model LangGraphCheckpointWrite {
+  threadId       String @map("thread_id")
+  checkpointNs   String @map("checkpoint_ns")
+  checkpointId   String @map("checkpoint_id")
+  taskId         String @map("task_id")
+  writeIdx       Int    @map("write_idx")
+  channel        String
+  valueType      String @map("value_type")
+  valueData      Bytes  @map("value_data")
+
+  @@id([threadId, checkpointNs, checkpointId, taskId, writeIdx])
+  @@index([threadId, checkpointNs, checkpointId], map: "idx_langgraph_checkpoint_writes_lookup")
+  @@map("langgraph_checkpoint_writes")
+}

@@ -30,63 +30,6 @@ describe("PermissionsStore", () => {
 		expect(fetched?.status).toBe("active");
 	});
 
-	test("upsertRule deduplicates on (tool, args)", async () => {
-		await store.upsertUser({ entrypoint: "telegram", externalId: "1" });
-		await store.upsertRule("telegram:1", {
-			priority: 100,
-			toolName: "write_file",
-			args: null,
-			decision: "ask",
-		});
-		await store.upsertRule("telegram:1", {
-			priority: 50,
-			toolName: "write_file",
-			args: null,
-			decision: "allow",
-		});
-		const rules = await store.listRulesForUser("telegram:1");
-		expect(rules).toHaveLength(1);
-		expect(rules[0].decision).toBe("allow");
-		expect(rules[0].priority).toBe(50);
-	});
-
-	test("upsertRule keeps args-distinct rules separate", async () => {
-		await store.upsertUser({ entrypoint: "telegram", externalId: "1" });
-		await store.upsertRule("telegram:1", {
-			priority: 10,
-			toolName: "write_file",
-			args: { file_path: { glob: "drafts/**" } },
-			decision: "allow",
-		});
-		await store.upsertRule("telegram:1", {
-			priority: 100,
-			toolName: "write_file",
-			args: null,
-			decision: "deny",
-		});
-		expect(await store.listRulesForUser("telegram:1")).toHaveLength(2);
-	});
-
-	test("deleteMatchingRules and deleteAllRulesForUser", async () => {
-		await store.upsertUser({ entrypoint: "cli", externalId: "u" });
-		await store.upsertRule("cli:u", {
-			priority: 100,
-			toolName: "ls",
-			args: null,
-			decision: "allow",
-		});
-		await store.upsertRule("cli:u", {
-			priority: 100,
-			toolName: "write_file",
-			args: null,
-			decision: "deny",
-		});
-		expect(await store.deleteMatchingRules("cli:u", "ls", null)).toBe(1);
-		expect(await store.listRulesForUser("cli:u")).toHaveLength(1);
-		expect(await store.deleteAllRulesForUser("cli:u")).toBe(1);
-		expect(await store.listRulesForUser("cli:u")).toHaveLength(0);
-	});
-
 	test("setUserStatus suspends and reactivates", async () => {
 		await store.upsertUser({ entrypoint: "telegram", externalId: "5" });
 		await store.setUserStatus("telegram:5", "suspended");
@@ -303,5 +246,33 @@ describe("PermissionsStore", () => {
 		await store.setUserIdentity("telegram:45", "business_doggo");
 		const user = await store.getUserById("telegram:45");
 		expect(user?.identityId).toBe("business_doggo");
+	});
+
+	test("uses Prisma client when provided", async () => {
+		const users = new Map<string, Record<string, unknown>>();
+		const prismaStore = new PermissionsStore({
+			db,
+			dialect: "sqlite",
+			prisma: {
+				harnessUser: {
+					findUnique: async ({ where }: { where: { id?: string } }) =>
+						where.id ? (users.get(where.id) ?? null) : null,
+					create: async ({ data }: { data: Record<string, unknown> }) => {
+						users.set(data.id as string, data);
+						return data;
+					},
+				},
+			} as never,
+		});
+
+		const user = await prismaStore.upsertUserPaid({
+			entrypoint: "telegram",
+			externalId: "46",
+			displayName: "Prisma User",
+		});
+
+		expect(user.id).toBe("telegram:46");
+		expect(user.displayName).toBe("Prisma User");
+		expect(user.createdAt).toBeNumber();
 	});
 });

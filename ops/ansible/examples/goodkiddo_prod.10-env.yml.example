@@ -24,7 +24,6 @@ ai_type: anthropic
 ai_model_name: claude-sonnet-4-20250514
 ai_base_url: https://api.anthropic.com
 
-permissions_mode: enforce
 using_mode: single
 default_status_locale: en
 timezone: UTC

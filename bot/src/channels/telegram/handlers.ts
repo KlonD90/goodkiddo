@@ -5,7 +5,7 @@ import type { TimerRecord } from "../../capabilities/timers/store";
 import { TimerStore } from "../../capabilities/timers/store";
 import { VOICE_MIME_TYPE } from "../../capabilities/voice/constants";
 import type { AppConfig } from "../../config";
-import { createDb, detectDialect } from "../../db/index";
+import { createPrismaClient } from "../../db/prisma";
 import { resolveLocale } from "../../i18n/locale";
 import { createLogger } from "../../logger";
 import type { Caller } from "../../permissions/types";
@@ -22,10 +22,7 @@ import {
 	isImageMimeType,
 	processTelegramFile,
 } from "./files";
-import {
-	errorFieldsForLog,
-	summarizeTelegramUpdateForLog,
-} from "./logging";
+import { errorFieldsForLog, summarizeTelegramUpdateForLog } from "./logging";
 import { sendTelegramMessage, TelegramOutboundChannel } from "./outbound";
 import { ensureTelegramSession } from "./session";
 import {
@@ -51,10 +48,11 @@ export const telegramChannel: AppChannel = {
 	entrypoint: "telegram",
 	async run(config: AppConfig, options?: ChannelRunOptions): Promise<void> {
 		const webShare = options?.webShare;
-		const db = options?.db ?? createDb(config.databaseUrl);
-		const dialect = options?.dialect ?? detectDialect(config.databaseUrl);
-		const store = new PermissionsStore({ db, dialect });
-		const timerStore = options?.timerStore ?? new TimerStore({ db, dialect });
+		const prisma = options?.prisma ?? createPrismaClient(config.databaseUrl);
+		const store = new PermissionsStore({
+			prisma,
+		});
+		const timerStore = options?.timerStore ?? new TimerStore({ prisma });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
 		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
@@ -103,8 +101,7 @@ export const telegramChannel: AppChannel = {
 				chatIdString,
 				caller,
 				config,
-				db,
-				dialect,
+				prisma,
 				store,
 				bot,
 				sessions,
@@ -126,60 +123,6 @@ export const telegramChannel: AppChannel = {
 				"TELEGRAM_BOT_ALLOWED_CHAT_ID is deprecated; access is now governed by harness_users. Ignoring.",
 			);
 		}
-
-		bot.on("callback_query:data", async (ctx) => {
-			const chatId = ctx.chat?.id;
-			const data = ctx.callbackQuery.data;
-			if (chatId === undefined || data === "") {
-				try {
-					await ctx.answerCallbackQuery();
-				} catch (err) {
-					log.debug("answerCallbackQuery failed", {
-						error: err instanceof Error ? err.message : String(err),
-					});
-				}
-				return;
-			}
-
-			const chatIdString = String(chatId);
-			const session = sessions.get(chatIdString);
-			const separator = data.indexOf(":");
-			const outcome = separator === -1 ? data : data.slice(0, separator);
-			const promptId = separator === -1 ? "" : data.slice(separator + 1);
-			const pending = session?.pendingApprovals.get(promptId);
-			if (
-				pending &&
-				(outcome === "approve-once" ||
-					outcome === "approve-always" ||
-					outcome === "deny-once" ||
-					outcome === "deny-always")
-			) {
-				log.info("approval decided", {
-					chatId: chatIdString,
-					promptId,
-					outcome,
-					toolName: pending.request.toolName,
-				});
-				session?.pendingApprovals.delete(promptId);
-				await pending.resolve(outcome);
-			} else {
-				log.debug("callback query ignored", {
-					chatId: chatIdString,
-					outcome,
-					promptId,
-					hasPending: Boolean(pending),
-				});
-			}
-
-			try {
-				await ctx.answerCallbackQuery();
-			} catch (err) {
-				log.debug("answerCallbackQuery failed", {
-					chatId: chatIdString,
-					error: err instanceof Error ? err.message : String(err),
-				});
-			}
-		});
 
 		const downloadTelegramFile = (
 			getFile: () => Promise<{ file_path?: string }>,
@@ -207,7 +150,15 @@ export const telegramChannel: AppChannel = {
 			if (!resolved) return;
 
 			// /start is always direct — never from a forwarded message
-			if (!isForwarded && await maybeHandleTelegramStartCommand(bot, resolved.chatIdString, text, resolved.isNew)) {
+			if (
+				!isForwarded &&
+				(await maybeHandleTelegramStartCommand(
+					bot,
+					resolved.chatIdString,
+					text,
+					resolved.isNew,
+				))
+			) {
 				return;
 			}
 
@@ -219,7 +170,7 @@ export const telegramChannel: AppChannel = {
 				hasReplyContext: msgCtx.reply !== undefined,
 			});
 
-			// commandText drives session/permission command detection — only from
+			// commandText drives session command detection — only from
 			// direct (non-forwarded) user text so forwarded slash commands never fire.
 			const commandText = isForwarded ? "" : text;
 
@@ -267,7 +218,7 @@ export const telegramChannel: AppChannel = {
 				// Command detection runs only on direct (non-forwarded) caption text
 				if (
 					!isForwarded &&
-					await handleTelegramControlInput(
+					(await handleTelegramControlInput(
 						resolved.session,
 						bot,
 						resolved.chatIdString,
@@ -275,7 +226,7 @@ export const telegramChannel: AppChannel = {
 						resolved.caller,
 						store,
 						webShare,
-					)
+					))
 				) {
 					return;
 				}
@@ -389,7 +340,7 @@ export const telegramChannel: AppChannel = {
 				try {
 					if (
 						!isForwarded &&
-						await handleTelegramControlInput(
+						(await handleTelegramControlInput(
 							resolved.session,
 							bot,
 							resolved.chatIdString,
@@ -397,7 +348,7 @@ export const telegramChannel: AppChannel = {
 							resolved.caller,
 							store,
 							webShare,
-						)
+						))
 					) {
 						return;
 					}
@@ -499,8 +450,7 @@ export const telegramChannel: AppChannel = {
 				chatId,
 				callerResult.caller,
 				config,
-				db,
-				dialect,
+				prisma,
 				store,
 				bot,
 				sessions,
@@ -615,8 +565,8 @@ export const telegramChannel: AppChannel = {
 			},
 		});
 
-		if (!options?.db) {
-			await db.close();
+		if (!options?.prisma) {
+			await prisma.$disconnect();
 		}
 	},
 };

@@ -30,8 +30,7 @@ import {
 	type ChannelAgentSession,
 } from "./shared";
 
-// Channel-agnostic session-control commands — separate concern from permission
-// commands in src/permissions/commands.ts.
+// Channel-agnostic session-control commands.
 
 export type SessionCommandResult =
 	| { handled: false }

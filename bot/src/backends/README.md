@@ -2,7 +2,7 @@
 
 Per-user virtual filesystem (no real disk access).
 
-- `state_backend.ts` — namespace-scoped DB-backed store implementing `BackendProtocol` (deepagents); supports SQLite and PostgreSQL via injected `Bun.SQL`
+- `state_backend.ts` — namespace-scoped PostgreSQL-backed store implementing `BackendProtocol` (deepagents) via injected Prisma client
 - `types.ts` — `WorkspaceBackend` re-export
 - `index.ts` — public exports
 

@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { ensurePostgresBigintColumn } from "../../db/postgres_bigint_columns";
-import { createLogger } from "../../logger";
-
-const log = createLogger("timers.store");
-
-type SQL = InstanceType<typeof Bun.SQL>;
+import type { AppPrisma } from "../../db/prisma";
 
 export type TimerKind = "always" | "once";
 
@@ -25,26 +20,25 @@ export interface TimerRecord {
 	createdAt: number;
 }
 
-type TimerRow = {
+type TimerModel = {
 	id: string;
-	user_id: string;
-	chat_id: string;
-	md_file_path: string;
-	cron_expression: string;
+	userId: string;
+	chatId: string;
+	mdFilePath: string;
+	cronExpression: string;
 	kind: string;
 	message: string | null;
 	timezone: string;
 	enabled: number;
-	last_run_at: number | null;
-	last_error: string | null;
-	consecutive_failures: number;
-	next_run_at: number;
-	created_at: number;
+	lastRunAt: bigint | number | null;
+	lastError: string | null;
+	consecutiveFailures: number;
+	nextRunAt: bigint | number;
+	createdAt: bigint | number;
 };
 
 export interface TimerStoreOptions {
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	now?: () => number;
 }
 
@@ -66,263 +60,88 @@ export interface UpdateTimerParams {
 	nextRunAt?: number;
 }
 
-function rowToTimer(row: TimerRow): TimerRecord {
+function toNumber(value: bigint | number | null): number | null {
+	if (value === null) return null;
+	return Number(value);
+}
+
+function modelToTimer(row: TimerModel): TimerRecord {
 	return {
 		id: row.id,
-		userId: row.user_id,
-		chatId: row.chat_id,
-		mdFilePath: row.md_file_path,
-		cronExpression: row.cron_expression,
+		userId: row.userId,
+		chatId: row.chatId,
+		mdFilePath: row.mdFilePath,
+		cronExpression: row.cronExpression,
 		kind: row.kind === "once" ? "once" : "always",
 		message: row.message,
 		timezone: row.timezone,
 		enabled: row.enabled === 1,
-		lastRunAt: row.last_run_at,
-		lastError: row.last_error,
-		consecutiveFailures: row.consecutive_failures,
-		nextRunAt: row.next_run_at,
-		createdAt: row.created_at,
+		lastRunAt: toNumber(row.lastRunAt),
+		lastError: row.lastError,
+		consecutiveFailures: row.consecutiveFailures,
+		nextRunAt: Number(row.nextRunAt),
+		createdAt: Number(row.createdAt),
 	};
 }
 
 export class TimerStore {
-	private readonly db: SQL;
-	private readonly dialect: "sqlite" | "postgres";
+	private readonly prisma: AppPrisma;
 	private readonly now: () => number;
-	private readonly _ready: Promise<void>;
 
 	constructor(options: TimerStoreOptions) {
-		this.db = options.db;
-		this.dialect = options.dialect;
+		this.prisma = options.prisma;
 		this.now = options.now ?? (() => Date.now());
-		this._ready = this.init();
-		this._ready.catch((err) => {
-			log.error("initialization failed", {
-				error: err instanceof Error ? err.message : String(err),
-			});
-		});
-	}
-
-	private async init(): Promise<void> {
-		if (this.dialect === "postgres") {
-			await this.db`
-				CREATE TABLE IF NOT EXISTS timers (
-					id TEXT PRIMARY KEY,
-					user_id TEXT NOT NULL,
-					chat_id TEXT NOT NULL,
-					md_file_path TEXT NOT NULL,
-					cron_expression TEXT NOT NULL,
-					kind TEXT NOT NULL DEFAULT 'always',
-					message TEXT,
-					timezone TEXT NOT NULL DEFAULT 'UTC',
-					enabled INTEGER NOT NULL DEFAULT 1,
-					last_run_at BIGINT,
-					last_error TEXT,
-					consecutive_failures INTEGER NOT NULL DEFAULT 0,
-					next_run_at BIGINT NOT NULL,
-					created_at BIGINT NOT NULL
-				)
-			`;
-		} else {
-			await this.db`
-				CREATE TABLE IF NOT EXISTS timers (
-					id TEXT PRIMARY KEY,
-					user_id TEXT NOT NULL,
-					chat_id TEXT NOT NULL,
-					md_file_path TEXT NOT NULL,
-					cron_expression TEXT NOT NULL,
-					kind TEXT NOT NULL DEFAULT 'always',
-					message TEXT,
-					timezone TEXT NOT NULL DEFAULT 'UTC',
-					enabled INTEGER NOT NULL DEFAULT 1,
-					last_run_at INTEGER,
-					last_error TEXT,
-					consecutive_failures INTEGER NOT NULL DEFAULT 0,
-					next_run_at INTEGER NOT NULL,
-					created_at INTEGER NOT NULL
-				)
-			`;
-		}
-
-		await this.migrateTimerColumns();
-
-		await this.db`
-			CREATE INDEX IF NOT EXISTS idx_timers_enabled_next_run_at
-			ON timers(enabled, next_run_at)
-		`;
-
-		if (this.dialect === "sqlite") {
-			await this.db`PRAGMA journal_mode = WAL`;
-		}
-	}
-
-	private async migrateTimerColumns(): Promise<void> {
-		if (this.dialect === "postgres") {
-			await ensurePostgresBigintColumn(this.db, "timers", "last_run_at");
-			await ensurePostgresBigintColumn(this.db, "timers", "next_run_at");
-			await ensurePostgresBigintColumn(this.db, "timers", "created_at");
-			await this.db`
-				ALTER TABLE timers
-				ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'always'
-			`;
-			await this.db`
-				ALTER TABLE timers
-				ADD COLUMN IF NOT EXISTS message TEXT
-			`;
-			return;
-		}
-
-		const columns = await this.db<Array<{ name: string }>>`PRAGMA table_info(timers)`;
-		const columnNames = new Set(columns.map((column) => column.name));
-		if (!columnNames.has("kind")) {
-			await this.db`
-				ALTER TABLE timers
-				ADD COLUMN kind TEXT NOT NULL DEFAULT 'always'
-			`;
-		}
-		if (!columnNames.has("message")) {
-			await this.db`
-				ALTER TABLE timers
-				ADD COLUMN message TEXT
-			`;
-		}
 	}
 
 	async ready(): Promise<void> {
-		await this._ready;
+		return;
 	}
 
 	async create(params: CreateTimerParams): Promise<TimerRecord> {
-		await this._ready;
 		const id = randomUUID();
 		const now = this.now();
-		const rows = await this.db<TimerRow[]>`
-			INSERT INTO timers (
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
-				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-			) VALUES (
-				${id},
-				${params.userId},
-				${params.chatId},
-				${params.mdFilePath ?? ""},
-				${params.cronExpression ?? ""},
-				${params.kind ?? "always"},
-				${params.message ?? null},
-				${params.timezone},
-				1,
-				NULL,
-				NULL,
-				0,
-				${params.nextRunAt},
-				${now}
-			)
-			RETURNING
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
-				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-		`;
-		const row = rows[0];
-		if (!row) throw new Error("Failed to create timer");
-		return rowToTimer(row);
+		return modelToTimer(
+			await this.prisma.timer.create({
+				data: {
+					id,
+					userId: params.userId,
+					chatId: params.chatId,
+					mdFilePath: params.mdFilePath ?? "",
+					cronExpression: params.cronExpression ?? "",
+					kind: params.kind ?? "always",
+					message: params.message ?? null,
+					timezone: params.timezone,
+					enabled: 1,
+					lastRunAt: null,
+					lastError: null,
+					consecutiveFailures: 0,
+					nextRunAt: BigInt(params.nextRunAt),
+					createdAt: BigInt(now),
+				},
+			}),
+		);
 	}
 
 	async findDue(): Promise<TimerRecord[]> {
-		await this._ready;
 		const now = this.now();
-		const rows = await this.db<TimerRow[]>`
-			SELECT
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
-				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-			FROM timers
-			WHERE enabled = 1 AND next_run_at <= ${now}
-			ORDER BY next_run_at ASC
-		`;
-		return rows.map(rowToTimer);
+		const rows = await this.prisma.timer.findMany({
+			where: { enabled: 1, nextRunAt: { lte: BigInt(now) } },
+			orderBy: { nextRunAt: "asc" },
+		});
+		return rows.map(modelToTimer);
 	}
 
 	async findByUser(userId: string): Promise<TimerRecord[]> {
-		await this._ready;
-		const rows = await this.db<TimerRow[]>`
-			SELECT
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
-				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-			FROM timers
-			WHERE user_id = ${userId}
-			ORDER BY created_at DESC
-		`;
-		return rows.map(rowToTimer);
+		const rows = await this.prisma.timer.findMany({
+			where: { userId },
+			orderBy: { createdAt: "desc" },
+		});
+		return rows.map(modelToTimer);
 	}
 
 	async getById(id: string): Promise<TimerRecord | null> {
-		await this._ready;
-		const rows = await this.db<TimerRow[]>`
-			SELECT
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
-				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-			FROM timers
-			WHERE id = ${id}
-			LIMIT 1
-		`;
-		return rows[0] ? rowToTimer(rows[0]) : null;
+		const row = await this.prisma.timer.findUnique({ where: { id } });
+		return row ? modelToTimer(row) : null;
 	}
 
 	async update(
@@ -330,7 +149,6 @@ export class TimerStore {
 		userId: string,
 		updates: UpdateTimerParams,
 	): Promise<TimerRecord | null> {
-		await this._ready;
 		const existing = await this.getById(id);
 		if (!existing || existing.userId !== userId) {
 			return null;
@@ -341,83 +159,60 @@ export class TimerStore {
 		const enabled = updates.enabled ?? existing.enabled;
 		const nextRunAt = updates.nextRunAt ?? existing.nextRunAt;
 
-		const rows = await this.db<TimerRow[]>`
-			UPDATE timers
-			SET
-				cron_expression = ${cronExpression},
-				timezone = ${timezone},
-				enabled = ${enabled ? 1 : 0},
-				next_run_at = ${nextRunAt}
-			WHERE id = ${id} AND user_id = ${userId}
-			RETURNING
-				id,
-				user_id,
-				chat_id,
-				md_file_path,
-				cron_expression,
-				kind,
-				message,
+		const result = await this.prisma.timer.updateMany({
+			where: { id, userId },
+			data: {
+				cronExpression,
 				timezone,
-				enabled,
-				last_run_at,
-				last_error,
-				consecutive_failures,
-				next_run_at,
-				created_at
-		`;
-		return rows[0] ? rowToTimer(rows[0]) : null;
+				enabled: enabled ? 1 : 0,
+				nextRunAt: BigInt(nextRunAt),
+			},
+		});
+		if (result.count === 0) return null;
+		const row = await this.prisma.timer.findFirst({ where: { id, userId } });
+		return row ? modelToTimer(row) : null;
 	}
 
 	async delete(id: string, userId: string): Promise<boolean> {
-		await this._ready;
-		const result = await this.db<TimerRow[]>`
-			DELETE FROM timers
-			WHERE id = ${id} AND user_id = ${userId}
-			RETURNING id
-		`;
-		return result.length > 0;
+		const result = await this.prisma.timer.deleteMany({
+			where: { id, userId },
+		});
+		return result.count > 0;
 	}
 
 	async touchRun(id: string, nextRunAt: number): Promise<void> {
-		await this._ready;
 		const now = this.now();
-		await this.db`
-			UPDATE timers
-			SET
-				last_run_at = ${now},
-				last_error = NULL,
-				consecutive_failures = 0,
-				next_run_at = ${nextRunAt}
-			WHERE id = ${id}
-		`;
+		await this.prisma.timer.update({
+			where: { id },
+			data: {
+				lastRunAt: BigInt(now),
+				lastError: null,
+				consecutiveFailures: 0,
+				nextRunAt: BigInt(nextRunAt),
+			},
+		});
 	}
 
-	async touchError(id: string, userId: string, error: string, nextRunAt?: number): Promise<number> {
-		await this._ready;
-		if (nextRunAt !== undefined) {
-			const rows = await this.db<Array<{ consecutive_failures: number }>>`
-				UPDATE timers
-				SET
-					last_error = ${error},
-					consecutive_failures = consecutive_failures + 1,
-					next_run_at = ${nextRunAt}
-				WHERE id = ${id} AND user_id = ${userId}
-				RETURNING consecutive_failures
-			`;
-			return rows[0]?.consecutive_failures ?? 0;
-		}
-		const rows = await this.db<Array<{ consecutive_failures: number }>>`
-			UPDATE timers
-			SET
-				last_error = ${error},
-				consecutive_failures = consecutive_failures + 1
-			WHERE id = ${id} AND user_id = ${userId}
-			RETURNING consecutive_failures
-		`;
-		return rows[0]?.consecutive_failures ?? 0;
+	async touchError(
+		id: string,
+		userId: string,
+		error: string,
+		nextRunAt?: number,
+	): Promise<number> {
+		const result = await this.prisma.timer.updateMany({
+			where: { id, userId },
+			data: {
+				lastError: error,
+				consecutiveFailures: { increment: 1 },
+				...(nextRunAt !== undefined ? { nextRunAt: BigInt(nextRunAt) } : {}),
+			},
+		});
+		if (result.count === 0) return 0;
+		const row = await this.prisma.timer.findFirst({ where: { id, userId } });
+		return row?.consecutiveFailures ?? 0;
 	}
 
 	close(): void {
-		// No-op: lifecycle is managed by the injected db connection
+		// No-op: lifecycle is managed by the injected Prisma client.
 	}
 }

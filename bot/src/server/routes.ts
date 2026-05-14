@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { normalizePath, SqliteStateBackend } from "../backends";
+import type { AppPrisma } from "../db/prisma";
 import { detectMimeType } from "../utils/filesystem";
 import {
 	type AccessStore,
@@ -9,12 +10,9 @@ import {
 	withinScope,
 } from "./access_store";
 
-type SQL = InstanceType<typeof Bun.SQL>;
-
 export interface WebHandlerOptions {
 	access: AccessStore;
-	db: SQL;
-	dialect: "sqlite" | "postgres";
+	prisma: AppPrisma;
 	publicBaseUrl: string;
 }
 
@@ -156,12 +154,8 @@ function requireBearer(request: Request): string | null {
 	return match ? match[1].trim() : null;
 }
 
-function openWorkspace(
-	db: SQL,
-	dialect: "sqlite" | "postgres",
-	userId: string,
-): SqliteStateBackend {
-	return new SqliteStateBackend({ db, dialect, namespace: userId });
+function openWorkspace(prisma: AppPrisma, userId: string): SqliteStateBackend {
+	return new SqliteStateBackend({ prisma, namespace: userId });
 }
 
 async function readJsonBody(
@@ -223,8 +217,7 @@ async function handleBoot(
 async function handleDownload(
 	request: Request,
 	grant: ResolvedGrant,
-	db: SQL,
-	dialect: "sqlite" | "postgres",
+	prisma: AppPrisma,
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const rawPath = url.searchParams.get("path");
@@ -235,7 +228,7 @@ async function handleDownload(
 		return errorResponse("out_of_scope", 403);
 	}
 
-	const workspace = openWorkspace(db, dialect, grant.userId);
+	const workspace = openWorkspace(prisma, grant.userId);
 	const [result] = await workspace.downloadFiles([normalized]);
 	if (!result || result.error === "file_not_found") {
 		return errorResponse("file_not_found", 404);
@@ -263,8 +256,7 @@ async function handleDownload(
 async function handleApi(
 	request: Request,
 	access: AccessStore,
-	db: SQL,
-	dialect: "sqlite" | "postgres",
+	prisma: AppPrisma,
 ): Promise<Response> {
 	const url = new URL(request.url);
 	const route = url.pathname.replace(/^\/api\/fs\//, "");
@@ -292,13 +284,13 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(db, dialect, grant.userId);
+		const workspace = openWorkspace(prisma, grant.userId);
 		const entries = await workspace.lsInfo(normalized);
 		return jsonResponse({ path: normalized, entries });
 	}
 
 	if (route === "stat") {
-		const workspace = openWorkspace(db, dialect, grant.userId);
+		const workspace = openWorkspace(prisma, grant.userId);
 		const dirRequested = inferRequestedPathKind(rawPath) === "dir";
 
 		if (dirRequested) {
@@ -360,7 +352,7 @@ async function handleApi(
 		if (!withinScope(normalized, grant.scopePath, grant.scopeKind)) {
 			return errorResponse("out_of_scope", 403);
 		}
-		const workspace = openWorkspace(db, dialect, grant.userId);
+		const workspace = openWorkspace(prisma, grant.userId);
 		const [download] = await workspace.downloadFiles([normalized]);
 		if (!download || download.error === "file_not_found") {
 			return errorResponse("file_not_found", 404);
@@ -387,7 +379,7 @@ async function handleApi(
 }
 
 export function createWebHandler(options: WebHandlerOptions): WebHandler {
-	const { access, db, dialect } = options;
+	const { access, prisma } = options;
 
 	return async function handler(request: Request): Promise<Response> {
 		const url = new URL(request.url);
@@ -411,7 +403,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 		}
 
 		if (pathname.startsWith("/api/fs/")) {
-			return handleApi(request, access, db, dialect);
+			return handleApi(request, access, prisma);
 		}
 
 		if (pathname === "/_dl" || pathname.startsWith("/_dl?")) {
@@ -422,7 +414,7 @@ export function createWebHandler(options: WebHandlerOptions): WebHandler {
 			if (!uuidParam) return errorResponse("missing_uuid", 400);
 			const grant = await access.resolveLink(uuidParam);
 			if (!grant) return new Response("Unauthorized", { status: 401 });
-			return handleDownload(request, grant, db, dialect);
+			return handleDownload(request, grant, prisma);
 		}
 
 		const frontend = await handleFsFrontend(pathname, url.search);
