@@ -85,6 +85,8 @@ export type ChannelAgentSession = {
 	pendingTaskCheck?: boolean;
 	/** One-turn runtime context emitted by boundary-based task reconciliation. */
 	pendingTaskCheckContext?: string;
+	/** One-turn runtime context that enables Good Vibes Thread Ribbon craft. */
+	pendingThreadRibbonContext?: string;
 	/** True for the first turn after a persisted thread is resumed. */
 	needsResumeCompaction?: boolean;
 	/** When set, auto-compaction is checked before each turn. */
@@ -267,6 +269,12 @@ export function clearPendingTaskCheckContext(
 	session: ChannelAgentSession,
 ): void {
 	session.pendingTaskCheckContext = undefined;
+}
+
+export function clearPendingThreadRibbonContext(
+	session: ChannelAgentSession,
+): void {
+	session.pendingThreadRibbonContext = undefined;
 }
 
 export async function refreshAgentIfPromptDirty(
@@ -596,7 +604,9 @@ export const extractTextFromContent = (content: unknown): string => {
 export function buildSessionRuntimeMessages(
 	session: Pick<
 		ChannelAgentSession,
-		"pendingCompactionSeed" | "pendingTaskCheckContext"
+		| "pendingCompactionSeed"
+		| "pendingTaskCheckContext"
+		| "pendingThreadRibbonContext"
 	>,
 	allMessages: ThreadMessage[],
 ): ThreadMessage[] {
@@ -618,7 +628,9 @@ export function buildSessionRuntimeMessages(
 export function estimateSessionRuntimeTokens(
 	session: Pick<
 		ChannelAgentSession,
-		"pendingCompactionSeed" | "pendingTaskCheckContext"
+		| "pendingCompactionSeed"
+		| "pendingTaskCheckContext"
+		| "pendingThreadRibbonContext"
 	>,
 	allMessages: ThreadMessage[],
 ): number {
@@ -629,7 +641,9 @@ function renderSessionRuntimeContext(
 	session:
 		| Pick<
 				ChannelAgentSession,
-				"pendingCompactionSeed" | "pendingTaskCheckContext"
+				| "pendingCompactionSeed"
+				| "pendingTaskCheckContext"
+				| "pendingThreadRibbonContext"
 		  >
 		| undefined,
 ): string | undefined {
@@ -650,6 +664,9 @@ function renderSessionRuntimeContext(
 	}
 	if (session.pendingTaskCheckContext) {
 		blocks.push(session.pendingTaskCheckContext.trim());
+	}
+	if (session.pendingThreadRibbonContext) {
+		blocks.push(session.pendingThreadRibbonContext.trim());
 	}
 	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }

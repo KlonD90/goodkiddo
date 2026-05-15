@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
+import { trackThreadRibbonCandidate } from "../analytics";
 import type { AppConfig } from "../config";
 import { createPrismaClient } from "../db/prisma";
 import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
@@ -8,6 +9,7 @@ import { readThreadMessages } from "../memory/rotate_thread";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { createStatusEmitter } from "../tools/status_emitter";
+import { decideThreadRibbon } from "../vibes/thread_ribbon";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
@@ -17,6 +19,7 @@ import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
 	clearPendingTaskCheckContext,
+	clearPendingThreadRibbonContext,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeRunPendingTaskCheck,
@@ -190,9 +193,21 @@ export const cliChannel: AppChannel = {
 					console.log(`${taskCheck.reply ?? ""}\n`);
 					continue;
 				}
-				if (preparedTurn.compacted || taskCheck.needsRefresh) {
-					await session.refreshAgent();
+				const threadRibbon = decideThreadRibbon({
+					currentUserText: userInput,
+					recentMessages: preparedTurn.currentMessages,
+					channel: "cli",
+				});
+				if (threadRibbon.eligible) {
+					session.pendingThreadRibbonContext = threadRibbon.context;
+					trackThreadRibbonCandidate(caller.id, {
+						trigger: threadRibbon.trigger,
+						channel: "cli",
+					});
+				} else {
+					session.pendingThreadRibbonContext = undefined;
 				}
+				await session.refreshAgent();
 				const invokeMessages = buildInvokeMessages(session, {
 					role: "user",
 					content: userInput,
@@ -217,6 +232,7 @@ export const cliChannel: AppChannel = {
 				console.log(`Request failed: ${message}\n`);
 			} finally {
 				clearPendingTaskCheckContext(session);
+				clearPendingThreadRibbonContext(session);
 				session.currentUserText = undefined;
 				session.currentTurnContext = undefined;
 				await refreshAgentIfPromptDirty(session);
