@@ -1,6 +1,7 @@
 import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
+import { trackSendHandleCandidate } from "../analytics";
 import type { AppConfig } from "../config";
 import { createPrismaClient } from "../db/prisma";
 import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
@@ -8,6 +9,7 @@ import { readThreadMessages } from "../memory/rotate_thread";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { createStatusEmitter } from "../tools/status_emitter";
+import { decideSendHandle } from "../vibes/send_handle";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
@@ -16,6 +18,7 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	clearPendingSendHandleContext,
 	clearPendingTaskCheckContext,
 	createChannelAgentSession,
 	extractAgentReply,
@@ -190,9 +193,21 @@ export const cliChannel: AppChannel = {
 					console.log(`${taskCheck.reply ?? ""}\n`);
 					continue;
 				}
-				if (preparedTurn.compacted || taskCheck.needsRefresh) {
-					await session.refreshAgent();
+				const sendHandle = decideSendHandle({
+					currentUserText: userInput,
+					recentMessages: preparedTurn.currentMessages,
+					channel: "cli",
+				});
+				if (sendHandle.eligible) {
+					session.pendingSendHandleContext = sendHandle.context;
+					trackSendHandleCandidate(caller.id, {
+						trigger: sendHandle.trigger,
+						channel: "cli",
+					});
+				} else {
+					session.pendingSendHandleContext = undefined;
 				}
+				await session.refreshAgent();
 				const invokeMessages = buildInvokeMessages(session, {
 					role: "user",
 					content: userInput,
@@ -217,6 +232,7 @@ export const cliChannel: AppChannel = {
 				console.log(`Request failed: ${message}\n`);
 			} finally {
 				clearPendingTaskCheckContext(session);
+				clearPendingSendHandleContext(session);
 				session.currentUserText = undefined;
 				session.currentTurnContext = undefined;
 				await refreshAgentIfPromptDirty(session);

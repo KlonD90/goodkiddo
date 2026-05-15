@@ -29,3 +29,14 @@ export function trackUserCreated(
 ): void {
 	getClient()?.capture({ distinctId, event: "user_created", properties: { entrypoint } });
 }
+
+export function trackSendHandleCandidate(
+	distinctId: string,
+	properties: { trigger: string; channel: string },
+): void {
+	getClient()?.capture({
+		distinctId,
+		event: "send_handle_candidate",
+		properties,
+	});
+}

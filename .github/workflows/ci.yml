@@ -28,6 +28,9 @@ jobs:
       - name: Run all tests
         run: bun run test
 
+      - name: Run Send Handle offline eval
+        run: bun run --filter goodkiddo-bot eval:send-handle
+
       - name: Run web Biome check
         run: bun run --filter goodkiddo-web check
 

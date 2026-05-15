@@ -1,14 +1,23 @@
 import type { Bot } from "grammy";
-import { trackBotStarted, trackUserCreated } from "../../analytics";
+import {
+	trackBotStarted,
+	trackSendHandleCandidate,
+	trackUserCreated,
+} from "../../analytics";
 import { createLogger } from "../../logger";
 import { readThreadMessages } from "../../memory/rotate_thread";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller, UserRecord } from "../../permissions/types";
 import { maybeHandleSessionCommand } from "../session_commands";
+import { decideSendHandle } from "../../vibes/send_handle";
 import {
+	buildInvokeMessages,
 	clearPendingTaskCheckContext,
+	clearPendingSendHandleContext,
 	extractAgentReply,
 	extractTextFromContent,
+	maybeRunPendingTaskCheck,
+	prepareSessionForIncomingTurn,
 	refreshAgentIfPromptDirty,
 } from "../shared";
 import type { ChannelRunOptions } from "../types";
@@ -328,8 +337,20 @@ async function runAgentTurn(
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
-		if (preparedTurn.compacted || taskCheck.needsRefresh) {
-			await session.refreshAgent();
+		const sendHandle = decideSendHandle({
+			currentUserText:
+				queuedTurn.currentUserText ?? extractTextFromContent(queuedTurn.content),
+			recentMessages: preparedTurn.currentMessages,
+			channel: "telegram",
+		});
+		if (sendHandle.eligible) {
+			session.pendingSendHandleContext = sendHandle.context;
+			trackSendHandleCandidate(chatId, {
+				trigger: sendHandle.trigger,
+				channel: "telegram",
+			});
+		} else {
+			session.pendingSendHandleContext = undefined;
 		}
 		if (queuedTurn.attachmentBudget) {
 			const budgetResult = await applyTelegramAttachmentBudget({
@@ -346,6 +367,7 @@ async function runAgentTurn(
 				return;
 			}
 		}
+		await session.refreshAgent();
 		const invokeMessages = buildInvokeMessages(session, {
 			role: "user",
 			content: queuedTurn.content,
@@ -452,6 +474,7 @@ async function runAgentTurn(
 		);
 	} finally {
 		clearPendingTaskCheckContext(session);
+		clearPendingSendHandleContext(session);
 		session.currentUserText = undefined;
 		session.currentTurnContext = undefined;
 		await refreshAgentIfPromptDirty(session);
@@ -625,10 +648,3 @@ export async function handleTelegramQueuedTurn(
 	});
 	void pumpQueue(session, bot, chatId);
 }
-
-// Need to import these from shared
-import {
-	buildInvokeMessages,
-	maybeRunPendingTaskCheck,
-	prepareSessionForIncomingTurn,
-} from "../shared";
