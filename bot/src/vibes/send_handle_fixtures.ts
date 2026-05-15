@@ -172,6 +172,31 @@ export const sendHandleFixtures: SendHandleFixture[] = [
 		expectedOffReason: "sensitive_security",
 	},
 	{
+		id: "privacy-personal-data-off",
+		description: "privacy and personal data flow must stay off",
+		channel: "telegram",
+		currentUserText:
+			"A client is worried about privacy and personal data handling. Draft a calm response.",
+		recentMessages: [],
+		expectCandidate: false,
+		expectedOffReason: "sensitive_security",
+	},
+	{
+		id: "recent-privacy-generic-draft-off",
+		description: "privacy in recent history keeps a generic draft request off",
+		channel: "telegram",
+		currentUserText: "Can you draft a calm response?",
+		recentMessages: [
+			{
+				role: "user",
+				content:
+					"The client is worried about how we handle PII and data retention for private data.",
+			},
+		],
+		expectCandidate: false,
+		expectedOffReason: "sensitive_security",
+	},
+	{
 		id: "recent-security-generic-reply-off",
 		description: "security in recent history keeps a generic reply request off",
 		channel: "telegram",

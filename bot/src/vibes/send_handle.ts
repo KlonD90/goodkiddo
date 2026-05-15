@@ -67,7 +67,7 @@ const SENSITIVE_PATTERNS: Array<{
 	{
 		reason: "sensitive_security",
 		patterns: [
-			/\b(security|hacked|hack|password|breach|breached|phishing|fraud|stolen|account takeover|2fa|mfa|login|suspicious login)\b/i,
+			/\b(security|hacked|hack|password|breach|breached|phishing|fraud|stolen|account takeover|2fa|mfa|login|suspicious login|privacy|private data|personal data|pii|data protection|gdpr|data retention|data deletion|data access)\b/i,
 		],
 	},
 ];
