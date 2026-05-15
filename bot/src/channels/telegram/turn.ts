@@ -1,7 +1,7 @@
 import type { Bot } from "grammy";
 import {
 	trackBotStarted,
-	trackThreadRibbonCandidate,
+	trackSendHandleCandidate,
 	trackUserCreated,
 } from "../../analytics";
 import { createLogger } from "../../logger";
@@ -9,11 +9,11 @@ import { readThreadMessages } from "../../memory/rotate_thread";
 import type { PermissionsStore } from "../../permissions/store";
 import type { Caller, UserRecord } from "../../permissions/types";
 import { maybeHandleSessionCommand } from "../session_commands";
-import { decideThreadRibbon } from "../../vibes/thread_ribbon";
+import { decideSendHandle } from "../../vibes/send_handle";
 import {
 	buildInvokeMessages,
 	clearPendingTaskCheckContext,
-	clearPendingThreadRibbonContext,
+	clearPendingSendHandleContext,
 	extractAgentReply,
 	extractTextFromContent,
 	maybeRunPendingTaskCheck,
@@ -337,20 +337,20 @@ async function runAgentTurn(
 			await sendTelegramMessage(bot, chatId, taskCheck.reply ?? "");
 			return;
 		}
-		const threadRibbon = decideThreadRibbon({
+		const sendHandle = decideSendHandle({
 			currentUserText:
 				queuedTurn.currentUserText ?? extractTextFromContent(queuedTurn.content),
 			recentMessages: preparedTurn.currentMessages,
 			channel: "telegram",
 		});
-		if (threadRibbon.eligible) {
-			session.pendingThreadRibbonContext = threadRibbon.context;
-			trackThreadRibbonCandidate(chatId, {
-				trigger: threadRibbon.trigger,
+		if (sendHandle.eligible) {
+			session.pendingSendHandleContext = sendHandle.context;
+			trackSendHandleCandidate(chatId, {
+				trigger: sendHandle.trigger,
 				channel: "telegram",
 			});
 		} else {
-			session.pendingThreadRibbonContext = undefined;
+			session.pendingSendHandleContext = undefined;
 		}
 		if (queuedTurn.attachmentBudget) {
 			const budgetResult = await applyTelegramAttachmentBudget({
@@ -474,7 +474,7 @@ async function runAgentTurn(
 		);
 	} finally {
 		clearPendingTaskCheckContext(session);
-		clearPendingThreadRibbonContext(session);
+		clearPendingSendHandleContext(session);
 		session.currentUserText = undefined;
 		session.currentTurnContext = undefined;
 		await refreshAgentIfPromptDirty(session);

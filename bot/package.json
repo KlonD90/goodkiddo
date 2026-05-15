@@ -16,7 +16,7 @@
     "db:dev": "prisma dev --name goodkiddo-pglite --db-port 54329 --shadow-db-port 54330 --port 54331 --detach",
     "db:dev:stop": "prisma dev stop goodkiddo-pglite",
     "test": "bun test",
-    "eval:thread-ribbon": "bun src/evals/thread_ribbon_judge.ts",
+    "eval:send-handle": "bun src/evals/send_handle_judge.ts",
     "check": "biome check src/**/*.ts",
     "format": "biome check --write src/**/*.ts --unsafe",
     "lint": "biome lint src/**/*.ts",

@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import { stdin as input, stdout as output } from "node:process";
 import * as readline from "node:readline/promises";
-import { trackThreadRibbonCandidate } from "../analytics";
+import { trackSendHandleCandidate } from "../analytics";
 import type { AppConfig } from "../config";
 import { createPrismaClient } from "../db/prisma";
 import { extractLocaleFromCli, resolveLocale } from "../i18n/locale";
@@ -9,7 +9,7 @@ import { readThreadMessages } from "../memory/rotate_thread";
 import { PermissionsStore } from "../permissions/store";
 import type { Caller } from "../permissions/types";
 import { createStatusEmitter } from "../tools/status_emitter";
-import { decideThreadRibbon } from "../vibes/thread_ribbon";
+import { decideSendHandle } from "../vibes/send_handle";
 import type {
 	OutboundChannel,
 	OutboundSendFileArgs,
@@ -18,8 +18,8 @@ import type {
 import { maybeHandleSessionCommand } from "./session_commands";
 import {
 	buildInvokeMessages,
+	clearPendingSendHandleContext,
 	clearPendingTaskCheckContext,
-	clearPendingThreadRibbonContext,
 	createChannelAgentSession,
 	extractAgentReply,
 	maybeRunPendingTaskCheck,
@@ -193,19 +193,19 @@ export const cliChannel: AppChannel = {
 					console.log(`${taskCheck.reply ?? ""}\n`);
 					continue;
 				}
-				const threadRibbon = decideThreadRibbon({
+				const sendHandle = decideSendHandle({
 					currentUserText: userInput,
 					recentMessages: preparedTurn.currentMessages,
 					channel: "cli",
 				});
-				if (threadRibbon.eligible) {
-					session.pendingThreadRibbonContext = threadRibbon.context;
-					trackThreadRibbonCandidate(caller.id, {
-						trigger: threadRibbon.trigger,
+				if (sendHandle.eligible) {
+					session.pendingSendHandleContext = sendHandle.context;
+					trackSendHandleCandidate(caller.id, {
+						trigger: sendHandle.trigger,
 						channel: "cli",
 					});
 				} else {
-					session.pendingThreadRibbonContext = undefined;
+					session.pendingSendHandleContext = undefined;
 				}
 				await session.refreshAgent();
 				const invokeMessages = buildInvokeMessages(session, {
@@ -232,7 +232,7 @@ export const cliChannel: AppChannel = {
 				console.log(`Request failed: ${message}\n`);
 			} finally {
 				clearPendingTaskCheckContext(session);
-				clearPendingThreadRibbonContext(session);
+				clearPendingSendHandleContext(session);
 				session.currentUserText = undefined;
 				session.currentTurnContext = undefined;
 				await refreshAgentIfPromptDirty(session);

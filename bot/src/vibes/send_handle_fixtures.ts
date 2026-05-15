@@ -1,17 +1,31 @@
 import type { ThreadMessage } from "../memory/summarize";
 
-export type ThreadRibbonFixture = {
+export type SendHandleFixture = {
 	id: string;
 	description: string;
 	channel: "cli" | "telegram";
 	currentUserText: string;
 	recentMessages: ThreadMessage[];
 	expectCandidate: boolean;
-	expectedTrigger?: "messy_to_artifact" | "finish_after_artifact";
+	expectedTrigger?: "messy_to_artifact" | "artifact_followup";
 	expectedOffReason?: string;
+	expectedHandleExamples?: string[];
 };
 
-export const threadRibbonFixtures: ThreadRibbonFixture[] = [
+export const forbiddenSelfPraisePhrases = [
+	"Tiny win: the mess is now one reply",
+	"Tiny win: the thread is now one reply",
+	"the mess is now one reply",
+	"the thread is solved",
+	"we cleaned this up",
+	"we cleaned up the thread",
+	"GoodKiddo solved",
+	"GoodKiddo turned this into",
+	"I cleaned this up",
+	"I turned this into",
+];
+
+export const sendHandleFixtures: SendHandleFixture[] = [
 	{
 		id: "draft-messy-customer-reply",
 		description: "messy customer thread asks for a concrete reply draft",
@@ -21,6 +35,10 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 		recentMessages: [],
 		expectCandidate: true,
 		expectedTrigger: "messy_to_artifact",
+		expectedHandleExamples: [
+			"Before sending: confirm the ETA and replace `[delivery window]`.",
+			"If you want shorter: send only the first two sentences.",
+		],
 	},
 	{
 		id: "checklist-missing-context",
@@ -31,12 +49,35 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 		recentMessages: [],
 		expectCandidate: true,
 		expectedTrigger: "messy_to_artifact",
+		expectedHandleExamples: [
+			"Start with the answer you need today; save nice-to-have details for later.",
+		],
 	},
 	{
-		id: "finish-after-draft",
-		description: "user confirms completion after assistant produced a draft",
+		id: "recent-context-generic-reply",
+		description:
+			"recent customer context lets a short generic reply request qualify",
 		channel: "telegram",
-		currentUserText: "Perfect, sent it. Thanks.",
+		currentUserText: "Can you draft a warmer answer?",
+		recentMessages: [
+			{
+				role: "user",
+				content:
+					"A lead asked whether we can deliver by Friday. I am unsure how much detail to include in the response.",
+			},
+		],
+		expectCandidate: true,
+		expectedTrigger: "messy_to_artifact",
+		expectedHandleExamples: [
+			"To stay warm without overpromising: keep the first sentence, then add the ETA.",
+		],
+	},
+	{
+		id: "after-draft-user-asks-pushback-line",
+		description:
+			"after an artifact, a user asks for one practical follow-up phrase",
+		channel: "telegram",
+		currentUserText: "Looks good. What if they push back?",
 		recentMessages: [
 			{
 				role: "user",
@@ -49,7 +90,30 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 			},
 		],
 		expectCandidate: true,
-		expectedTrigger: "finish_after_artifact",
+		expectedTrigger: "artifact_followup",
+		expectedHandleExamples: [
+			"Use this if they push back: ‘I can do today or tomorrow — which works better?’",
+		],
+	},
+	{
+		id: "finish-after-draft-off",
+		description:
+			"pure completion thanks does not invite a bot-owned victory lap",
+		channel: "telegram",
+		currentUserText: "Perfect, sent it. Thanks.",
+		recentMessages: [
+			{
+				role: "user",
+				content: "Can you draft a calm reply to the vendor?",
+			},
+			{
+				role: "assistant",
+				content:
+					"Draft reply:\n\nHi Sam — thanks for the update. Could you confirm the revised delivery date?",
+			},
+		],
+		expectCandidate: false,
+		expectedOffReason: "no_customer_artifact_signal",
 	},
 	{
 		id: "grief-off",
@@ -133,11 +197,11 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 		expectedOffReason: "sensitive_conflict_or_escalation",
 	},
 	{
-		id: "recent-anger-artifact-finish-off",
+		id: "recent-anger-artifact-followup-off",
 		description:
-			"anger/escalation in recent artifact context keeps finish confirmation off",
+			"anger/escalation in recent artifact context keeps follow-up handle off",
 		channel: "telegram",
-		currentUserText: "Sent it thanks.",
+		currentUserText: "What if they push back?",
 		recentMessages: [
 			{
 				role: "user",
@@ -154,11 +218,11 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 		expectedOffReason: "sensitive_conflict_or_escalation",
 	},
 	{
-		id: "recent-grief-high-stakes-finish-off",
+		id: "recent-grief-high-stakes-followup-off",
 		description:
-			"grief/high-stakes in recent history keeps finish confirmation off",
+			"grief/high-stakes in recent history keeps follow-up handle off",
 		channel: "telegram",
-		currentUserText: "Done, thank you.",
+		currentUserText: "Can you make it shorter?",
 		recentMessages: [
 			{
 				role: "user",
@@ -173,6 +237,25 @@ export const threadRibbonFixtures: ThreadRibbonFixture[] = [
 		],
 		expectCandidate: false,
 		expectedOffReason: "sensitive_grief_or_harm",
+	},
+	{
+		id: "legal-medical-off",
+		description: "legal/medical/safety request must stay off",
+		channel: "telegram",
+		currentUserText:
+			"A client asked for medical advice after an unsafe incident. Draft what to say.",
+		recentMessages: [],
+		expectCandidate: false,
+		expectedOffReason: "sensitive_legal_medical_safety",
+	},
+	{
+		id: "low-signal-off",
+		description: "low-signal thanks/chat must stay off",
+		channel: "telegram",
+		currentUserText: "lol nice",
+		recentMessages: [],
+		expectCandidate: false,
+		expectedOffReason: "no_customer_artifact_signal",
 	},
 	{
 		id: "command-off",

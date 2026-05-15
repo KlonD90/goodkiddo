@@ -85,8 +85,8 @@ export type ChannelAgentSession = {
 	pendingTaskCheck?: boolean;
 	/** One-turn runtime context emitted by boundary-based task reconciliation. */
 	pendingTaskCheckContext?: string;
-	/** One-turn runtime context that enables Good Vibes Thread Ribbon craft. */
-	pendingThreadRibbonContext?: string;
+	/** One-turn runtime context that enables Good Vibes Send Handle craft. */
+	pendingSendHandleContext?: string;
 	/** True for the first turn after a persisted thread is resumed. */
 	needsResumeCompaction?: boolean;
 	/** When set, auto-compaction is checked before each turn. */
@@ -271,10 +271,10 @@ export function clearPendingTaskCheckContext(
 	session.pendingTaskCheckContext = undefined;
 }
 
-export function clearPendingThreadRibbonContext(
+export function clearPendingSendHandleContext(
 	session: ChannelAgentSession,
 ): void {
-	session.pendingThreadRibbonContext = undefined;
+	session.pendingSendHandleContext = undefined;
 }
 
 export async function refreshAgentIfPromptDirty(
@@ -606,7 +606,7 @@ export function buildSessionRuntimeMessages(
 		ChannelAgentSession,
 		| "pendingCompactionSeed"
 		| "pendingTaskCheckContext"
-		| "pendingThreadRibbonContext"
+		| "pendingSendHandleContext"
 	>,
 	allMessages: ThreadMessage[],
 ): ThreadMessage[] {
@@ -630,7 +630,7 @@ export function estimateSessionRuntimeTokens(
 		ChannelAgentSession,
 		| "pendingCompactionSeed"
 		| "pendingTaskCheckContext"
-		| "pendingThreadRibbonContext"
+		| "pendingSendHandleContext"
 	>,
 	allMessages: ThreadMessage[],
 ): number {
@@ -643,7 +643,7 @@ function renderSessionRuntimeContext(
 				ChannelAgentSession,
 				| "pendingCompactionSeed"
 				| "pendingTaskCheckContext"
-				| "pendingThreadRibbonContext"
+				| "pendingSendHandleContext"
 		  >
 		| undefined,
 ): string | undefined {
@@ -665,8 +665,8 @@ function renderSessionRuntimeContext(
 	if (session.pendingTaskCheckContext) {
 		blocks.push(session.pendingTaskCheckContext.trim());
 	}
-	if (session.pendingThreadRibbonContext) {
-		blocks.push(session.pendingThreadRibbonContext.trim());
+	if (session.pendingSendHandleContext) {
+		blocks.push(session.pendingSendHandleContext.trim());
 	}
 	return blocks.length > 0 ? blocks.join("\n\n") : undefined;
 }
