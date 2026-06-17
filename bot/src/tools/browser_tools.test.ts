@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createBrowserSessionManager } from "./browser_session_manager";
 import {
 	type CliRunner,
 	createBrowserActionTool,
@@ -6,7 +7,6 @@ import {
 	createSessionRegistry,
 	type ProcResult,
 } from "./browser_tools";
-import { createBrowserSessionManager } from "./browser_session_manager";
 
 type Invokable = { invoke: (input: unknown) => Promise<string> };
 
@@ -401,7 +401,12 @@ describe("browser tools + BrowserSessionManager integration", () => {
 		const registry = createSessionRegistry("u");
 		const manager = createBrowserSessionManager({ maxConcurrent: 3 });
 		const snapshotTool = createBrowserSnapshotTool({ run, registry, manager });
-		const actionTool = createBrowserActionTool({ run, registry, manager, settleMs: 0 });
+		const actionTool = createBrowserActionTool({
+			run,
+			registry,
+			manager,
+			settleMs: 0,
+		});
 
 		const first = await callTool(snapshotTool, {});
 		const key = extractSessionKey(first);
@@ -410,7 +415,11 @@ describe("browser tools + BrowserSessionManager integration", () => {
 		// Simulate reaper removing it
 		manager.release(key);
 
-		const result = await callTool(actionTool, { sessionKey: key, action: "click", ref: "@e1" });
+		const result = await callTool(actionTool, {
+			sessionKey: key,
+			action: "click",
+			ref: "@e1",
+		});
 		expect(result).toContain("expired due to inactivity");
 		expect(calls).toHaveLength(0);
 	});
@@ -423,16 +432,28 @@ describe("browser tools + BrowserSessionManager integration", () => {
 			wait: ok(""),
 		});
 		const registry = createSessionRegistry("u");
-		const manager = createBrowserSessionManager({ maxConcurrent: 3, idleTimeoutMs: 10 });
+		const manager = createBrowserSessionManager({
+			maxConcurrent: 3,
+			idleTimeoutMs: 10,
+		});
 		const snapshotTool = createBrowserSnapshotTool({ run, registry, manager });
-		const actionTool = createBrowserActionTool({ run, registry, manager, settleMs: 0 });
+		const actionTool = createBrowserActionTool({
+			run,
+			registry,
+			manager,
+			settleMs: 0,
+		});
 
 		const first = await callTool(snapshotTool, {});
 		const key = extractSessionKey(first);
 
 		// Wait past threshold, then act — touch should prevent reap
 		await new Promise((r) => setTimeout(r, 15));
-		await callTool(actionTool, { sessionKey: key, action: "click", ref: "@e1" });
+		await callTool(actionTool, {
+			sessionKey: key,
+			action: "click",
+			ref: "@e1",
+		});
 		// Should still be active because action touched it
 		expect(manager.isActive(key)).toBe(true);
 	});

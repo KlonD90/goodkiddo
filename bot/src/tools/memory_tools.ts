@@ -128,11 +128,11 @@ async function writeActuelFile(
 	await overwrite(backend, targetPath, nextBody);
 }
 
-	async function performWrite(ctx: WriteContext): Promise<string> {
-		// Serialize by indexPath: the note file + index update is a read-modify-write
-		// pair. The index is the single source of truth for which notes exist, so all
-		// writes must serialize on it to prevent last-write-wins.
-		return withLock(ctx.indexPath, async () => {
+async function performWrite(ctx: WriteContext): Promise<string> {
+	// Serialize by indexPath: the note file + index update is a read-modify-write
+	// pair. The index is the single source of truth for which notes exist, so all
+	// writes must serialize on it to prevent last-write-wins.
+	return withLock(ctx.indexPath, async () => {
 		const header = `# ${safeHeaderTitle(ctx.topic)}`;
 		await writeActuelFile(
 			ctx.backend,
@@ -188,10 +188,7 @@ export function createMemoryWriteTool(
 			try {
 				const effectiveMode = mode ?? "replace";
 				if (target === "user") {
-					const updated = await performUserWrite(
-						backend,
-						content,
-					);
+					const updated = await performUserWrite(backend, content);
 					await onMutation?.("user");
 					return `Saved to ${USER_PROFILE_PATH}.\n\n--- Updated USER.md ---\n${updated}`;
 				}
@@ -415,7 +412,9 @@ export function createMemoryMaintainTool(backend: BackendProtocol) {
 					.describe("Maintenance action to perform."),
 				path: z
 					.string()
-					.describe("Full path of the file to maintain (e.g. /memory/notes/my-note.md)."),
+					.describe(
+						"Full path of the file to maintain (e.g. /memory/notes/my-note.md).",
+					),
 			}),
 		},
 	);

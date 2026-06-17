@@ -79,7 +79,7 @@ Three outcomes are possible once a capability returns extracted text:
 
 Configuration knobs:
 
-- `MAX_CONTEXT_WINDOW_TOKENS` — default `150000`
+- `MAX_CONTEXT_WINDOW_TOKENS` — default `200000`
 - `CONTEXT_RESERVE_SUMMARY_TOKENS` — default `2000`
 - `CONTEXT_RESERVE_RECENT_TURN_TOKENS` — default `2000`
 - `CONTEXT_RESERVE_NEXT_TURN_TOKENS` — default `2000`
@@ -385,13 +385,14 @@ The CLI channel writes status lines to stdout with a `>` prefix:
 
 ### Telegram Status Output
 
-The Telegram channel sends status messages as plain text via `bot.api.sendMessage`, without touching conversation memory.
+The Telegram channel sends status messages as plain text via `bot.api.sendMessage`, without touching conversation memory. Rapid status updates for the same caller are debounced and collapsed into the most recent message within `TELEGRAM_STATUS_DEBOUNCE_MS` (default `5000` ms).
 
 ### Configuration
 
 - `enableToolStatus` (default `true`) — enables or disables status emission globally
 - `enableAttachmentCompactionNotice` (default `true`) — emits the ephemeral "making room for this attachment" notice before attachment-triggered compaction
 - `defaultStatusLocale` (default `"en"`) — fallback locale when user preference is unknown
+- `telegramStatusDebounceMs` (default `5000`) — window in which rapid Telegram status updates for the same caller are collapsed into one message
 
 ### Relevant Files
 
@@ -419,14 +420,19 @@ User-facing timer operations are available via agent tools:
 
 - `create_timer(type, ...)` — set a recurring timer with `type: "always"` or a one-time reminder with `type: "once"`
 - `list_timers()` — show all active timers
-- `update_timer(timerId, updates)` — change cron, timezone, or enabled state
+- `update_timer(timerId, updates)` — change cron, timezone, notification mode, or enabled state
 - `delete_timer(timerId)` — remove a timer
 
 The Telegram channel starts the scheduler in-process during normal bot startup,
 polling every 60 seconds for due timers. When a recurring timer fires, the
 scheduler reads the referenced memory file, executes it via the LLM, and
-streams the result to the user's Telegram chat. When a one-time reminder fires,
-the scheduler sends the reminder text directly and marks the timer completed.
+delivers the result to the user's Telegram chat according to the timer's
+`notify` mode: `verbose` sends the full text, `summary` sends a 280-character
+preview plus a link to the saved full result, `errors_only` suppresses
+successful results, and `silent` suppresses all results. Results for multiple
+due timers in the same chat are batched into a single message. When a one-time
+reminder fires, the scheduler sends the reminder text directly and marks the
+timer completed.
 
 Cron expressions are evaluated in each timer's configured IANA timezone.
 Telegram does not provide a user's timezone in normal bot messages, so

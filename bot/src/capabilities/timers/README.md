@@ -28,6 +28,7 @@ CREATE TABLE timers (
     message TEXT,
     timezone TEXT NOT NULL DEFAULT 'UTC',
     enabled INTEGER NOT NULL DEFAULT 1,
+    notify TEXT NOT NULL DEFAULT 'verbose',
     last_run_at BIGINT,
     last_error TEXT,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
@@ -44,12 +45,29 @@ The scheduler runs as an in-process background loop started by the Telegram
 channel during normal bot startup (see `scheduler.ts`):
 
 - Polls every 60 seconds for timers where `enabled = 1 AND next_run_at <= now`
-- For each due timer: reads the memory file, executes the prompt via LLM, sends result to Telegram
+- For each due recurring timer: reads the memory file, executes the prompt via LLM, receives the result text back from `onTick`
 - On success: updates `last_run_at`, resets failure count, recomputes `next_run_at` in the timer's timezone
 - On failure: increments `consecutive_failures`, stores error message, recomputes `next_run_at` in the timer's timezone
+- Successful timer results are batched per chat and sent as **one** combined message per chat according to the timer's `notify` mode
 - For one-time reminders: sends `Reminder: ...` directly to Telegram, then marks the timer completed by disabling it and setting `last_run_at`
 - After 3 consecutive failures: notifies user via Telegram
 - If memory file not found when timer fires: deletes timer and notifies user
+
+## Notification Modes
+
+Each recurring timer has a `notify` column that controls how its results appear
+in Telegram:
+
+| Mode | Behavior |
+|------|----------|
+| `verbose` | The full `onTick` result text is included in the chat digest. |
+| `summary` | Only the first 280 characters plus an ellipsis are shown, followed by a note pointing to the saved full result at `/memory/timers/<timerId>/<YYYY-MM-DD>.md`. The Telegram `onTick` implementation writes the full result there. |
+| `errors_only` | Successful timer results are not sent; errors are still reported through the existing scheduler error path. |
+| `silent` | No timer result is sent at all; errors are still reported. |
+
+New timers default to the value of the `TIMER_NOTIFY_MODE_DEFAULT` environment
+variable (`summary` if unset). The `create_timer` and `update_timer` tools
+accept an optional `notify` field to override the default per timer.
 
 ## LLM Tools
 
@@ -57,7 +75,7 @@ The timer tools are defined in `tools.ts` and provide:
 
 - `create_timer(type, ...)` — create a recurring timer or a one-time reminder
 - `list_timers()` — list all timers for the current user
-- `update_timer(timerId, updates)` — update cron, timezone, or enabled state
+- `update_timer(timerId, updates)` — update cron, timezone, enabled state, or notification mode
 - `delete_timer(timerId)` — permanently delete a timer
 
 ## Cron Format
@@ -103,10 +121,14 @@ The scheduler accepts a `notifyUser` callback in its options:
 interface SchedulerOptions {
     intervalMs: number;
     readMdFile: (timer: TimerRecord, path: string) => Promise<string>;
-    onTick: (timer: TimerRecord, promptText: string) => Promise<void>;
+    onTick: (timer: TimerRecord, promptText: string) => Promise<string>;
     notifyUser: (userId: string, message: string) => Promise<void>;
 }
 ```
+
+`onTick` must return the full agent result text and must not send messages
+itself. The scheduler collects results per `chatId`, applies each timer's
+`notify` mode, and sends one batched `notifyUser` call per chat.
 
 To add a new notification backend (e.g., Discord, Slack, email):
 
@@ -114,6 +136,13 @@ To add a new notification backend (e.g., Discord, Slack, email):
 2. Pass it to `startScheduler()` when initializing the scheduler
 
 The Telegram channel implementation uses `sendTelegramMessage` to notify users. Other backends should follow the same interface signature.
+
+## Status Debouncing
+
+The Telegram outbound channel debounces `sendStatus` calls per `callerId`.
+Multiple rapid status updates within `TELEGRAM_STATUS_DEBOUNCE_MS` (default
+5000 ms) are collapsed into a single Telegram message carrying the most recent
+status text.
 
 ## Limits
 

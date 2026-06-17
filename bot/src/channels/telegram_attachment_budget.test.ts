@@ -45,6 +45,8 @@ const ATTACHMENT_TEST_CONFIG: AppConfig = {
 	webPublicBaseUrl: "http://localhost:8083",
 	timezone: "UTC",
 	recursionLimit: 60,
+	timerNotifyModeDefault: "summary",
+	telegramStatusDebounceMs: 5000,
 };
 
 type TelegramProcessSession = Parameters<typeof processTelegramFile>[2];

@@ -16,6 +16,7 @@ const FULL_SUMMARY: CheckpointSummary = {
 	unfinished_work: ["webhook handler", "3DS2 flow"],
 	pending_approvals: ["prod secret rotation"],
 	important_artifacts: ["src/payments/stripe.ts"],
+	critical_facts: ["User wants Stripe for payments"],
 };
 
 const makeMessages = (...pairs: Array<[string, string]>): ThreadMessage[] =>
@@ -93,6 +94,12 @@ describe("renderCheckpointSummary", () => {
 		expect(out).toContain("Artifacts: src/payments/stripe.ts");
 	});
 
+	test("renders critical facts", () => {
+		const out = renderCheckpointSummary(FULL_SUMMARY);
+		expect(out).toContain("Critical facts (do not forget):");
+		expect(out).toContain("User wants Stripe for payments");
+	});
+
 	test("omits empty sections", () => {
 		const sparse: CheckpointSummary = {
 			current_goal: "Just a goal",
@@ -101,12 +108,14 @@ describe("renderCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: [],
 		};
 		const out = renderCheckpointSummary(sparse);
 		expect(out).not.toContain("Decisions:");
 		expect(out).not.toContain("Constraints:");
 		expect(out).not.toContain("Unresolved:");
 		expect(out).not.toContain("Artifacts:");
+		expect(out).not.toContain("Critical facts");
 		expect(out).toContain("Goal: Just a goal");
 	});
 
@@ -118,6 +127,7 @@ describe("renderCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: [],
 		};
 		const out = renderCheckpointSummary(empty);
 		expect(out).toBe("[Conversation Checkpoint]");
@@ -460,5 +470,52 @@ describe("stored history vs model-facing working context", () => {
 		// Full 10 messages + 1 current = 11
 		expect(ctx.messages).toHaveLength(fullHistory.length + 1);
 		expect(ctx.hasCompaction).toBe(false);
+	});
+
+	test("after compaction, runtime context still contains critical facts and recent turns", () => {
+		const checkpoint: CheckpointSummary = {
+			current_goal: "Plan Kyoto offsite",
+			decisions: ["Book Hotel Mume"],
+			constraints: ["Budget $5,000"],
+			unfinished_work: ["Invite design team"],
+			pending_approvals: ["Hotel booking approval"],
+			important_artifacts: ["OFFSITE-2026-042"],
+			critical_facts: [
+				"User is allergic to shellfish",
+				"Team budget is $5,000",
+			],
+		};
+		const history = makeMessages(
+			["old", "old-reply"],
+			["recent", "recent-reply"],
+		);
+
+		const ctx = buildRuntimeContext({
+			checkpoint,
+			allMessages: history,
+			currentInput: "any updates?",
+			recentTurnCount: 1,
+		});
+
+		expect(ctx.hasCompaction).toBe(true);
+		const systemContent = String(ctx.messages[0]?.content ?? "");
+		expect(systemContent).toContain("[Conversation Checkpoint]");
+		expect(systemContent).toContain("Critical facts (do not forget):");
+		expect(systemContent).toContain("User is allergic to shellfish");
+		expect(systemContent).toContain("Team budget is $5,000");
+		expect(systemContent).toContain("Invite design team");
+
+		// Recent turn survives alongside the checkpoint.
+		const contents = ctx.messages.map((m) => m.content);
+		expect(contents).toContain("recent");
+		expect(contents).toContain("recent-reply");
+		expect(contents).not.toContain("old");
+		expect(contents).not.toContain("old-reply");
+
+		// Current input is the last message.
+		expect(ctx.messages[ctx.messages.length - 1]).toMatchObject({
+			role: "user",
+			content: "any updates?",
+		});
 	});
 });

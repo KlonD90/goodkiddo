@@ -1,4 +1,5 @@
 #!/usr/bin/env -S bun run
+
 /**
  * Dev server — serves web/static files directly and proxies API routes
  * to the bot (expecting it running on :8083).
@@ -9,8 +10,8 @@
  *   BOT_API_URL=http://localhost:9000 bun run dev  # custom upstream
  */
 
-import { startDevServer } from "../server/dev_server";
 import { createLogger } from "../logger";
+import { startDevServer } from "../server/dev_server";
 
 const log = createLogger("dev");
 

@@ -3,20 +3,17 @@ import { readOrEmpty } from "./fs";
 import { parseIndexDetailed, readIndexFile } from "./index_manager";
 import {
 	ACTUEL_HEADING,
+	getMemoryPromptCharCap,
 	LINT_OVER_BUDGET_RATIO,
 	LINT_STALE_DAYS,
 	MEMORY_INDEX_PATH,
-	MEMORY_PROMPT_CHAR_CAP,
 	MEMORY_ROOT,
 	NOTES_DIR,
 	SKILLS_INDEX_PATH,
 	SKILLS_ROOT,
 	USER_PROFILE_PATH,
 } from "./layout";
-import {
-	isStructuredUserProfile,
-	userProfileIsEmpty,
-} from "./user_profile";
+import { isStructuredUserProfile, userProfileIsEmpty } from "./user_profile";
 
 // File listing paths that are intentionally kept without modification
 // and should not trigger stale warnings. Format: JSON array of string paths.
@@ -198,8 +195,9 @@ export async function runLint(
 		(await backendCharCount(backend, MEMORY_INDEX_PATH)) +
 		(await backendCharCount(backend, USER_PROFILE_PATH)) +
 		(await backendCharCount(backend, SKILLS_INDEX_PATH));
+	const cap = getMemoryPromptCharCap();
 	const overBudget =
-		memoryChars > MEMORY_PROMPT_CHAR_CAP * LINT_OVER_BUDGET_RATIO
+		memoryChars > cap * LINT_OVER_BUDGET_RATIO
 			? { memoryChars, skillsChars: 0 }
 			: null;
 
@@ -284,7 +282,7 @@ export function formatMaintenanceBlock(findings: LintFindings): string {
 	}
 	if (findings.overBudget) {
 		lines.push(
-			`- Indexes exceed budget (${findings.overBudget.memoryChars} chars vs ${MEMORY_PROMPT_CHAR_CAP} cap) — compact via rotate_actuel or consolidate notes.`,
+			`- Indexes exceed budget (${findings.overBudget.memoryChars} chars vs ${getMemoryPromptCharCap()} cap) — compact via rotate_actuel or consolidate notes.`,
 		);
 	}
 	if (findings.userProfileEmpty) {
@@ -294,7 +292,7 @@ export function formatMaintenanceBlock(findings: LintFindings): string {
 	}
 	if (findings.userProfileUnstructured) {
 		lines.push(
-			'- USER.md uses the legacy unstructured shape. On the next explicit user-profile update, rewrite it with the fixed sections: Profile, Preferences, Environment, Constraints, Open Questions.',
+			"- USER.md uses the legacy unstructured shape. On the next explicit user-profile update, rewrite it with the fixed sections: Profile, Preferences, Environment, Constraints, Open Questions.",
 		);
 	}
 	return lines.join("\n");

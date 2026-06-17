@@ -1,8 +1,8 @@
 import type { BackendProtocol } from "deepagents";
 import { readOrEmpty } from "./fs";
 import {
+	getMemoryPromptCharCap,
 	MEMORY_INDEX_PATH,
-	MEMORY_PROMPT_CHAR_CAP,
 	SKILLS_INDEX_PATH,
 	USER_PROFILE_PATH,
 } from "./layout";
@@ -25,7 +25,7 @@ import MEMORY_PROMPT_MD from "./memory_prompt.md?raw";
 // Memory rules live in a dedicated markdown file so swapping the identity
 // (DO_IT.md etc.) doesn't break memory discipline — and vice versa.
 //
-// The memory snapshot block is truncated to MEMORY_PROMPT_CHAR_CAP. When
+// The memory snapshot block is truncated to getMemoryPromptCharCap(). When
 // truncated, a marker nudges the agent toward compaction. Since the snapshot
 // is read at agent-construction time, writes made during a session won't
 // appear here until the next session — memory_write tools are responsible for
@@ -35,20 +35,22 @@ import MEMORY_PROMPT_MD from "./memory_prompt.md?raw";
 function truncateToCap(content: string, cap: number): string {
 	if (content.length <= cap) return content;
 
-	// Build suffix first so we can reserve its length from the cap.
-	const estimateOverflow = (n: number) =>
+	const overflowSuffix = (n: number) =>
 		`\n\n... [${n} more entries truncated — use grep to retrieve specific topics, then run memory_lint or compact via rotate_actuel]`;
-	const MAX_SUFFIX_ESTIMATE = 130; // safe upper bound for any overflow count
-	const effectiveCap = cap - MAX_SUFFIX_ESTIMATE;
 
 	// Split by newlines and accumulate line-by-line, never slicing mid-line.
+	// Reserve the actual suffix length for the remaining overflow count so the
+	// final output stays within the cap even when the cap is small.
 	const lines = content.split("\n");
 	const result: string[] = [];
 	let total = 0;
 
-	for (const line of lines) {
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i];
 		const withSeparator = result.length > 0 ? line.length + 1 : line.length;
-		if (total + withSeparator <= effectiveCap) {
+		const overflow = lines.length - i - 1;
+		const suffix = overflowSuffix(overflow);
+		if (total + withSeparator + suffix.length <= cap) {
 			result.push(line);
 			total += withSeparator;
 		} else {
@@ -57,7 +59,7 @@ function truncateToCap(content: string, cap: number): string {
 	}
 
 	const overflow = lines.length - result.length;
-	const suffix = estimateOverflow(overflow);
+	const suffix = overflowSuffix(overflow);
 	return result.join("\n") + suffix;
 }
 
@@ -76,7 +78,7 @@ export async function composeMemorySnapshot(
 	if (skills.trim().length > 0) sections.push(skills.trim());
 
 	const joined = sections.join("\n\n");
-	return truncateToCap(joined, MEMORY_PROMPT_CHAR_CAP);
+	return truncateToCap(joined, getMemoryPromptCharCap());
 }
 
 export async function buildSystemPrompt(options: {

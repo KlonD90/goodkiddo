@@ -11,6 +11,7 @@ import {
 describe("checkAiType", () => {
 	test("accepts supported AI types", () => {
 		expect(checkAiType("anthropic")).toBe(true);
+		expect(checkAiType("kimi")).toBe(true);
 		expect(checkAiType("openai")).toBe(true);
 		expect(checkAiType("openrouter")).toBe(true);
 	});

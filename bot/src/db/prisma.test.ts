@@ -3,7 +3,9 @@ import { createPrismaClient, redactDatabaseUrl } from "./prisma";
 
 describe("createPrismaClient", () => {
 	test("creates a Prisma client for PostgreSQL URLs", async () => {
-		const prisma = createPrismaClient("postgresql://user:pass@localhost:5432/db");
+		const prisma = createPrismaClient(
+			"postgresql://user:pass@localhost:5432/db",
+		);
 		expect(prisma).toBeDefined();
 		await prisma.$disconnect();
 	});

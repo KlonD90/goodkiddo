@@ -12,6 +12,7 @@ import {
 	type UsingMode,
 } from "./types";
 import { isValidTimezone } from "./utils/timezone";
+import type { TimerNotifyMode } from "./capabilities/timers/store";
 
 export type AppConfig = {
 	aiApiKey: string;
@@ -50,13 +51,15 @@ export type AppConfig = {
 	webPublicBaseUrl: string;
 	timezone: string;
 	recursionLimit: number;
+	timerNotifyModeDefault: TimerNotifyMode;
+	telegramStatusDebounceMs: number;
 };
 
 export type TranscriptionProvider = "openai" | "openrouter";
 
 const DEFAULT_BLOCKED_USER_MESSAGE =
 	"Access not configured. Contact the admin.";
-const DEFAULT_MAX_CONTEXT_WINDOW_TOKENS = 150000;
+const DEFAULT_MAX_CONTEXT_WINDOW_TOKENS = 200000;
 const DEFAULT_CONTEXT_RESERVE_SUMMARY_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_RECENT_TURN_TOKENS = 2000;
 const DEFAULT_CONTEXT_RESERVE_NEXT_TURN_TOKENS = 2000;
@@ -64,6 +67,8 @@ export const DEFAULT_DATABASE_URL =
 	"postgresql://postgres:postgres@127.0.0.1:54329/template1?sslmode=disable";
 const DEFAULT_AI_TEMPERATURE = 1.0;
 const DEFAULT_AI_SUB_AGENT_TEMPERATURE = 0.4;
+const KIMI_DEFAULT_BASE_URL = "https://api.moonshot.cn/v1";
+const KIMI_DEFAULT_MODEL_NAME = "kimi-k2-6";
 const DEFAULT_WEB_HOST = "127.0.0.1";
 const DEFAULT_WEB_PORT = 8083;
 const DEFAULT_WEB_PUBLIC_BASE_URL = `http://localhost:${DEFAULT_WEB_PORT}`;
@@ -77,6 +82,8 @@ const DEFAULT_ENABLE_BROWSER_ON_PARENT = false;
 const DEFAULT_ENABLE_TABULAR = true;
 const DEFAULT_STATUS_LOCALE = "en";
 const DEFAULT_TIMEZONE = "UTC";
+const DEFAULT_TIMER_NOTIFY_MODE_DEFAULT: TimerNotifyMode = "summary";
+const DEFAULT_TELEGRAM_STATUS_DEBOUNCE_MS = 5000;
 const DEFAULT_MINIMAX_API_HOST = "https://api.minimax.io";
 const DEFAULT_RECURSION_LIMIT = 60;
 const SUPPORTED_TRANSCRIPTION_PROVIDERS: readonly TranscriptionProvider[] = [
@@ -117,7 +124,9 @@ type ConfigIssueField =
 	| "DEFAULT_STATUS_LOCALE"
 	| "TELEGRAM_BOT_ALLOWED_CHAT_ID"
 	| "TELEGRAM_BOT_TOKEN"
+	| "TELEGRAM_STATUS_DEBOUNCE_MS"
 	| "TIMEZONE"
+	| "TIMER_NOTIFY_MODE_DEFAULT"
 	| "TRANSCRIPTION_API_KEY"
 	| "TRANSCRIPTION_BASE_URL"
 	| "TRANSCRIPTION_PROVIDER"
@@ -182,7 +191,9 @@ const PERSISTED_ENV_KEYS = [
 	"DEFAULT_STATUS_LOCALE",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TELEGRAM_STATUS_DEBOUNCE_MS",
 	"TIMEZONE",
+	"TIMER_NOTIFY_MODE_DEFAULT",
 	"TRANSCRIPTION_API_KEY",
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
@@ -280,7 +291,10 @@ const defaultTranscriptionProviderForAiType = (
 const isAiApiKeyRequired = (
 	aiType: SupportedAiTypes | undefined,
 	aiBaseUrl: string | undefined,
-): boolean => aiType === "openrouter" || (aiBaseUrl ?? "") === "";
+): boolean =>
+	aiType === "openrouter" ||
+	aiType === "kimi" ||
+	(aiBaseUrl ?? "") === "";
 
 export const canReusePrimaryAiCredentialsForTranscription = (
 	aiType: SupportedAiTypes | undefined,
@@ -442,10 +456,39 @@ export const readConfigFromEnv = (
 		DEFAULT_AI_SUB_AGENT_TEMPERATURE,
 	);
 
+	const rawAiBaseUrl = getEnv("AI_BASE_URL", persistedValues);
+	const rawAiModelName = getEnv("AI_MODEL_NAME", persistedValues);
+	const aiBaseUrl =
+		rawAiBaseUrl === "" && aiType === "kimi"
+			? KIMI_DEFAULT_BASE_URL
+			: rawAiBaseUrl;
+	const aiModelName =
+		rawAiModelName === "" && aiType === "kimi"
+			? KIMI_DEFAULT_MODEL_NAME
+			: rawAiModelName;
+
+	const rawTimerNotifyModeDefault = getEnv(
+		"TIMER_NOTIFY_MODE_DEFAULT",
+		persistedValues,
+	);
+	const timerNotifyModeDefault: TimerNotifyMode =
+		rawTimerNotifyModeDefault === "verbose" ||
+		rawTimerNotifyModeDefault === "summary" ||
+		rawTimerNotifyModeDefault === "errors_only" ||
+		rawTimerNotifyModeDefault === "silent"
+			? rawTimerNotifyModeDefault
+			: DEFAULT_TIMER_NOTIFY_MODE_DEFAULT;
+
+	const telegramStatusDebounceMs = readPositiveIntegerEnv(
+		"TELEGRAM_STATUS_DEBOUNCE_MS",
+		persistedValues,
+		DEFAULT_TELEGRAM_STATUS_DEBOUNCE_MS,
+	);
+
 	return {
 		aiApiKey: getEnv("AI_API_KEY", persistedValues),
-		aiBaseUrl: getEnv("AI_BASE_URL", persistedValues),
-		aiModelName: getEnv("AI_MODEL_NAME", persistedValues),
+		aiBaseUrl,
+		aiModelName,
 		aiTemperature,
 		aiSubAgentTemperature,
 		appEntrypoint: checkAppEntrypoint(entrypointValue)
@@ -487,6 +530,8 @@ export const readConfigFromEnv = (
 		webPublicBaseUrl: webPublicBaseUrlRaw || DEFAULT_WEB_PUBLIC_BASE_URL,
 		timezone: getEnv("TIMEZONE", persistedValues) || DEFAULT_TIMEZONE,
 		recursionLimit,
+		timerNotifyModeDefault,
+		telegramStatusDebounceMs,
 	};
 };
 
@@ -545,11 +590,17 @@ export const findConfigIssues = (
 		isAiApiKeyRequired(config.aiType, config.aiBaseUrl) &&
 		(config.aiApiKey === undefined || config.aiApiKey === "")
 	) {
+		const providerSpecific =
+			config.aiType === "openrouter"
+				? "AI_TYPE=openrouter."
+				: config.aiType === "kimi"
+					? "AI_TYPE=kimi."
+					: "AI_BASE_URL points to a local/custom endpoint.";
 		issues.push({
 			field: "AI_API_KEY",
 			reason:
-				config.aiType === "openrouter"
-					? "AI_API_KEY is required for AI_TYPE=openrouter."
+				config.aiType === "openrouter" || config.aiType === "kimi"
+					? `AI_API_KEY is required for ${providerSpecific}`
 					: "AI_API_KEY is required unless AI_BASE_URL points to a local/custom endpoint.",
 		});
 	}
@@ -650,6 +701,7 @@ export const findConfigIssues = (
 		"CONTEXT_RESERVE_SUMMARY_TOKENS",
 		"CONTEXT_RESERVE_RECENT_TURN_TOKENS",
 		"CONTEXT_RESERVE_NEXT_TURN_TOKENS",
+		"TELEGRAM_STATUS_DEBOUNCE_MS",
 	] as const) {
 		const rawValue = getEnv(field, persistedValues);
 		if (rawValue === "") {
@@ -713,6 +765,38 @@ export const findConfigIssues = (
 			field: "TELEGRAM_BOT_ALLOWED_CHAT_ID",
 			reason:
 				'TELEGRAM_BOT_ALLOWED_CHAT_ID must be a numeric Telegram chat id, for example "123456789" or "-1001234567890".',
+		});
+	}
+
+	const rawTimerNotifyModeDefault = getEnv(
+		"TIMER_NOTIFY_MODE_DEFAULT",
+		persistedValues,
+	);
+	if (
+		rawTimerNotifyModeDefault !== "" &&
+		rawTimerNotifyModeDefault !== "verbose" &&
+		rawTimerNotifyModeDefault !== "summary" &&
+		rawTimerNotifyModeDefault !== "errors_only" &&
+		rawTimerNotifyModeDefault !== "silent"
+	) {
+		issues.push({
+			field: "TIMER_NOTIFY_MODE_DEFAULT",
+			reason:
+				'TIMER_NOTIFY_MODE_DEFAULT must be one of: verbose, summary, errors_only, silent.',
+		});
+	}
+
+	const rawTelegramStatusDebounceMs = getEnv(
+		"TELEGRAM_STATUS_DEBOUNCE_MS",
+		persistedValues,
+	);
+	if (
+		rawTelegramStatusDebounceMs !== "" &&
+		Number.isNaN(parsePositiveInteger(rawTelegramStatusDebounceMs))
+	) {
+		issues.push({
+			field: "TELEGRAM_STATUS_DEBOUNCE_MS",
+			reason: "TELEGRAM_STATUS_DEBOUNCE_MS must be a positive integer.",
 		});
 	}
 
@@ -925,7 +1009,7 @@ const runConfigWizard = async (
 			: promptRequiredValue(
 					promptUser,
 					`Step 3. Enter AI_MODEL_NAME for ${aiType}.
-Example: claude-3-5-sonnet or gpt-4.1> `,
+Example: claude-3-5-sonnet, gpt-4.1, or kimi-k2-6> `,
 					(value) => (value === "" ? "AI_MODEL_NAME cannot be empty." : null),
 				);
 
@@ -1103,6 +1187,11 @@ Example: postgresql://goodkiddo:password@127.0.0.1:5432/goodkiddo> `,
 			initialConfig.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 		timezone: initialConfig.timezone ?? DEFAULT_TIMEZONE,
 		recursionLimit: initialConfig.recursionLimit ?? DEFAULT_RECURSION_LIMIT,
+		timerNotifyModeDefault:
+			initialConfig.timerNotifyModeDefault ?? DEFAULT_TIMER_NOTIFY_MODE_DEFAULT,
+		telegramStatusDebounceMs:
+			initialConfig.telegramStatusDebounceMs ??
+			DEFAULT_TELEGRAM_STATUS_DEBOUNCE_MS,
 	};
 };
 
@@ -1189,8 +1278,14 @@ const formatPersistedEnvLine = (
 			return `${key}=${escapeEnvValue(config.telegramAllowedChatId)}`;
 		case "TELEGRAM_BOT_TOKEN":
 			return `${key}=${escapeEnvValue(config.telegramBotToken)}`;
+		case "TELEGRAM_STATUS_DEBOUNCE_MS":
+			return `${key}=${escapeEnvValue(
+				String(config.telegramStatusDebounceMs),
+			)}`;
 		case "TIMEZONE":
 			return `${key}=${escapeEnvValue(config.timezone)}`;
+		case "TIMER_NOTIFY_MODE_DEFAULT":
+			return `${key}=${escapeEnvValue(config.timerNotifyModeDefault)}`;
 		case "TRANSCRIPTION_API_KEY":
 			return `${key}=${escapeEnvValue(config.transcriptionApiKey)}`;
 		case "TRANSCRIPTION_BASE_URL":
@@ -1364,6 +1459,11 @@ export const resolveConfig = async (
 			webPublicBaseUrl: config.webPublicBaseUrl || DEFAULT_WEB_PUBLIC_BASE_URL,
 			timezone: config.timezone ?? DEFAULT_TIMEZONE,
 			recursionLimit: config.recursionLimit ?? DEFAULT_RECURSION_LIMIT,
+			timerNotifyModeDefault:
+				config.timerNotifyModeDefault ?? DEFAULT_TIMER_NOTIFY_MODE_DEFAULT,
+			telegramStatusDebounceMs:
+				config.telegramStatusDebounceMs ??
+				DEFAULT_TELEGRAM_STATUS_DEBOUNCE_MS,
 		};
 		return resolvedConfig;
 	}

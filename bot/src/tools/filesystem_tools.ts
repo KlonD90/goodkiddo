@@ -13,7 +13,15 @@ import {
 
 const DEFAULT_READ_LINE_LIMIT = 100;
 
-export const TABULAR_EXTENSIONS = new Set([".csv", ".tsv", ".tab", ".xlsx", ".xls", ".xlsm", ".parquet"]);
+export const TABULAR_EXTENSIONS = new Set([
+	".csv",
+	".tsv",
+	".tab",
+	".xlsx",
+	".xls",
+	".xlsm",
+	".parquet",
+]);
 export const TABULAR_NUDGE_BYTES = 200 * 1024; // 200 KB
 
 function isTabularExtension(filePath: string): boolean {

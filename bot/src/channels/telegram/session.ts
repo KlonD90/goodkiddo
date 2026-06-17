@@ -42,6 +42,7 @@ export async function ensureTelegramSession(
 				readMdFile,
 				callerId: caller.id,
 				chatId,
+				defaultNotifyMode: config.timerNotifyModeDefault,
 			})
 		: undefined;
 	const session = await createChannelAgentSession(config, {

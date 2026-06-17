@@ -1,6 +1,7 @@
-export type SupportedAiTypes = "anthropic" | "openai" | "openrouter";
+export type SupportedAiTypes = "anthropic" | "kimi" | "openai" | "openrouter";
 export const SUPPORTED_AI_TYPES: readonly SupportedAiTypes[] = [
 	"anthropic",
+	"kimi",
 	"openai",
 	"openrouter",
 ];

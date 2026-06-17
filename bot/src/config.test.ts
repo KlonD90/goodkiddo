@@ -39,7 +39,9 @@ const CONFIG_KEYS = [
 	"DATABASE_URL",
 	"TELEGRAM_BOT_ALLOWED_CHAT_ID",
 	"TELEGRAM_BOT_TOKEN",
+	"TELEGRAM_STATUS_DEBOUNCE_MS",
 	"TIMEZONE",
+	"TIMER_NOTIFY_MODE_DEFAULT",
 	"TRANSCRIPTION_API_KEY",
 	"TRANSCRIPTION_BASE_URL",
 	"TRANSCRIPTION_PROVIDER",
@@ -125,7 +127,7 @@ describe("config", () => {
 					telegramBotToken: "telegram-token",
 					usingMode: "multi",
 					blockedUserMessage: "Access not configured. Contact the admin.",
-					maxContextWindowTokens: 150000,
+					maxContextWindowTokens: 200000,
 					contextReserveSummaryTokens: 2000,
 					contextReserveRecentTurnTokens: 2000,
 					contextReserveNextTurnTokens: 2000,
@@ -150,6 +152,8 @@ describe("config", () => {
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
 					recursionLimit: 60,
+					timerNotifyModeDefault: "summary",
+					telegramStatusDebounceMs: 5000,
 				});
 			},
 		);
@@ -165,7 +169,7 @@ describe("config", () => {
 			},
 			() => {
 				const config = readConfigFromEnv();
-				expect(config.maxContextWindowTokens).toBe(150000);
+				expect(config.maxContextWindowTokens).toBe(200000);
 				expect(config.contextReserveSummaryTokens).toBe(2000);
 				expect(config.contextReserveRecentTurnTokens).toBe(2000);
 				expect(config.contextReserveNextTurnTokens).toBe(2000);
@@ -556,6 +560,58 @@ describe("config", () => {
 		);
 	});
 
+	test("defaults kimi model name and base URL when AI_TYPE=kimi", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "kimi-key",
+				AI_TYPE: "kimi",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.aiType).toBe("kimi");
+				expect(config.aiModelName).toBe("kimi-k2-6");
+				expect(config.aiBaseUrl).toBe("https://api.moonshot.cn/v1");
+				expect(config.aiTemperature).toBe(1.0);
+				expect(config.aiSubAgentTemperature).toBe(0.4);
+				expect(findConfigIssues(config)).toEqual([]);
+			},
+		);
+	});
+
+	test("allows overriding kimi defaults through env", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "kimi-key",
+				AI_TYPE: "kimi",
+				AI_MODEL_NAME: "kimi-other",
+				AI_BASE_URL: "https://custom.moonshot.cn/v1",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.aiModelName).toBe("kimi-other");
+				expect(config.aiBaseUrl).toBe("https://custom.moonshot.cn/v1");
+				expect(findConfigIssues(config)).toEqual([]);
+			},
+		);
+	});
+
+	test("requires AI_API_KEY for kimi", async () => {
+		await withEnv(
+			{
+				AI_TYPE: "kimi",
+				USING_MODE: "single",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "AI_API_KEY",
+					reason: "AI_API_KEY is required for AI_TYPE=kimi.",
+				});
+			},
+		);
+	});
+
 	test("informs about missing transcription key when Telegram voice cannot reuse AI_API_KEY", async () => {
 		await withEnv(
 			{
@@ -690,7 +746,7 @@ describe("config", () => {
 					telegramBotToken: "",
 					usingMode: "single",
 					blockedUserMessage: "Access not configured. Contact the admin.",
-					maxContextWindowTokens: 150000,
+					maxContextWindowTokens: 200000,
 					contextReserveSummaryTokens: 2000,
 					contextReserveRecentTurnTokens: 2000,
 					contextReserveNextTurnTokens: 2000,
@@ -715,6 +771,8 @@ describe("config", () => {
 					webPublicBaseUrl: "http://localhost:8083",
 					timezone: "UTC",
 					recursionLimit: 60,
+					timerNotifyModeDefault: "summary",
+					telegramStatusDebounceMs: 5000,
 				});
 			},
 		);
@@ -741,7 +799,7 @@ describe("config", () => {
 					}
 
 					if (selectorCall === 2) {
-						return pickOptionValue(options, 1);
+						return pickOptionValue(options, 2);
 					}
 
 					return pickOptionValue(options, 1);
@@ -761,7 +819,7 @@ describe("config", () => {
 				telegramBotToken: "telegram-token",
 				usingMode: "multi",
 				blockedUserMessage: "Access not configured. Contact the admin.",
-				maxContextWindowTokens: 150000,
+				maxContextWindowTokens: 200000,
 				contextReserveSummaryTokens: 2000,
 				contextReserveRecentTurnTokens: 2000,
 				contextReserveNextTurnTokens: 2000,
@@ -786,6 +844,8 @@ describe("config", () => {
 				webPublicBaseUrl: "http://localhost:8083",
 				timezone: "UTC",
 				recursionLimit: 60,
+				timerNotifyModeDefault: "summary",
+				telegramStatusDebounceMs: 5000,
 			});
 		});
 	});
@@ -820,7 +880,7 @@ describe("config", () => {
 				'APP_ENTRYPOINT="cli"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
-				'MAX_CONTEXT_WINDOW_TOKENS="150000"',
+				'MAX_CONTEXT_WINDOW_TOKENS="200000"',
 			);
 			expect(readFileSync(envFilePath, "utf8")).toContain(
 				'CONTEXT_RESERVE_SUMMARY_TOKENS="2000"',
@@ -881,7 +941,7 @@ describe("config", () => {
 			expect(config.aiType).toBe("anthropic");
 			expect(config.appEntrypoint).toBe("cli");
 			expect(config.enableVoiceMessages).toBe(true);
-			expect(config.maxContextWindowTokens).toBe(150000);
+			expect(config.maxContextWindowTokens).toBe(200000);
 			expect(config.contextReserveSummaryTokens).toBe(2000);
 			expect(config.contextReserveRecentTurnTokens).toBe(2000);
 			expect(config.contextReserveNextTurnTokens).toBe(2000);
@@ -1142,5 +1202,82 @@ test("defaults enableBrowserOnParent to false when not configured", async () => 
 			expect(process.env.AI_MODEL_NAME).toBeUndefined();
 			expect(process.env.AI_TYPE).toBeUndefined();
 		});
+	});
+
+	test("defaults timer notify mode to summary when not configured", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.timerNotifyModeDefault).toBe("summary");
+				expect(config.telegramStatusDebounceMs).toBe(5000);
+			},
+		);
+	});
+
+	test("respects TIMER_NOTIFY_MODE_DEFAULT env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+				TIMER_NOTIFY_MODE_DEFAULT: "silent",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.timerNotifyModeDefault).toBe("silent");
+			},
+		);
+	});
+
+	test("reports invalid TIMER_NOTIFY_MODE_DEFAULT value", async () => {
+		await withEnv(
+			{
+				TIMER_NOTIFY_MODE_DEFAULT: "loud",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "TIMER_NOTIFY_MODE_DEFAULT",
+					reason:
+						'TIMER_NOTIFY_MODE_DEFAULT must be one of: verbose, summary, errors_only, silent.',
+				});
+			},
+		);
+	});
+
+	test("respects TELEGRAM_STATUS_DEBOUNCE_MS env var", async () => {
+		await withEnv(
+			{
+				AI_API_KEY: "test-key",
+				AI_TYPE: "anthropic",
+				AI_MODEL_NAME: "claude-3-5-sonnet",
+				USING_MODE: "single",
+				TELEGRAM_STATUS_DEBOUNCE_MS: "1000",
+			},
+			() => {
+				const config = readConfigFromEnv();
+				expect(config.telegramStatusDebounceMs).toBe(1000);
+			},
+		);
+	});
+
+	test("reports invalid TELEGRAM_STATUS_DEBOUNCE_MS value", async () => {
+		await withEnv(
+			{
+				TELEGRAM_STATUS_DEBOUNCE_MS: "fast",
+			},
+			() => {
+				expect(findConfigIssues(readConfigFromEnv())).toContainEqual({
+					field: "TELEGRAM_STATUS_DEBOUNCE_MS",
+					reason: "TELEGRAM_STATUS_DEBOUNCE_MS must be a positive integer.",
+				});
+			},
+		);
 	});
 });

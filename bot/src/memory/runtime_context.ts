@@ -79,6 +79,12 @@ export function renderCheckpointSummary(summary: CheckpointSummary): string {
 		lines.push(`Artifacts: ${summary.important_artifacts.join(", ")}`);
 	}
 
+	if (summary.critical_facts.length > 0) {
+		lines.push(
+			`Critical facts (do not forget):\n${summary.critical_facts.map((f) => `  - ${f}`).join("\n")}`,
+		);
+	}
+
 	return lines.join("\n");
 }
 

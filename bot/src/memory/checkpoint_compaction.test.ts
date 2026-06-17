@@ -72,6 +72,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: ["Add download button to UI"],
 			pending_approvals: ["Button placement in UI"],
 			important_artifacts: ["export.ts"],
+			critical_facts: [],
 		};
 		const { model, seen } = createStubModel(JSON.stringify(expectedPayload));
 		const summary = await generateCheckpointSummary(model, SAMPLE_MESSAGES);
@@ -102,6 +103,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: ["refresh tokens"],
 			pending_approvals: [],
 			important_artifacts: ["auth.ts"],
+			critical_facts: [],
 		};
 		const { model } = createStubModel(
 			`\`\`\`json\n${JSON.stringify(payload)}\n\`\`\``,
@@ -142,6 +144,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: [],
 		};
 		const { model, callCount } = createSequencedStubModel([
 			"not JSON at all",
@@ -164,6 +167,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: [],
 		};
 		const { model, callCount } = createSequencedStubModel([
 			JSON.stringify(payload),
@@ -203,6 +207,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: ["webhook handler", "3DS2 flow"],
 			pending_approvals: ["prod secret rotation"],
 			important_artifacts: ["src/payments/stripe.ts", "STRIPE_KEY"],
+			critical_facts: ["User wants Stripe for payments"],
 		};
 		const { model } = createStubModel(payload);
 		const messages: ThreadMessage[] = [
@@ -221,6 +226,7 @@ describe("generateCheckpointSummary", () => {
 		expect(summary.unfinished_work).toContain("webhook handler");
 		expect(summary.pending_approvals).toContain("prod secret rotation");
 		expect(summary.important_artifacts).toContain("src/payments/stripe.ts");
+		expect(summary.critical_facts).toContain("User wants Stripe for payments");
 	});
 
 	test("handles array content shape from LLM response", async () => {
@@ -231,6 +237,7 @@ describe("generateCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: ["auth/session.ts"],
+			critical_facts: [],
 		};
 		const seen: Array<{ role: string; content: unknown }> = [];
 		const model = {
@@ -248,6 +255,101 @@ describe("generateCheckpointSummary", () => {
 		expect(summary.current_goal).toBe("Fix the login bug");
 		expect(summary.decisions).toEqual(["Patch session cookie"]);
 	});
+
+	test("integration: long conversation retains critical facts and unfinished work", async () => {
+		// Simulate a long multi-turn chat with explicit "remember this" facts,
+		// an active goal, unfinished work, pending approvals, and named artifacts.
+		const longMessages: ThreadMessage[] = [
+			{ role: "user", content: "Hey, let's plan the offsite in Kyoto" },
+			{
+				role: "assistant",
+				content: "Sounds fun! I'll start a planning doc. What dates work?",
+			},
+			{
+				role: "user",
+				content:
+					"Remember this: I'm allergic to shellfish, and the team budget is $5,000. Always keep vegetarian options on the menu.",
+			},
+			{
+				role: "assistant",
+				content: "Got it — shellfish allergy, $5k budget, vegetarian options.",
+			},
+			{
+				role: "user",
+				content: "We need to book Hotel Mume for 12 people.",
+			},
+			{
+				role: "assistant",
+				content: "Drafted the booking request. Waiting for your approval.",
+			},
+			{
+				role: "user",
+				content: "Also create a shared itinerary doc.",
+			},
+			{
+				role: "assistant",
+				content: "Created docs/offsite-itinerary-kyoto.md.",
+			},
+			{
+				role: "user",
+				content: "Don't forget to invite the design team.",
+			},
+			{
+				role: "assistant",
+				content: "Noted — invite list pending.",
+			},
+			{
+				role: "user",
+				content: "The event ID in our system is OFFSITE-2026-042.",
+			},
+			{
+				role: "assistant",
+				content: "Saved event ID OFFSITE-2026-042.",
+			},
+		];
+
+		const expectedPayload: CheckpointSummary = {
+			current_goal: "Plan the team offsite in Kyoto",
+			decisions: ["Team offsite in Kyoto", "Hotel Mume for 12 people"],
+			constraints: ["Budget is $5,000", "Vegetarian options required"],
+			unfinished_work: ["Invite design team", "Finalize booking"],
+			pending_approvals: ["Hotel Mume booking for 12 people"],
+			important_artifacts: [
+				"docs/offsite-itinerary-kyoto.md",
+				"OFFSITE-2026-042",
+			],
+			critical_facts: [
+				"User is allergic to shellfish",
+				"Team budget is $5,000",
+				"Always keep vegetarian options on the menu",
+				"Event ID is OFFSITE-2026-042",
+			],
+		};
+		const { model, seen } = createStubModel(expectedPayload);
+		const summary = await generateCheckpointSummary(model, longMessages);
+
+		expect(summary.current_goal).toBe("Plan the team offsite in Kyoto");
+		expect(summary.critical_facts).toContain("User is allergic to shellfish");
+		expect(summary.critical_facts).toContain("Team budget is $5,000");
+		expect(summary.critical_facts).toContain(
+			"Always keep vegetarian options on the menu",
+		);
+		expect(summary.critical_facts).toContain("Event ID is OFFSITE-2026-042");
+		expect(summary.unfinished_work).toContain("Invite design team");
+		expect(summary.pending_approvals).toContain(
+			"Hotel Mume booking for 12 people",
+		);
+		expect(summary.important_artifacts).toContain(
+			"docs/offsite-itinerary-kyoto.md",
+		);
+		expect(summary.important_artifacts).toContain("OFFSITE-2026-042");
+
+		// Verify the prompt explicitly asks for preservation of critical facts.
+		const systemPrompt = seen.find((m) => m.role === "system")?.content ?? "";
+		expect(systemPrompt).toContain("critical_facts");
+		expect(systemPrompt).toContain("remember this");
+		expect(systemPrompt).toContain("unfinished work");
+	});
 });
 
 describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
@@ -259,6 +361,7 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 			unfinished_work: ["Tests"],
 			pending_approvals: ["Security review"],
 			important_artifacts: ["feature-x.ts"],
+			critical_facts: ["Use Bun workspaces"],
 		};
 		const payload = serializeCheckpointSummary(summary);
 		expect(typeof payload).toBe("string");
@@ -274,6 +377,7 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 		expect(result.constraints).toEqual([]);
 		expect(result.pending_approvals).toEqual([]);
 		expect(result.important_artifacts).toEqual([]);
+		expect(result.critical_facts).toEqual([]);
 	});
 
 	test("deserialize fills missing keys with defaults for partial payload", () => {
@@ -288,6 +392,7 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 		expect(result.unfinished_work).toEqual([]);
 		expect(result.pending_approvals).toEqual([]);
 		expect(result.important_artifacts).toEqual([]);
+		expect(result.critical_facts).toEqual([]);
 	});
 
 	test("round-trips the degraded flag when set", () => {
@@ -298,6 +403,7 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: [],
 			degraded: true,
 		};
 		const restored = deserializeCheckpointSummary(
@@ -315,8 +421,10 @@ describe("serializeCheckpointSummary / deserializeCheckpointSummary", () => {
 			unfinished_work: [],
 			pending_approvals: [],
 			important_artifacts: [],
+			critical_facts: ["remember", 123, "this"],
 		});
 		const result = deserializeCheckpointSummary(messy);
 		expect(result.decisions).toEqual(["valid", "also valid"]);
+		expect(result.critical_facts).toEqual(["remember", "this"]);
 	});
 });

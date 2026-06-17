@@ -35,6 +35,20 @@ export const modelChooser = (
 			}
 			return new ChatOpenAI(params);
 		}
+		case "kimi": {
+			if (apiKey === "") {
+				throw new Error("Kimi API key is required");
+			}
+			const effectiveBaseUrl =
+				baseUrl === "" ? "https://api.moonshot.cn/v1" : baseUrl;
+			const params: ChatOpenAIFields = {
+				model: modelName,
+				apiKey: apiKey,
+				temperature: options.temperature,
+				configuration: { baseURL: effectiveBaseUrl },
+			};
+			return new ChatOpenAI(params);
+		}
 		case "openrouter":
 			if (apiKey === "") {
 				throw new Error("OpenRouter API key is required");

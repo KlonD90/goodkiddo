@@ -81,22 +81,57 @@ export class NoOpTabularEngine implements TabularEngine {
 	private fail(): never {
 		throw new Error("Tabular engine not configured");
 	}
-	async describe(): Promise<TabularSchema> {
+	async describe(
+		_data: Uint8Array,
+		_filename: string,
+		_sheet?: string,
+	): Promise<TabularSchema> {
 		this.fail();
 	}
-	async head(): Promise<TabularRows> {
+	async head(
+		_data: Uint8Array,
+		_filename: string,
+		_n: number,
+		_sheet?: string,
+	): Promise<TabularRows> {
 		this.fail();
 	}
-	async sample(): Promise<TabularRows> {
+	async sample(
+		_data: Uint8Array,
+		_filename: string,
+		_n: number,
+		_sheet?: string,
+		_seed?: number,
+	): Promise<TabularRows> {
 		this.fail();
 	}
-	async distinct(): Promise<{ column: string; values: unknown[] }> {
+	async distinct(
+		_data: Uint8Array,
+		_filename: string,
+		_column: string,
+		_limit: number,
+		_sheet?: string,
+	): Promise<{ column: string; values: unknown[] }> {
 		this.fail();
 	}
-	async filter(): Promise<TabularRows> {
+	async filter(
+		_data: Uint8Array,
+		_filename: string,
+		_where: WhereClause[],
+		_select: string[] | undefined,
+		_limit: number,
+		_sheet?: string,
+	): Promise<TabularRows> {
 		this.fail();
 	}
-	async aggregate(): Promise<TabularGroups> {
+	async aggregate(
+		_data: Uint8Array,
+		_filename: string,
+		_groupBy: string[] | undefined,
+		_aggregations: Aggregation[],
+		_where?: WhereClause[],
+		_sheet?: string,
+	): Promise<TabularGroups> {
 		this.fail();
 	}
 }

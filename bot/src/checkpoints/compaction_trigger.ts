@@ -28,7 +28,7 @@ import type {
 const log = createLogger("compaction");
 
 export const DEFAULT_MESSAGE_LIMIT = 50;
-export const DEFAULT_TOKEN_BUDGET = 150_000;
+export const DEFAULT_TOKEN_BUDGET = 200_000;
 export const DEFAULT_MIN_COMPACTION_CONTENT_CHARS = 20_000;
 
 export type CompactionThresholds = {

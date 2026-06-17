@@ -50,15 +50,51 @@ describe("modelChooser", () => {
 	});
 
 	test("applies temperature to provider models", () => {
-		const model = modelChooser(
-			"openai",
-			"gpt-4.1-mini",
-			"openai-key",
-			"",
-			{ temperature: 0.3 },
-		) as ChatOpenAI & { temperature?: number };
+		const model = modelChooser("openai", "gpt-4.1-mini", "openai-key", "", {
+			temperature: 0.3,
+		}) as ChatOpenAI & { temperature?: number };
 
 		expect(model.temperature).toBe(0.3);
+	});
+
+	test("creates a kimi model using the OpenAI-compatible client with default base URL", () => {
+		const model = modelChooser(
+			"kimi",
+			"kimi-k2-6",
+			"kimi-key",
+		) as ChatOpenAI & {
+			apiKey?: string;
+			model?: string;
+			fields?: { configuration?: { baseURL?: string } };
+		};
+
+		expect(model).toBeInstanceOf(ChatOpenAI);
+		expect(model.model).toBe("kimi-k2-6");
+		expect(model.apiKey).toBe("kimi-key");
+		expect(model.fields?.configuration?.baseURL).toBe(
+			"https://api.moonshot.cn/v1",
+		);
+	});
+
+	test("creates a kimi model with custom base URL when provided", () => {
+		const model = modelChooser(
+			"kimi",
+			"kimi-k2-6",
+			"kimi-key",
+			"https://custom.moonshot.cn/v1",
+		) as ChatOpenAI & {
+			fields?: { configuration?: { baseURL?: string } };
+		};
+
+		expect(model.fields?.configuration?.baseURL).toBe(
+			"https://custom.moonshot.cn/v1",
+		);
+	});
+
+	test("throws for kimi when no API key is provided", () => {
+		expect(() => modelChooser("kimi", "kimi-k2-6")).toThrow(
+			/Kimi API key is required/i,
+		);
 	});
 
 	test("creates an openrouter model with the provided API key and base URL", () => {

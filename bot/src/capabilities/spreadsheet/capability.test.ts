@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { BackendProtocol } from "deepagents";
+import type { BackendProtocol, FileOperationError } from "deepagents";
 import type { AppConfig } from "../../config";
 import { createSpreadsheetCapability } from "./capability";
 import { TABULAR_INLINE_THRESHOLD_BYTES } from "./constants";
@@ -46,7 +46,7 @@ class StubSpreadsheetParser implements SpreadsheetParser {
 
 class StubWorkspace implements Partial<BackendProtocol> {
 	uploads: Array<[string, Uint8Array]> = [];
-	async uploadFiles(files: Array<[string, Uint8Array]>): Promise<Array<{ path: string; error: string | null }>> {
+	async uploadFiles(files: Array<[string, Uint8Array]>): Promise<Array<{ path: string; error: FileOperationError | null }>> {
 		this.uploads.push(...files);
 		return files.map(([path]) => ({ path, error: null }));
 	}

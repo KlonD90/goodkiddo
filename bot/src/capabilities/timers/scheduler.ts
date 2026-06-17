@@ -1,13 +1,15 @@
 import { CronExpressionParser } from "cron-parser";
 import { createLogger } from "../../logger";
-import type { TimerStore, TimerRecord } from "./store.js";
+import type { TimerNotifyMode, TimerRecord, TimerStore } from "./store.js";
+
+export type { TimerNotifyMode };
 
 const log = createLogger("scheduler");
 
 export interface SchedulerOptions {
 	intervalMs: number;
 	readMdFile: (timer: TimerRecord, path: string) => Promise<string>;
-	onTick: (timer: TimerRecord, promptText: string) => Promise<void>;
+	onTick: (timer: TimerRecord, promptText: string) => Promise<string>;
 	notifyUser: (userId: string, message: string) => Promise<void>;
 }
 
@@ -21,6 +23,24 @@ export function computeNextRunAt(
 		tz: timezone,
 	});
 	return expr.next().getTime();
+}
+
+function todayPathDate(): string {
+	return new Date().toISOString().slice(0, 10);
+}
+
+function formatVerboseEntry(timer: TimerRecord, resultText: string): string {
+	return `**${timer.mdFilePath}**\n${resultText}`;
+}
+
+function formatSummaryEntry(timer: TimerRecord, resultText: string): string {
+	const prefix = resultText.slice(0, 280);
+	const date = todayPathDate();
+	return `**${timer.mdFilePath}**\n${prefix}… Full result saved to /memory/timers/${timer.id}/${date}.md`;
+}
+
+function buildBufferedMessage(entries: string[]): string {
+	return entries.join("\n\n");
 }
 
 export function startScheduler(
@@ -50,6 +70,8 @@ export function startScheduler(
 		}
 
 		log.info("tick: processing due timers", { count: dueTimers.length });
+
+		const chatBuffers = new Map<string, string[]>();
 
 		for (const timer of dueTimers) {
 			if (stopped) return;
@@ -116,8 +138,9 @@ export function startScheduler(
 				continue;
 			}
 
+			let resultText: string;
 			try {
-				await onTick(timer, promptText);
+				resultText = await onTick(timer, promptText);
 				const nextRunAt = computeNextRunAt(
 					timer.cronExpression,
 					timer.timezone,
@@ -168,6 +191,36 @@ export function startScheduler(
 						});
 					}
 				}
+				continue;
+			}
+
+			if (resultText.trim() === "") {
+				continue;
+			}
+
+			if (timer.notify === "verbose") {
+				const entry = formatVerboseEntry(timer, resultText);
+				const entries = chatBuffers.get(timer.chatId) ?? [];
+				entries.push(entry);
+				chatBuffers.set(timer.chatId, entries);
+			} else if (timer.notify === "summary") {
+				const entry = formatSummaryEntry(timer, resultText);
+				const entries = chatBuffers.get(timer.chatId) ?? [];
+				entries.push(entry);
+				chatBuffers.set(timer.chatId, entries);
+			}
+			// errors_only and silent do not add successful results to the digest.
+		}
+
+		for (const [chatId, entries] of chatBuffers) {
+			if (entries.length === 0) continue;
+			try {
+				await notifyUser(chatId, buildBufferedMessage(entries));
+			} catch (err) {
+				log.error("batched timer notification failed", {
+					chatId,
+					error: err instanceof Error ? err.message : String(err),
+				});
 			}
 		}
 	}

@@ -8,7 +8,7 @@ Only presets registered in `registry.ts` are visible to users via `/identity`. T
 
 | File | Preset id | Label | Description |
 |---|---|---|---|
-| `GOOD_KIDDO.md` | `good_kiddo` | Good Kiddo | **Default.** Friendly, patient helper — explains clearly, asks when unsure. |
+| `GOOD_KIDDO.md` | `good_kiddo` | Good Kiddo | **Default.** Your cool friend in the chat — warm, funny, great memory, asks follow-ups, never corporate. |
 | `DO_IT_DOGGO.md` | `do_it_doggo` | Do-It Doggo | Action-first agent — executes fast, reports results, minimal narration. |
 | `BUSINESS_DOGGO.md` | `business_doggo` | Business Doggo | Proactive strategist — analyzes every turn, builds frameworks, schedules research autonomously. |
 

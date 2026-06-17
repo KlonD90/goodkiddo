@@ -65,10 +65,13 @@ enable_image_understanding: false
 enable_tool_status: true
 enable_attachment_compaction_notice: true
 
-max_context_window_tokens: 150000
+max_context_window_tokens: 200000
 context_reserve_summary_tokens: 2000
 context_reserve_recent_turn_tokens: 2000
 context_reserve_next_turn_tokens: 2000
+
+timer_notify_mode_default: summary
+telegram_status_debounce_ms: 5000
 
 transcription_provider: openai
 transcription_api_key: "{{ ai_api_key | default('') }}"
