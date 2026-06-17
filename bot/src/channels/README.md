@@ -387,6 +387,8 @@ The CLI channel writes status lines to stdout with a `>` prefix:
 
 The Telegram channel sends status messages as plain text via `bot.api.sendMessage`, without touching conversation memory. Rapid status updates for the same caller are debounced and collapsed into the most recent message within `TELEGRAM_STATUS_DEBOUNCE_MS` (default `5000` ms).
 
+Scheduler-driven timer turns suppress tool-activity status messages entirely. Only the final timer result (or configured notification) is delivered, so cron jobs do not spam "Processing..." updates.
+
 ### Configuration
 
 - `enableToolStatus` (default `true`) — enables or disables status emission globally
@@ -432,7 +434,9 @@ preview plus a link to the saved full result, `errors_only` suppresses
 successful results, and `silent` suppresses all results. Results for multiple
 due timers in the same chat are batched into a single message. When a one-time
 reminder fires, the scheduler sends the reminder text directly and marks the
-timer completed.
+timer completed. Tool-activity status messages ("Reading...", "Searching...")
+are suppressed during scheduler-driven timer turns so cron jobs do not spam
+the chat with intermediate updates.
 
 Cron expressions are evaluated in each timer's configured IANA timezone.
 Telegram does not provide a user's timezone in normal bot messages, so

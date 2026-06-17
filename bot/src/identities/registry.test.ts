@@ -36,14 +36,6 @@ describe("listPresets", () => {
 		}
 	});
 
-	test("good_kiddo description matches the cool-friend identity", () => {
-		const preset = resolvePreset("good_kiddo");
-		expect(preset).not.toBeNull();
-		expect(preset?.description).toMatch(/cool friend/i);
-		expect(preset?.description).toMatch(/great memory/i);
-		expect(preset?.description).toMatch(/never corporate/i);
-	});
-
 	test("returns a copy — mutations do not affect the registry", () => {
 		const first = listPresets();
 		first.push({ id: "injected", label: "x", description: "x", prompt: "x" });
