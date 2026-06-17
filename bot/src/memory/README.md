@@ -59,7 +59,7 @@ Compaction is skipped when the source conversation is empty or below the 20,000-
 
 Runtime-only current-message metadata is filtered out before compaction and thread summaries are built, so timestamp/timezone guidance stored in checkpoint state does not make an otherwise tiny conversation eligible for restart compaction.
 
-Each checkpoint captures: current goal, decisions, constraints, unfinished work, pending approvals, and important artifacts. Durable user facts such as timezone or scheduling preferences belong in `/memory/USER.md`, not checkpoint payloads. The snapshot is a JSON payload persisted in the `forced_checkpoints` table.
+Each checkpoint captures: current goal, decisions, constraints, unfinished work, pending approvals, important artifacts, and `critical_facts` — a lossless list of user-explicit facts (anything the user said "remember this" about, personal preferences, named people/places/projects, exact IDs, and hard constraints). Durable user facts such as timezone or scheduling preferences belong in `/memory/USER.md`, but user-explicit "remember this" items are also duplicated into `critical_facts` so they survive compaction and are rendered back into the runtime context.
 
 **Checkpoint summary generation** (`checkpoint_compaction.ts`) prompts the model to produce the structured `CheckpointSummary` JSON. The resulting snapshot is serialized and stored in `ForcedCheckpointStore`.
 

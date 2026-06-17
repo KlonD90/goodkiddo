@@ -130,12 +130,12 @@ export class SqlSaver extends MemorySaver {
 			).map(
 				async (write) =>
 					[
-							write.taskId,
-							write.channel,
-							await this.deserialize({
-								type: write.valueType,
-								data: toBytes(write.valueData),
-							}),
+						write.taskId,
+						write.channel,
+						await this.deserialize({
+							type: write.valueType,
+							data: toBytes(write.valueData),
+						}),
 					] as [string, string, unknown],
 			),
 		);
@@ -360,18 +360,17 @@ export class SqlSaver extends MemorySaver {
 		for (const [index, [channel, value]] of writes.entries()) {
 			const writeIndex = WRITE_INDEX_BY_CHANNEL[channel] ?? index;
 			if (writeIndex >= 0) {
-				const existing =
-					await this.prisma.langGraphCheckpointWrite.findUnique({
-						where: {
-							threadId_checkpointNs_checkpointId_taskId_writeIdx: {
-								threadId,
-								checkpointNs: checkpointNamespace,
-								checkpointId,
-								taskId,
-								writeIdx: writeIndex,
-							},
+				const existing = await this.prisma.langGraphCheckpointWrite.findUnique({
+					where: {
+						threadId_checkpointNs_checkpointId_taskId_writeIdx: {
+							threadId,
+							checkpointNs: checkpointNamespace,
+							checkpointId,
+							taskId,
+							writeIdx: writeIndex,
 						},
-					});
+					},
+				});
 				if (existing) continue;
 			}
 
@@ -415,6 +414,8 @@ export class SqlSaver extends MemorySaver {
 	}
 }
 
-export function createPersistentCheckpointer(prisma: AppPrisma): BaseCheckpointSaver {
+export function createPersistentCheckpointer(
+	prisma: AppPrisma,
+): BaseCheckpointSaver {
 	return new SqlSaver(prisma);
 }

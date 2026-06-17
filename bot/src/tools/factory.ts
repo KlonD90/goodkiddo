@@ -1,10 +1,10 @@
 import { SearxngSearch } from "@langchain/community/tools/searxng_search";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import type { WorkspaceBackend } from "../backends/types";
+import type { ImageUnderstandingProvider } from "../capabilities/image/types";
+import { createResearchTool } from "../capabilities/research/tool";
 import type { TabularEngine } from "../capabilities/tabular/engine";
 import { createTabularTools } from "../capabilities/tabular/tools";
-import { createResearchTool } from "../capabilities/research/tool";
-import type { ImageUnderstandingProvider } from "../capabilities/image/types";
 import type { OutboundChannel } from "../channels/outbound";
 import type { ExecutionPolicy } from "../execution/manifest";
 import { ExecutionOrchestrator } from "../execution/orchestrator";
@@ -13,13 +13,13 @@ import type { CreateSandboxBackendOptions } from "../sandbox/factory";
 import { createSandboxBackend } from "../sandbox/factory";
 import type { AccessStore } from "../server/access_store";
 import type { TaskStore } from "../tasks/store";
+import { createBrowserSessionManager } from "./browser_session_manager";
 import {
 	createBrowserActionTool,
 	createBrowserSnapshotTool,
 	createSessionRegistry,
 	defaultCliRunner,
 } from "./browser_tools";
-import { createBrowserSessionManager } from "./browser_session_manager";
 import { createExecuteWorkspaceTool } from "./execute_tools";
 import {
 	createEditFileTool,
@@ -185,8 +185,14 @@ export async function createExecutionToolset(
 		...taskTools,
 		...(enableBrowserOnParent
 			? [
-					createBrowserSnapshotTool({ registry: browserRegistry, manager: browserManager }),
-					createBrowserActionTool({ registry: browserRegistry, manager: browserManager }),
+					createBrowserSnapshotTool({
+						registry: browserRegistry,
+						manager: browserManager,
+					}),
+					createBrowserActionTool({
+						registry: browserRegistry,
+						manager: browserManager,
+					}),
 				]
 			: []),
 		new SearxngSearch({

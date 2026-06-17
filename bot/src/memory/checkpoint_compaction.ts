@@ -21,6 +21,12 @@ export type CheckpointSummary = {
 	pending_approvals: string[];
 	important_artifacts: string[];
 	/**
+	 * User-explicit facts that must survive compaction: anything the user said
+	 * to remember, personal preferences, named people/places/projects, IDs, or
+	 * hard constraints phrased as "always/never". Keep these exact and lossless.
+	 */
+	critical_facts: string[];
+	/**
 	 * True when the model failed to produce parseable JSON for this checkpoint.
 	 * The goal field will contain the raw text; other fields will be empty.
 	 * Runtime context rendering can use this to warn the agent that context
@@ -36,10 +42,13 @@ const EMPTY_SUMMARY: CheckpointSummary = {
 	unfinished_work: [],
 	pending_approvals: [],
 	important_artifacts: [],
+	critical_facts: [],
 };
 
 const STRUCTURED_SUMMARY_SYSTEM = [
 	"You summarize a conversation that is about to be compacted into a checkpoint.",
+	"Your output becomes the ONLY memory the assistant has of the older part of the chat. If you drop something, it is forgotten forever. Preserve operational state exactly and losslessly.",
+	"",
 	"Output ONLY a JSON object with these exact keys:",
 	'  "current_goal": string — the user\'s primary active goal at the end of the conversation',
 	'  "decisions": string[] — decisions made or agreed upon',
@@ -47,6 +56,13 @@ const STRUCTURED_SUMMARY_SYSTEM = [
 	'  "unfinished_work": string[] — tasks or threads that were not completed',
 	'  "pending_approvals": string[] — items waiting for user approval or confirmation',
 	'  "important_artifacts": string[] — file paths, IDs, URLs, or named outputs produced',
+	'  "critical_facts": string[] — user-explicit facts that MUST survive compaction: anything the user said "remember this", personal preferences, named people/places/projects, exact IDs, and hard constraints phrased as "always"/"never". Copy these nearly verbatim; do not paraphrase away meaning.',
+	"",
+	"Preservation rules:",
+	"- Keep every explicit 'remember this' statement as a critical_fact.",
+	"- Keep active goals, hard constraints, unfinished work, pending approvals, and named artifacts/IDs.",
+	"- Do NOT summarize away unfinished tasks or pending approvals; list them concretely.",
+	"- Do NOT invent facts not present in the conversation.",
 	"Be terse. No preamble. No explanation. Pure JSON only.",
 ].join("\n");
 
@@ -94,6 +110,7 @@ function normalizeSummary(
 		unfinished_work: toStringArray(parsed.unfinished_work),
 		pending_approvals: toStringArray(parsed.pending_approvals),
 		important_artifacts: toStringArray(parsed.important_artifacts),
+		critical_facts: toStringArray(parsed.critical_facts),
 	};
 	if (parsed.degraded === true) normalized.degraded = true;
 	return normalized;
@@ -115,7 +132,7 @@ function tryParseSummary(raw: string): CheckpointSummary | null {
 const RETRY_SYSTEM = [
 	"Your previous response was not valid JSON matching the required schema.",
 	"Respond now with ONLY the JSON object. No code fences, no prose, no preamble.",
-	'Required keys: "current_goal" (string), "decisions", "constraints", "unfinished_work", "pending_approvals", "important_artifacts" (each non-goal key is a string array).',
+	'Required keys: "current_goal" (string), "decisions", "constraints", "unfinished_work", "pending_approvals", "important_artifacts", "critical_facts" (each non-goal key is a string array).',
 ].join("\n");
 
 export async function generateCheckpointSummary(

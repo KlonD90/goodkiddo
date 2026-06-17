@@ -52,11 +52,25 @@ export function startTelegramTypingLoop(bot: Bot, chatId: string): () => void {
 	};
 }
 
+type DebounceEntry = {
+	timeoutId: ReturnType<typeof setTimeout>;
+	message: string;
+};
+
 export class TelegramOutboundChannel implements OutboundChannel {
+	private readonly debounceMs: number;
+	private readonly debounces = new Map<string, DebounceEntry>();
+
 	constructor(
 		private readonly bot: Bot,
 		private readonly resolveChatId: (callerId: string) => string | null,
-	) {}
+		debounceMs?: number,
+	) {
+		this.debounceMs =
+			debounceMs !== undefined && Number.isFinite(debounceMs) && debounceMs >= 0
+				? debounceMs
+				: 5000;
+	}
 
 	async sendFile(args: OutboundSendFileArgs): Promise<OutboundSendResult> {
 		const chatId = this.resolveChatId(args.callerId);
@@ -102,8 +116,33 @@ export class TelegramOutboundChannel implements OutboundChannel {
 	async sendStatus(callerId: string, message: string): Promise<void> {
 		const chatId = this.resolveChatId(callerId);
 		if (!chatId) return;
+
+		const existing = this.debounces.get(callerId);
+		if (existing) {
+			clearTimeout(existing.timeoutId);
+			existing.message = message;
+			existing.timeoutId = setTimeout(
+				() => void this.flushStatus(callerId, chatId),
+				this.debounceMs,
+			);
+			return;
+		}
+
+		this.debounces.set(callerId, {
+			timeoutId: setTimeout(
+				() => void this.flushStatus(callerId, chatId),
+				this.debounceMs,
+			),
+			message,
+		});
+	}
+
+	private async flushStatus(callerId: string, chatId: string): Promise<void> {
+		const entry = this.debounces.get(callerId);
+		if (!entry) return;
+		this.debounces.delete(callerId);
 		try {
-			await this.bot.api.sendMessage(chatId, message);
+			await this.bot.api.sendMessage(chatId, entry.message);
 		} catch (err) {
 			log.error("sendStatus failed", {
 				chatId,

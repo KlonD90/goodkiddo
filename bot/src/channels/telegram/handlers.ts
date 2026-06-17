@@ -10,6 +10,7 @@ import { resolveLocale } from "../../i18n/locale";
 import { createLogger } from "../../logger";
 import type { Caller } from "../../permissions/types";
 import { createStatusEmitter } from "../../tools/status_emitter";
+import { overwrite } from "../../memory/fs";
 import { fileDataToString } from "../../utils/filesystem";
 import type { AppChannel, ChannelRunOptions } from "../types";
 import {
@@ -40,6 +41,10 @@ import {
 
 const log = createLogger("telegram");
 
+function timerResultPath(timer: TimerRecord, date = new Date()): string {
+	return `/memory/timers/${timer.id}/${date.toISOString().slice(0, 10)}.md`;
+}
+
 async function syncTelegramCommands(bot: Bot): Promise<void> {
 	await bot.api.setMyCommands([...TELEGRAM_COMMANDS]);
 }
@@ -55,13 +60,17 @@ export const telegramChannel: AppChannel = {
 		const timerStore = options?.timerStore ?? new TimerStore({ prisma });
 		const sessions = new Map<string, TelegramAgentSession>();
 		const bot = new Bot(config.telegramBotToken);
-		const outbound = new TelegramOutboundChannel(bot, (callerId) => {
-			const telegramPrefix = "telegram:";
-			if (!callerId.startsWith(telegramPrefix)) return null;
-			const chatId = callerId.slice(telegramPrefix.length);
-			if (!sessions.has(chatId)) return null;
-			return chatId;
-		});
+		const outbound = new TelegramOutboundChannel(
+			bot,
+			(callerId) => {
+				const telegramPrefix = "telegram:";
+				if (!callerId.startsWith(telegramPrefix)) return null;
+				const chatId = callerId.slice(telegramPrefix.length);
+				if (!sessions.has(chatId)) return null;
+				return chatId;
+			},
+			config.telegramStatusDebounceMs,
+		);
 		const statusEmitter = createStatusEmitter(outbound);
 		const capabilityRegistry =
 			options?.capabilityRegistry ??
@@ -474,7 +483,7 @@ export const telegramChannel: AppChannel = {
 		const onTick = async (
 			timer: TimerRecord,
 			promptText: string,
-		): Promise<void> => {
+		): Promise<string> => {
 			const session = await ensureTimerSession(timer);
 
 			try {
@@ -511,9 +520,10 @@ export const telegramChannel: AppChannel = {
 					fullText += text;
 				}
 				if (fullText.trim() !== "") {
-					const chatId = rawChatIdFromTimer(timer);
-					await sendTelegramMessage(bot, chatId, fullText);
+					const resultPath = timerResultPath(timer);
+					await overwrite(session.workspace, resultPath, fullText);
 				}
+				return fullText;
 			} catch (err) {
 				const message = err instanceof Error ? err.message : String(err);
 				log.error("timer onTick failed", {

@@ -79,6 +79,9 @@ export function normalizeUserProfile(content: string): string {
 
 	const actuel = currentActuel(content);
 	return composeUserProfile({
-		Profile: actuel.length > 0 ? actuel : trimmed.replace(/^#\s*USER\.md\s*/i, "").trim(),
+		Profile:
+			actuel.length > 0
+				? actuel
+				: trimmed.replace(/^#\s*USER\.md\s*/i, "").trim(),
 	});
 }

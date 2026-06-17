@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AppPrisma } from "../../db/prisma";
 
 export type TimerKind = "always" | "once";
+export type TimerNotifyMode = "verbose" | "summary" | "errors_only" | "silent";
 
 export interface TimerRecord {
 	id: string;
@@ -13,6 +14,7 @@ export interface TimerRecord {
 	message: string | null;
 	timezone: string;
 	enabled: boolean;
+	notify: TimerNotifyMode;
 	lastRunAt: number | null;
 	lastError: string | null;
 	consecutiveFailures: number;
@@ -30,6 +32,7 @@ type TimerModel = {
 	message: string | null;
 	timezone: string;
 	enabled: number;
+	notify: string;
 	lastRunAt: bigint | number | null;
 	lastError: string | null;
 	consecutiveFailures: number;
@@ -50,6 +53,7 @@ export interface CreateTimerParams {
 	kind?: TimerKind;
 	message?: string | null;
 	timezone: string;
+	notify?: TimerNotifyMode;
 	nextRunAt: number;
 }
 
@@ -58,11 +62,24 @@ export interface UpdateTimerParams {
 	timezone?: string;
 	enabled?: boolean;
 	nextRunAt?: number;
+	notify?: TimerNotifyMode;
 }
 
 function toNumber(value: bigint | number | null): number | null {
 	if (value === null) return null;
 	return Number(value);
+}
+
+function toNotifyMode(value: string | undefined): TimerNotifyMode {
+	if (
+		value === "verbose" ||
+		value === "summary" ||
+		value === "errors_only" ||
+		value === "silent"
+	) {
+		return value;
+	}
+	return "verbose";
 }
 
 function modelToTimer(row: TimerModel): TimerRecord {
@@ -76,6 +93,7 @@ function modelToTimer(row: TimerModel): TimerRecord {
 		message: row.message,
 		timezone: row.timezone,
 		enabled: row.enabled === 1,
+		notify: toNotifyMode(row.notify),
 		lastRunAt: toNumber(row.lastRunAt),
 		lastError: row.lastError,
 		consecutiveFailures: row.consecutiveFailures,
@@ -112,6 +130,7 @@ export class TimerStore {
 					message: params.message ?? null,
 					timezone: params.timezone,
 					enabled: 1,
+					notify: params.notify ?? "verbose",
 					lastRunAt: null,
 					lastError: null,
 					consecutiveFailures: 0,
@@ -157,6 +176,7 @@ export class TimerStore {
 		const cronExpression = updates.cronExpression ?? existing.cronExpression;
 		const timezone = updates.timezone ?? existing.timezone;
 		const enabled = updates.enabled ?? existing.enabled;
+		const notify = updates.notify ?? existing.notify;
 		const nextRunAt = updates.nextRunAt ?? existing.nextRunAt;
 
 		const result = await this.prisma.timer.updateMany({
@@ -165,6 +185,7 @@ export class TimerStore {
 				cronExpression,
 				timezone,
 				enabled: enabled ? 1 : 0,
+				notify,
 				nextRunAt: BigInt(nextRunAt),
 			},
 		});

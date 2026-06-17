@@ -18,7 +18,7 @@ const REGISTRY: IdentityPreset[] = [
 		id: "good_kiddo",
 		label: "Good Kiddo",
 		description:
-			"Friendly, patient helper — explains clearly, asks when unsure, great for non-coders.",
+			"Your cool friend in the chat — warm, funny, great memory, asks follow-ups, never corporate.",
 		prompt: GOOD_KIDDO,
 	},
 	{

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { startScheduler, type SchedulerOptions } from "./scheduler";
-import type { TimerStore } from "./store.js";
+import type { TimerRecord, TimerStore } from "./store.js";
 
 interface AsyncMockFn {
 	(...args: unknown[]): Promise<unknown>;
@@ -44,17 +44,20 @@ function createMockStore(): MockStore {
 	};
 }
 
-function createTimer(overrides: Partial<Parameters<SchedulerOptions["onTick"]>[0]> = {}) {
+function createTimer(
+	overrides: Partial<TimerRecord> = {},
+): TimerRecord {
 	return {
 		id: "timer-1",
 		userId: "telegram:1",
 		chatId: "telegram:1",
 		mdFilePath: "test.md",
 		cronExpression: "0 10 * * *",
-		kind: "always" as const,
+		kind: "always",
 		message: null,
 		timezone: "UTC",
 		enabled: true,
+		notify: "verbose",
 		lastRunAt: null,
 		lastError: null,
 		consecutiveFailures: 0,
@@ -62,6 +65,15 @@ function createTimer(overrides: Partial<Parameters<SchedulerOptions["onTick"]>[0
 		createdAt: 100,
 		...overrides,
 	};
+}
+
+function startWithMocks(): { stop: () => void } {
+	return startScheduler(mockStore as unknown as TimerStore, {
+		intervalMs: 10_000_000,
+		readMdFile: mockReadMdFile as SchedulerOptions["readMdFile"],
+		onTick: mockOnTick as SchedulerOptions["onTick"],
+		notifyUser: mockNotifyUser as SchedulerOptions["notifyUser"],
+	});
 }
 
 beforeEach(() => {
@@ -81,15 +93,10 @@ describe("startScheduler", () => {
 		const timer = createTimer();
 		mockStore.findDue._mockValue = Promise.resolve([timer]);
 		mockReadMdFile._mockValue = Promise.resolve("Hello world");
-		mockOnTick._mockValue = Promise.resolve(undefined);
+		mockOnTick._mockValue = Promise.resolve("agent result");
 		mockStore.touchRun._mockValue = Promise.resolve(undefined);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -97,17 +104,15 @@ describe("startScheduler", () => {
 		expect(mockReadMdFile._calls).toEqual([[timer, "test.md"]]);
 		expect(mockOnTick._calls).toEqual([[timer, "Hello world"]]);
 		expect(mockStore.touchRun._calls.length).toBe(1);
+		expect(mockNotifyUser._calls).toEqual([
+			[timer.chatId, `**test.md**\nagent result`],
+		]);
 	});
 
 	test("skips non-due timers (findDue returns empty)", async () => {
 		mockStore.findDue._mockValue = Promise.resolve([]);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -133,12 +138,7 @@ describe("startScheduler", () => {
 			lastRunAt: 1000,
 		});
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -165,12 +165,7 @@ describe("startScheduler", () => {
 		mockNotifyUser._mockValue = Promise.reject(new Error("Telegram failed"));
 		mockStore.touchError._mockValue = Promise.resolve(1);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -187,12 +182,7 @@ describe("startScheduler", () => {
 		mockOnTick._mockValue = Promise.reject(new Error("LLM failed"));
 		mockStore.touchError._mockValue = Promise.resolve(1);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -211,12 +201,7 @@ describe("startScheduler", () => {
 		mockOnTick._mockValue = Promise.reject(new Error("LLM failed"));
 		mockStore.touchError._mockValue = Promise.resolve(3);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
@@ -232,18 +217,16 @@ describe("startScheduler", () => {
 		mockReadMdFile._mockValue = Promise.reject(new Error("File not found"));
 		mockStore.delete._mockValue = Promise.resolve(true);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		await new Promise((resolve) => setTimeout(resolve, 20));
 
 		expect(mockStore.delete._calls).toEqual([["timer-1", "telegram:1"]]);
 		expect(mockNotifyUser._calls).toEqual([
-			["telegram:1", "Timer for '/memory/deleted.md' was deleted because the memory file no longer exists."],
+			[
+				"telegram:1",
+				"Timer for '/memory/deleted.md' was deleted because the memory file no longer exists.",
+			],
 		]);
 		expect(mockOnTick._calls.length).toBe(0);
 	});
@@ -251,12 +234,7 @@ describe("startScheduler", () => {
 	test("stops the scheduler and clears interval", async () => {
 		mockStore.findDue._mockValue = Promise.resolve([]);
 
-		schedulerHandle = startScheduler(mockStore as unknown as TimerStore, {
-			intervalMs: 10_000_000,
-			readMdFile: mockReadMdFile as (timer: Parameters<SchedulerOptions["readMdFile"]>[0], path: string) => Promise<string>,
-			onTick: mockOnTick as (timer: Parameters<SchedulerOptions["onTick"]>[0], promptText: string) => Promise<void>,
-			notifyUser: mockNotifyUser as (userId: string, message: string) => Promise<void>,
-		});
+		schedulerHandle = startWithMocks();
 
 		const findDueCallsBefore = mockStore.findDue._calls.length;
 		schedulerHandle?.stop();
@@ -264,5 +242,107 @@ describe("startScheduler", () => {
 		await new Promise((resolve) => setTimeout(resolve, 50));
 
 		expect(mockStore.findDue._calls.length).toBe(findDueCallsBefore);
+	});
+
+	test("batches multiple timer results for the same chat into one message", async () => {
+		const timerA = createTimer({ id: "timer-a", mdFilePath: "a.md" });
+		const timerB = createTimer({ id: "timer-b", mdFilePath: "b.md" });
+		mockStore.findDue._mockValue = Promise.resolve([timerA, timerB]);
+		mockReadMdFile._mockValue = Promise.resolve("prompt");
+		mockOnTick._mockValue = Promise.resolve("result");
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+
+		schedulerHandle = startWithMocks();
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls.length).toBe(1);
+		expect(mockNotifyUser._calls[0][0]).toBe("telegram:1");
+		expect(mockNotifyUser._calls[0][1]).toBe(
+			"**a.md**\nresult\n\n**b.md**\nresult",
+		);
+	});
+
+	test("sends separate batched messages for different chats", async () => {
+		const timerA = createTimer({
+			id: "timer-a",
+			chatId: "telegram:1",
+			userId: "telegram:1",
+			mdFilePath: "a.md",
+		});
+		const timerB = createTimer({
+			id: "timer-b",
+			chatId: "telegram:2",
+			userId: "telegram:2",
+			mdFilePath: "b.md",
+		});
+		mockStore.findDue._mockValue = Promise.resolve([timerA, timerB]);
+		mockReadMdFile._mockValue = Promise.resolve("prompt");
+		mockOnTick._mockValue = Promise.resolve("result");
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+
+		schedulerHandle = startWithMocks();
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls.length).toBe(2);
+		expect(mockNotifyUser._calls).toContainEqual([
+			"telegram:1",
+			"**a.md**\nresult",
+		]);
+		expect(mockNotifyUser._calls).toContainEqual([
+			"telegram:2",
+			"**b.md**\nresult",
+		]);
+	});
+
+	test("summary notify mode sends only a short summary", async () => {
+		const longResult = "a".repeat(500);
+		const timer = createTimer({ notify: "summary" });
+		mockStore.findDue._mockValue = Promise.resolve([timer]);
+		mockReadMdFile._mockValue = Promise.resolve("prompt");
+		mockOnTick._mockValue = Promise.resolve(longResult);
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+
+		schedulerHandle = startWithMocks();
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls.length).toBe(1);
+		const message = mockNotifyUser._calls[0][1] as string;
+		expect(message.startsWith("**test.md**\n" + "a".repeat(280) + "…")).toBe(
+			true,
+		);
+		expect(message).toContain(
+			`Full result saved to /memory/timers/${timer.id}/`,
+		);
+	});
+
+	test("silent notify mode does not include successful results", async () => {
+		const timer = createTimer({ notify: "silent" });
+		mockStore.findDue._mockValue = Promise.resolve([timer]);
+		mockReadMdFile._mockValue = Promise.resolve("prompt");
+		mockOnTick._mockValue = Promise.resolve("result");
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+
+		schedulerHandle = startWithMocks();
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls.length).toBe(0);
+	});
+
+	test("errors_only notify mode does not include successful results", async () => {
+		const timer = createTimer({ notify: "errors_only" });
+		mockStore.findDue._mockValue = Promise.resolve([timer]);
+		mockReadMdFile._mockValue = Promise.resolve("prompt");
+		mockOnTick._mockValue = Promise.resolve("result");
+		mockStore.touchRun._mockValue = Promise.resolve(undefined);
+
+		schedulerHandle = startWithMocks();
+
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(mockNotifyUser._calls.length).toBe(0);
 	});
 });

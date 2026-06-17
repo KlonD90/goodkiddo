@@ -9,8 +9,24 @@ import type { Caller } from "../../permissions/types";
 import { resolveLocale } from "../../i18n/locale";
 import { fileDataToString } from "../../utils/filesystem";
 import { createChannelAgentSession } from "../shared";
+import type { ChannelAgentSession } from "../shared";
 import type { ChannelRunOptions } from "../types";
+import type { StatusEmitter } from "../../tools/status_emitter";
 import type { TelegramAgentSession } from "./types";
+
+export function createContextAwareStatusEmitter(
+	statusEmitter: StatusEmitter,
+	sessionRef: { current?: ChannelAgentSession },
+): StatusEmitter {
+	return {
+		emit: async (callerId: string, message: string): Promise<void> => {
+			if (sessionRef.current?.currentTurnContext?.source === "scheduler") {
+				return;
+			}
+			await statusEmitter.emit(callerId, message);
+		},
+	};
+}
 
 // --- Session creation ---
 
@@ -42,8 +58,17 @@ export async function ensureTelegramSession(
 				readMdFile,
 				callerId: caller.id,
 				chatId,
+				defaultNotifyMode: config.timerNotifyModeDefault,
 			})
 		: undefined;
+
+	// Deferred reference so the context-aware emitter can inspect the running
+	// turn while tools call emit() mid-stream.
+	const sessionRef: { current?: ChannelAgentSession } = {};
+	const contextAwareStatusEmitter = statusEmitter
+		? createContextAwareStatusEmitter(statusEmitter, sessionRef)
+		: undefined;
+
 	const session = await createChannelAgentSession(config, {
 		prisma,
 		caller,
@@ -52,9 +77,10 @@ export async function ensureTelegramSession(
 		outbound,
 		webShare,
 		timerTools,
-		statusEmitter,
+		statusEmitter: contextAwareStatusEmitter,
 		locale: locale as ReturnType<typeof resolveLocale>,
 	});
+	sessionRef.current = session;
 
 	const telegramSession: TelegramAgentSession = {
 		...session,

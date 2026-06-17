@@ -48,6 +48,7 @@ model Timer {
   cronExpression      String  @map("cron_expression")
   kind                String  @default("always")
   message             String?
+  notify              String  @default("verbose")
   timezone            String  @default("UTC")
   enabled             Int     @default(1)
   lastRunAt           BigInt? @map("last_run_at")

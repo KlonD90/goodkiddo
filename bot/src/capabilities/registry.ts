@@ -74,7 +74,11 @@ export class CapabilityRegistry {
 			return { ok: false, userMessage: `Failed to download file: ${message}` };
 		}
 
-		const result = await this.processWith(capability, { bytes, metadata, workspace });
+		const result = await this.processWith(capability, {
+			bytes,
+			metadata,
+			workspace,
+		});
 		return applyAttachmentBudgetToResult(capability.name, result, budget);
 	}
 

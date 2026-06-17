@@ -3,7 +3,7 @@ import { createBrowserSessionManager } from "./browser_session_manager";
 import type { CliRunner, ProcResult } from "./browser_tools";
 
 function noop(): CliRunner {
-	return async () => ({ stdout: "", stderr: "", exitCode: 0 } as ProcResult);
+	return async () => ({ stdout: "", stderr: "", exitCode: 0 }) as ProcResult;
 }
 
 describe("BrowserSessionManager", () => {
@@ -90,7 +90,10 @@ describe("BrowserSessionManager", () => {
 	});
 
 	test("canIssue becomes true again after reap frees a slot", async () => {
-		const m = createBrowserSessionManager({ maxConcurrent: 1, idleTimeoutMs: 10 });
+		const m = createBrowserSessionManager({
+			maxConcurrent: 1,
+			idleTimeoutMs: 10,
+		});
 		m.register("k1", "cli-k1");
 		expect(m.canIssue()).toBe(false);
 		await new Promise((r) => setTimeout(r, 20));

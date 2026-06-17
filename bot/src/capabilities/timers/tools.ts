@@ -2,7 +2,7 @@ import { tool } from "langchain";
 import { z } from "zod";
 import { CronExpressionParser } from "cron-parser";
 import { isValidTimezone } from "../../utils/timezone.js";
-import type { TimerStore, TimerRecord } from "./store.js";
+import type { TimerStore, TimerRecord, TimerNotifyMode } from "./store.js";
 
 export interface TimerToolsOptions {
 	computeNextRun: (
@@ -13,6 +13,7 @@ export interface TimerToolsOptions {
 	readMdFile: (path: string) => Promise<string>;
 	callerId: string;
 	chatId?: string;
+	defaultNotifyMode?: TimerNotifyMode;
 }
 
 const createOnceTimerSchema = z.object({
@@ -22,6 +23,12 @@ const createOnceTimerSchema = z.object({
 		.string()
 		.min(1)
 		.describe("UTC ISO timestamp for the reminder, e.g. '2026-04-24T12:30:00.000Z'."),
+	notify: z
+		.enum(["verbose", "summary", "errors_only", "silent"])
+		.optional()
+		.describe(
+			'Notification mode for timer results (ignored for one-time reminders): "verbose" (full text), "summary" (short preview + saved file link), "errors_only" (errors only), or "silent" (no success messages).',
+		),
 });
 
 const createAlwaysTimerSchema = z.object({
@@ -38,6 +45,10 @@ const createAlwaysTimerSchema = z.object({
 		.string()
 		.min(1)
 		.describe("IANA timezone for the recurring schedule, e.g. 'America/New_York'."),
+	notify: z
+		.enum(["verbose", "summary", "errors_only", "silent"])
+		.optional()
+		.describe("Notification mode: verbose (full result), summary (short preview), errors_only (errors only), silent (no success messages)."),
 });
 
 const createTimerSchema = z.discriminatedUnion("type", [
@@ -98,7 +109,7 @@ function formatTimerList(timers: TimerRecord[]): string {
 				const message = t.message ?? "(no message)";
 				return `- ${t.id}: one-time reminder "${message}" (${t.cronExpression}) next=${nextRun} (${t.timezone}) last=${lastRun} failures=${t.consecutiveFailures}`;
 			}
-			return `- ${t.id}: ${t.mdFilePath} (${t.cronExpression}) next=${nextRun} (${t.timezone}) last=${lastRun} failures=${t.consecutiveFailures}`;
+			return `- ${t.id}: ${t.mdFilePath} (${t.cronExpression}) next=${nextRun} (${t.timezone}) notify=${t.notify} last=${lastRun} failures=${t.consecutiveFailures}`;
 		})
 		.join("\n");
 }
@@ -129,6 +140,7 @@ export function createTimerTools(
 					message: trimmedMessage,
 					timezone: "UTC",
 					nextRunAt: runAtTimestamp,
+					notify: input.notify ?? options.defaultNotifyMode,
 				});
 
 				const nextRunDate = formatInTimezone(runAtTimestamp, "UTC");
@@ -173,6 +185,7 @@ export function createTimerTools(
 				kind: "always",
 				timezone,
 				nextRunAt,
+				notify: input.notify ?? options.defaultNotifyMode,
 			});
 
 			const nextRunDate = formatInTimezone(nextRunAt, timezone);
@@ -189,6 +202,7 @@ restarts.
 
 Args:
 - type: required discriminator, either "always" or "once"
+- notify (optional): notification mode for recurring timer results — "verbose" (send full text), "summary" (short preview + link to saved file), "errors_only" (only errors), or "silent" (no success messages). Defaults to the configured default.
 - For type "once": provide message and runAtUtc. Use the current message timestamp to resolve duration-only requests like "in 30 minutes" into runAtUtc. For wall-clock requests like "tomorrow at 9", use an explicit or stored IANA timezone to compute runAtUtc first. Do not pass timezone to this tool shape.
 - For type "always": provide mdFilePath, cronExpression, and timezone. If the user did not provide a timezone and none is stored in /memory/USER.md, ask for it and save it to USER.md before creating the timer.
 
@@ -225,11 +239,13 @@ last run time, and consecutive failure count for each timer.`,
 			cronExpression,
 			timezone,
 			enabled,
+			notify,
 		}: {
 			timerId: string;
 			cronExpression?: string;
 			timezone?: string;
 			enabled?: boolean;
+			notify?: TimerNotifyMode;
 		}) => {
 			const existing = await store.getById(timerId);
 			if (!existing || existing.userId !== options.callerId) {
@@ -265,6 +281,7 @@ last run time, and consecutive failure count for each timer.`,
 				timezone,
 				enabled,
 				nextRunAt,
+				notify,
 			});
 
 			if (!updated) {
@@ -275,6 +292,7 @@ last run time, and consecutive failure count for each timer.`,
 			if (cronExpression) changes.push(`cron expression changed to '${cronExpression}'`);
 			if (timezone) changes.push(`timezone changed to '${timezone}'`);
 			if (enabled !== undefined) changes.push(`enabled changed to ${enabled}`);
+			if (notify !== undefined) changes.push(`notify changed to ${notify}`);
 
 			if (changes.length === 0) {
 				return "No changes provided.";
@@ -284,7 +302,7 @@ last run time, and consecutive failure count for each timer.`,
 		},
 		{
 			name: "update_timer",
-			description: `Update an existing timer's schedule, timezone, or enabled state.
+			description: `Update an existing timer's schedule, timezone, notification mode, or enabled state.
 
 Only provided fields are updated. If cron expression changes, next run time is recomputed.`,
 			schema: z.object({
@@ -298,6 +316,10 @@ Only provided fields are updated. If cron expression changes, next run time is r
 					.optional()
 					.describe("New timezone (e.g., 'America/New_York')"),
 				enabled: z.boolean().optional().describe("Enable or disable the timer"),
+				notify: z
+					.enum(["verbose", "summary", "errors_only", "silent"])
+					.optional()
+					.describe("Notification mode: verbose, summary, errors_only, or silent"),
 			}),
 		},
 	);

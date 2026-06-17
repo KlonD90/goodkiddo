@@ -23,10 +23,17 @@ export const ARCHIVE_HEADING = "## Archive";
 export const INDEX_HEADING = "## Index";
 
 // Hard cap for the memory block injected into the system prompt. ~4 chars/token
-// gives roughly 1500 tokens — fits comfortably alongside the identity prompt.
+// gives roughly 6000 tokens — a good default for Kimi K2.6's 256K context window.
+// Override with MEMORY_PROMPT_CHAR_CAP for smaller models.
 // NOTE: 4 chars/token is an approximation; non-English text (especially CJK/Russian
 // characters) may encode at 2–3 chars/token, so actual token count varies.
-export const MEMORY_PROMPT_CHAR_CAP = 6000;
+export function getMemoryPromptCharCap(): number {
+	const envValue = Number(process.env.MEMORY_PROMPT_CHAR_CAP);
+	return Number.isSafeInteger(envValue) && envValue > 0 ? envValue : 24000;
+}
+
+/** @deprecated Use getMemoryPromptCharCap() for fresh reads. */
+export const MEMORY_PROMPT_CHAR_CAP = getMemoryPromptCharCap();
 
 // Lint thresholds (conservative defaults; tune once we have real sessions).
 export const LINT_STALE_DAYS = 60;

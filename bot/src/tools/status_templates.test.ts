@@ -635,7 +635,10 @@ describe("status_templates", () => {
 			test("tabular_filter en", () => {
 				const result = renderStatus(
 					"tabular_filter",
-					{ path: "/data.csv", where: [{ column: "age", op: "gt", value: 18 }] },
+					{
+						path: "/data.csv",
+						where: [{ column: "age", op: "gt", value: 18 }],
+					},
 					"en",
 				);
 				expect(result?.message).toBe("Filtering rows in /data.csv");
@@ -704,7 +707,9 @@ describe("status_templates", () => {
 					"tabular_filter",
 					"tabular_aggregate",
 				]) {
-					expect(hasTemplate(name), `${name} should have a template`).toBe(true);
+					expect(hasTemplate(name), `${name} should have a template`).toBe(
+						true,
+					);
 				}
 			});
 		});

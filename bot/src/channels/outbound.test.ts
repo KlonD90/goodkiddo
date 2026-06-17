@@ -4,6 +4,9 @@ import type { Bot } from "grammy";
 import { CliOutboundChannel } from "./cli";
 import { TelegramOutboundChannel } from "./telegram";
 
+const wait = (ms: number): Promise<void> =>
+	new Promise((resolve) => setTimeout(resolve, ms));
+
 describe("OutboundChannel sendStatus", () => {
 	describe("CliOutboundChannel", () => {
 		test("writes prefixed status line to stream", async () => {
@@ -40,7 +43,7 @@ describe("OutboundChannel sendStatus", () => {
 	});
 
 	describe("TelegramOutboundChannel", () => {
-		test("sends message to resolved chatId", async () => {
+		function createMockBot() {
 			const sentMessages: Array<{ chatId: string; text: string }> = [];
 			const mockBot = {
 				api: {
@@ -51,15 +54,67 @@ describe("OutboundChannel sendStatus", () => {
 						}),
 				},
 			} as unknown as Bot;
+			return { mockBot, sentMessages };
+		}
 
-			const channel = new TelegramOutboundChannel(mockBot, (callerId) =>
-				callerId === "telegram:123" ? "123" : null,
+		test("sends message to resolved chatId after debounce window", async () => {
+			const { mockBot, sentMessages } = createMockBot();
+
+			const channel = new TelegramOutboundChannel(
+				mockBot,
+				(callerId) => (callerId === "telegram:123" ? "123" : null),
+				5,
 			);
 
 			await channel.sendStatus("telegram:123", "Running workspace script");
+			expect(sentMessages).toEqual([]);
+
+			await wait(10);
 
 			expect(sentMessages).toEqual([
 				{ chatId: "123", text: "Running workspace script" },
+			]);
+		});
+
+		test("collapses rapid calls into the most recent message", async () => {
+			const { mockBot, sentMessages } = createMockBot();
+
+			const channel = new TelegramOutboundChannel(
+				mockBot,
+				(callerId) => (callerId === "telegram:123" ? "123" : null),
+				50,
+			);
+
+			await channel.sendStatus("telegram:123", "first");
+			await channel.sendStatus("telegram:123", "second");
+			await channel.sendStatus("telegram:123", "third");
+
+			await wait(10);
+			expect(sentMessages).toEqual([]);
+
+			await wait(60);
+
+			expect(sentMessages).toEqual([{ chatId: "123", text: "third" }]);
+		});
+
+		test("tracks debounce state per callerId", async () => {
+			const { mockBot, sentMessages } = createMockBot();
+
+			const channel = new TelegramOutboundChannel(
+				mockBot,
+				(callerId) =>
+					callerId.startsWith("telegram:") ? callerId.slice(9) : null,
+				50,
+			);
+
+			await channel.sendStatus("telegram:1", "a");
+			await channel.sendStatus("telegram:2", "b");
+
+			await wait(60);
+
+			expect(sentMessages).toEqual([
+				{ chatId: "1", text: "a" },
+				{ chatId: "2", text: "b" },
 			]);
 		});
 
@@ -70,9 +125,10 @@ describe("OutboundChannel sendStatus", () => {
 				},
 			} as unknown as Bot;
 
-			const channel = new TelegramOutboundChannel(mockBot, () => null);
+			const channel = new TelegramOutboundChannel(mockBot, () => null, 5);
 
 			await channel.sendStatus("telegram:unknown", "Reading a.md");
+			await wait(10);
 
 			expect(mockBot.api.sendMessage).not.toHaveBeenCalled();
 		});
@@ -84,13 +140,17 @@ describe("OutboundChannel sendStatus", () => {
 				},
 			} as unknown as Bot;
 
-			const channel = new TelegramOutboundChannel(mockBot, (callerId) =>
-				callerId === "telegram:123" ? "123" : null,
+			const channel = new TelegramOutboundChannel(
+				mockBot,
+				(callerId) => (callerId === "telegram:123" ? "123" : null),
+				5,
 			);
 
 			await expect(
 				channel.sendStatus("telegram:123", "Reading a.md"),
 			).resolves.toBeUndefined();
+			await wait(10);
+			expect(mockBot.api.sendMessage).toHaveBeenCalledTimes(1);
 		});
 	});
 });

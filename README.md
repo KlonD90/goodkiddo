@@ -8,6 +8,15 @@ Security-aware AI agent harness built with TypeScript and Bun.
 - Docker sandbox today, Firecracker path where supported
 - CLI and Telegram entrypoints, including Telegram photo, voice, PDF document handling, spreadsheets, scheduled timers, and one-time reminders
 
+## Memory & K2.6 defaults
+
+GoodKiddo is tuned for Kimi K2.6 out of the box:
+
+- `AI_TYPE=kimi` with `AI_MODEL_NAME=kimi-k2-6` and Moonshot's OpenAI-compatible endpoint (`https://api.moonshot.cn/v1`) are the production defaults.
+- `MAX_CONTEXT_WINDOW_TOKENS=200000` leaves headroom inside K2.6's 256K context window.
+- `MEMORY_PROMPT_CHAR_CAP=24000` (~6000 tokens) lets the eager-loaded memory wiki scale with the larger context; override it for smaller models.
+- Compaction summarizes older conversation into a structured `CheckpointSummary` with a dedicated `critical_facts` array. Explicit "remember this" facts, active goals, hard constraints, unfinished work, pending approvals, and named artifacts/IDs are preserved and re-injected into the runtime context, so compaction does not silently forget them.
+
 ## Run
 
 Requirements: `bun`, `docker`, model API access.
@@ -45,7 +54,10 @@ with `bun run db:migrate`. The runtime starts a Prisma client and routes user
 state through a model mapped to the existing
 `harness_users` table. `sqlite://...` runtime URLs are no longer supported.
 `AI_API_KEY` may be empty when you point the app at a local/custom model
-endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` still requires a key.
+endpoint with `AI_BASE_URL`. `AI_TYPE=openrouter` and `AI_TYPE=kimi` still
+require a key. GoodKiddo has native Kimi K2.6 support via Moonshot's
+OpenAI-compatible API; set `AI_TYPE=kimi` and `AI_MODEL_NAME=kimi-k2-6`
+(defaults are applied automatically).
 Agent sampling uses `AI_TEMPERATURE=1.0` for the main agent and
 `AI_SUB_AGENT_TEMPERATURE=0.4` for delegated sub-agents by default. The lower
 sub-agent default keeps research and web-search synthesis more factual while
@@ -67,11 +79,15 @@ Telegram image understanding through MiniMax MCP is opt-in. Set
 `MINIMAX_API_HOST` for the account region. The MCP server is launched with
 `uvx minimax-coding-plan-mcp -y`, so `uvx` must be installed and available on
 `PATH`.
-Large attachment handling uses `MAX_CONTEXT_WINDOW_TOKENS=150000`,
+Context handling is tuned for Kimi K2.6 by default:
+`MAX_CONTEXT_WINDOW_TOKENS=200000`,
 `CONTEXT_RESERVE_SUMMARY_TOKENS=2000`,
 `CONTEXT_RESERVE_RECENT_TURN_TOKENS=2000`, and
-`CONTEXT_RESERVE_NEXT_TURN_TOKENS=2000` by default; override them to tune how
-much context is reserved for summaries, recent turns, and the next turn.
+`CONTEXT_RESERVE_NEXT_TURN_TOKENS=2000`. Override them to tune how much
+context is reserved for summaries, recent turns, and the next turn on smaller
+models. The memory prompt cap defaults to `MEMORY_PROMPT_CHAR_CAP=24000`
+(~6000 tokens) so the eager-loaded memory wiki can scale with K2.6's 256K
+context window; set it lower for smaller models.
 Telegram also emits an ephemeral attachment-compaction notice by default;
 set `ENABLE_ATTACHMENT_COMPACTION_NOTICE=false` to disable only that notice,
 not the underlying compaction behavior.
@@ -83,7 +99,14 @@ needs a timezone and it is not known, the agent asks for it and saves it to
 `USER.md`. `USER.md` remains the canonical durable user profile; successful
 profile writes mark the agent prompt for rebuild so the next turn sees the
 updated timezone, and compaction refreshes the rebuilt prompt with active
-checkpoint context. The web UI binds to `WEB_HOST=127.0.0.1` by default; set
+checkpoint context.
+
+Recurring timers support notification modes (`verbose`, `summary`,
+`errors_only`, `silent`) via the `TIMER_NOTIFY_MODE_DEFAULT` environment
+variable, which defaults to `summary` so new timers are quiet. Set
+`TELEGRAM_STATUS_DEBOUNCE_MS` (default `5000`) to collapse rapid Telegram
+status updates into one message. See `bot/src/capabilities/timers/README.md`
+for details. The web UI binds to `WEB_HOST=127.0.0.1` by default; set
 `WEB_HOST` explicitly if you need it reachable on another interface.
 
 ```bash
