@@ -1,0 +1,68 @@
+{
+  "published_baseline": "dd9faa9e17d9b8b783c52c6af182f5bcc28dc476",
+  "source_snapshot": "5a0e39c1474943110728afbfa6a0174dfb123de5",
+  "source_commits": [
+    {
+      "commit": "7a7b6716bd89cb147c1b5eb1eb4ef6bd5c4cb65e",
+      "base": "5a0e39c1474943110728afbfa6a0174dfb123de5"
+    },
+    {
+      "commit": "d604c3e2fedcb01b4582c0e87fd20549bce3258f",
+      "base": "d049a468d48cb7fe4517fdd5b485f0d72d1311f9"
+    }
+  ],
+  "patches": [
+    {
+      "path": "0001-voice.patch",
+      "sha256": "af952c40a34267f5324fc40074cdae4354e92004de09d9e240f85b8ad639bc79",
+      "bytes": 81049,
+      "changed_paths": [
+        "README.md",
+        "checks/assistant-voice.check.ts",
+        "checks/fixtures/file-assistant-config.ts",
+        "docs/telegram-assistant.md",
+        "docs/telegram-voice.md",
+        "docs/web-media-runtime.md",
+        "src/app/telegram-assistant.ts",
+        "src/assistant/core-test-fixtures.ts",
+        "src/assistant/ingress.ts",
+        "src/assistant/voice-intake.ts",
+        "src/channels/telegram-assistant-api.ts",
+        "src/config/assistant-config.ts",
+        "src/config/assistant-voice-config.ts",
+        "src/integrations/assistant-analytics-policy.ts",
+        "src/persistence/assistant-voice-store.ts",
+        "src/providers/assistant-voice.ts",
+        "src/shared/assistant-types.ts"
+      ],
+      "blocking_findings": {}
+    },
+    {
+      "path": "0002-voice-budget.patch",
+      "sha256": "6d4b9acf057c94d77cbdc221c30a17d094db94ce81ccbadaa75dae923e9d5e2b",
+      "bytes": 3492,
+      "changed_paths": [
+        "checks/assistant-voice.check.ts",
+        "checks/tsconfig-file-checks.json",
+        "docs/telegram-voice.md"
+      ],
+      "blocking_findings": {}
+    }
+  ],
+  "publication_exclusions": [
+    ".env.example"
+  ],
+  "publication_sanitization": "Remove operational inventory/production audit notes; replace environment-template documentation link with config source; generalize budget configuration guidance. Implementation and synthetic checks retained.",
+  "ordered_apply_check": "passed; resulting tree identical to the isolated tested tree",
+  "validated_tree": "8562c1f152c584c44bff378b1ff41885ff3d3397",
+  "synthetic_tests": {
+    "total": 128,
+    "voice": 28,
+    "assertions": 746
+  },
+  "checks": [
+    "full typecheck",
+    "strict restoration-check typecheck",
+    "active Bun entrypoint build"
+  ]
+}

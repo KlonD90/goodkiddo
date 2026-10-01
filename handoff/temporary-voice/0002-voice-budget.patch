@@ -1,0 +1,54 @@
+diff --git a/checks/assistant-voice.check.ts b/checks/assistant-voice.check.ts
+index 6c6ed7d..a5ccf23 100644
+--- a/checks/assistant-voice.check.ts
++++ b/checks/assistant-voice.check.ts
+@@ -182,6 +182,24 @@ test('feature/key/budget gates prevent downloads and paid calls', async () => {
+     s.store.close();
+   }
+ });
++test('zero shared service budget blocks paid voice before download even with its approved voice cap', async () => {
++  const s = setup();
++  s.c.monthlyBudget = 0;
++  try {
++    expect(await s.ingress.handle(update())).toBe('limited_voice');
++    expect(s.counts().downloads).toBe(0);
++    expect(s.counts().transcriptions).toBe(0);
++    expect(s.store.monthSpend()).toBe(0);
++    expect(
++      s.store.db
++        .query('SELECT COUNT(*) AS n FROM assistant_voice_requests')
++        .get(),
++    ).toEqual({ n: 0 });
++  } finally {
++    await s.ingress.voice.stop();
++    s.store.close();
++  }
++});
+ test('metadata limits reject oversize, too long, zero and invalid durations/MIME before download', async () => {
+   for (const voice of [
+     { duration: 121 },
+diff --git a/checks/tsconfig-file-checks.json b/checks/tsconfig-file-checks.json
+index 117abc5..b69ce68 100644
+--- a/checks/tsconfig-file-checks.json
++++ b/checks/tsconfig-file-checks.json
+@@ -15,6 +15,7 @@
+     "./assistant-media.check.ts",
+     "./assistant-delivery.check.ts",
+     "./assistant-recurring-integration.check.ts",
++    "./assistant-voice.check.ts",
+     "../src/assistant/prompt-jobs.test.ts",
+     "./analytics/assistant-analytics.test.ts",
+     "./analytics/landing-analytics.test.ts"
+diff --git a/docs/telegram-voice.md b/docs/telegram-voice.md
+index 6a2e55c..51b55a1 100644
+--- a/docs/telegram-voice.md
++++ b/docs/telegram-voice.md
+@@ -34,6 +34,8 @@ Conservative reservations can stop calls before all $5 is used. For example 416
+ 
+ See `src/config/assistant-voice-config.ts`: `ENABLE_VOICE_MESSAGES=false`, `TRANSCRIPTION_API_KEY`, `VOICE_MONTHLY_BUDGET_USD=5` (0–5), `VOICE_USD_PER_MINUTE=0.006` (minimum 0.006), `VOICE_MAX_SECONDS=120` (1–120), `VOICE_DAILY_PER_USER=5`, `VOICE_DAILY_PER_CHAT=10`, `VOICE_TIMEOUT_MS=60000` (at most 60000), `VOICE_FFMPEG_PATH=/usr/bin/ffmpeg` (absolute trusted path). There is no configurable provider/base URL/model or implicit chat-key reuse. `LLM_MONTHLY_BUDGET_USD` remains an additional shared spend ceiling.
+ 
++A shared `LLM_MONTHLY_BUDGET_USD=0` ceiling blocks transcription before download even when a key, voice enable flag and independent voice cap are configured. For voice operation within the $5 cap, the shared ceiling must also permit that spending. Preserve any free chat provider/model and its zero input/output prices; enabling voice does not activate a paid chat fallback. Both ceilings remain enforced, including shared spend from other configured capabilities. Source integration does not change deployed budget or credential settings.
++
+ ## Offline verification
+ 
+ `bun test ./checks/assistant-voice.check.ts` uses mocked Telegram and OpenAI HTTP, private test SQLite and locally generated tones only. It checks attribution/group gating/forwards, command isolation, enabled/key/budget gates, quotas/concurrency, streamed download bounds, owner cancellation, `/clear`, timeout, safe provider failures, refunds and ambiguous billing, duplicates/restarts, multiple DB connections, the $5 cap, Asia/Tbilisi month rollover, privacy allowlists and actual local FFmpeg decoding/overlength rejection. No recorded user audio is used.

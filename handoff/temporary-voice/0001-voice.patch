@@ -1,0 +1,1773 @@
+diff --git a/README.md b/README.md
+index 2af06c8..08f23bd 100644
+--- a/README.md
++++ b/README.md
+@@ -26,6 +26,7 @@
+ - `/timezone Europe/Moscow` — часовой пояс чата; в группе доступно администратору. Уже сохранённые моменты времени не сдвигаются.
+ - `/tasks` — активные напоминания и встречи.
+ - `/cancel ID` — отмена своей задачи.
++- `/cancel_voice` — отмена своего текущего распознавания голоса.
+ - `/clear` — удаление контекста беседы; в группе доступно администратору. Запланированные задачи сохраняются.
+ - `/privacy` — краткое описание обработки данных.
+ 
+@@ -37,6 +38,8 @@
+ 
+ PostHog включается через `POSTHOG_PROJECT_KEY` и постоянный `ANALYTICS_SALT`. Аналитика содержит только события, счётчики и HMAC-идентификаторы. Тексты, имена и Telegram username в PostHog не отправляются. Локальная база содержит контекст и данные задач, поэтому её следует хранить как приватные данные.
+ 
++Голосовые подключаются отдельно через `ENABLE_VOICE_MESSAGES=true` и существующий `TRANSCRIPTION_API_KEY` OpenAI. Используется `whisper-1`; нужен установленный FFmpeg. До подключения ключа голос выключен. Жёсткий общий бюджет распознавания — максимум **$5 в календарный месяц Asia/Tbilisi**, с постоянными резервами SQLite до вызова API; его можно уменьшить. Вход ограничен 1 МиБ и 120 секундами, дневными квотами и таймаутами. Расшифровка проходит как обычный запрос от исходного автора в исходном чате, ответ приходит текстом. Аудио не сохраняется ботом; OpenAI получает ограниченный WAV, PostHog — только отметку вида входа. Подробнее: [docs/telegram-voice.md](docs/telegram-voice.md).
++
+ Подробности реализации и известные ограничения: [docs/telegram-assistant.md](docs/telegram-assistant.md).
+ 
+ ## Разработка
+diff --git a/checks/assistant-voice.check.ts b/checks/assistant-voice.check.ts
+new file mode 100644
+index 0000000..6c6ed7d
+--- /dev/null
++++ b/checks/assistant-voice.check.ts
+@@ -0,0 +1,686 @@
++import { test, expect } from 'bun:test';
++import { mkdtempSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import path from 'node:path';
++import { AssistantStore } from '../src/persistence/assistant-store.ts';
++import {
++  AssistantVoiceStore,
++  voiceBudgetMonth,
++  voiceReservedCost,
++} from '../src/persistence/assistant-voice-store.ts';
++import { AssistantIngress } from '../src/assistant/ingress.ts';
++import { AssistantAnalytics } from '../src/integrations/assistant-analytics.ts';
++import {
++  TelegramAssistantApi,
++  type TelegramUpdate,
++} from '../src/channels/telegram-assistant-api.ts';
++import {
++  OpenAiWhisperVoice,
++  type VoiceProvider,
++} from '../src/providers/assistant-voice.ts';
++import { clearChatContext } from '../src/assistant/context.ts';
++import { fileConfig } from './fixtures/file-assistant-config.ts';
++
++const TEST_FFMPEG =
++  process.env.VOICE_TEST_FFMPEG_PATH ||
++  (process.platform === 'darwin'
++    ? '/opt/homebrew/bin/ffmpeg'
++    : '/usr/bin/ffmpeg');
++
++function config() {
++  const c = fileConfig();
++  c.monthlyBudget = 30;
++  c.voice = {
++    ...c.voice,
++    enabled: true,
++    apiKey: 'synthetic-only',
++    monthlyBudget: 5,
++  };
++  return c;
++}
++function update(
++  id = 1,
++  type: 'private' | 'supergroup' = 'private',
++  user = 3,
++  chat = type === 'private' ? 1 : -1,
++): TelegramUpdate {
++  return {
++    update_id: id,
++    message: {
++      message_id: id,
++      chat: { id: chat, type },
++      from: { id: user, first_name: 'Synthetic' },
++      voice: {
++        file_id: 'synthetic',
++        duration: 5,
++        file_size: 40,
++        mime_type: 'audio/ogg',
++      },
++      message_thread_id: 7,
++      date: 1790849589,
++    },
++  };
++}
++function setup(provider?: VoiceProvider) {
++  const c = config(),
++    store = new AssistantStore(':memory:');
++  let downloads = 0,
++    transcriptions = 0;
++  const api = {
++    downloadDocument: async () => {
++      downloads++;
++      return new TextEncoder().encode('OggSsynthetic');
++    },
++    call: async () => ({ status: 'administrator' }),
++  } as unknown as TelegramAssistantApi;
++  const p: VoiceProvider = provider || {
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async () => {
++      transcriptions++;
++      return 'Напомни позвонить завтра';
++    },
++  };
++  const analytics = new AssistantAnalytics(c, store);
++  const ingress = new AssistantIngress(
++    store,
++    c,
++    analytics,
++    api,
++    { id: 99, username: 'goodkiddo_bot' },
++    p,
++  );
++  return {
++    c,
++    store,
++    ingress,
++    api,
++    counts: () => ({ downloads, transcriptions }),
++    receipt: (id = 1) => new AssistantVoiceStore(store).receipt(id),
++    replies: () =>
++      store.db.query('SELECT text FROM assistant_outbox').all() as {
++        text: string;
++      }[],
++  };
++}
++function blocked(signal: AbortSignal): Promise<string> {
++  return new Promise((_, reject) =>
++    signal.addEventListener(
++      'abort',
++      () => reject(new Error('synthetic abort')),
++      { once: true },
++    ),
++  );
++}
++
++test('voice reaches the normal inbox with original author/chat/topic/date and single accepted event', async () => {
++  const s = setup();
++  expect(await s.ingress.handle(update())).toBe('processing_voice');
++  await s.ingress.voice.idle();
++  const request = s.store.nextRequest()!;
++  expect(request.actor.id).toBe('3');
++  expect(request.chat.id).toBe('1');
++  expect(request.messageThreadId).toBe(7);
++  expect(request.userText).toBe('Напомни позвонить завтра');
++  expect(request.messageAt).toBeTruthy();
++  expect(request.inputType).toBe('voice');
++  expect(s.receipt()?.status).toBe('completed');
++  expect(s.receipt()?.cost_usd).toBe(0.006);
++  expect(s.counts()).toEqual({ downloads: 1, transcriptions: 1 });
++  expect(await s.ingress.handle(update())).toBe('duplicate_voice');
++  expect(s.counts().transcriptions).toBe(1);
++  await s.ingress.voice.stop();
++  s.store.close();
++});
++test('unaddressed groups, bot senders, channels and forwarded voices never download', async () => {
++  const s = setup();
++  expect(await s.ingress.handle(update(1, 'supergroup'))).toBe(
++    'ignored_unaddressed',
++  );
++  const bot = update(2);
++  bot.message!.from!.is_bot = true;
++  await s.ingress.handle(bot);
++  const forward = update(3);
++  forward.message!.forward_origin = { type: 'hidden_user', date: 1 };
++  expect(await s.ingress.handle(forward)).toBe('rejected_forwarded_voice');
++  const channel = update(4);
++  channel.message!.chat.type = 'channel';
++  await s.ingress.handle(channel);
++  expect(s.counts().downloads).toBe(0);
++  s.store.close();
++});
++test('a reply to this bot accepts group voice with the current author', async () => {
++  const s = setup(),
++    u = update(1, 'supergroup');
++  u.message!.reply_to_message = { from: { id: 99 } };
++  expect(await s.ingress.handle(u)).toBe('processing_voice');
++  await s.ingress.voice.idle();
++  expect(s.store.nextRequest()!.interaction).toBe('reply');
++  expect(s.store.nextRequest()!.actor.id).toBe('3');
++  s.store.close();
++});
++test('transcribed slash text and captions do not execute control commands', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 1 }),
++    transcribe: async () => '/clear',
++  });
++  const u = update();
++  u.message!.caption = '/clear';
++  await s.ingress.handle(u);
++  await s.ingress.voice.idle();
++  expect(s.store.contextVersion('1')).toBe(0);
++  expect(s.store.nextRequest()!.userText).toContain('/clear');
++  s.store.close();
++});
++test('feature/key/budget gates prevent downloads and paid calls', async () => {
++  for (const gate of ['enabled', 'apiKey', 'monthlyBudget'] as const) {
++    const s = setup();
++    if (gate === 'enabled') s.c.voice.enabled = false;
++    else if (gate === 'apiKey') s.c.voice.apiKey = '';
++    else s.c.voice.monthlyBudget = 0;
++    expect(await s.ingress.handle(update())).toBe('unsupported_voice');
++    expect(s.counts().downloads).toBe(0);
++    s.store.close();
++  }
++});
++test('metadata limits reject oversize, too long, zero and invalid durations/MIME before download', async () => {
++  for (const voice of [
++    { duration: 121 },
++    { duration: 0 },
++    { duration: NaN },
++    { file_size: 1_048_577 },
++    { mime_type: 'text/html' },
++  ]) {
++    const s = setup(),
++      u = update();
++    Object.assign(u.message!.voice!, voice);
++    expect(await s.ingress.handle(u)).toBe('rejected_voice');
++    expect(s.counts().downloads).toBe(0);
++    s.store.close();
++  }
++});
++test('daily persisted voice quotas prevent another call while text still queues', async () => {
++  const s = setup();
++  s.c.voice.dailyUser = 1;
++  await s.ingress.handle(update());
++  await s.ingress.voice.idle();
++  expect(await s.ingress.handle(update(2))).toBe('limited_voice');
++  const text = update(3);
++  delete text.message!.voice;
++  text.message!.text = 'Обычная задача';
++  expect(await s.ingress.handle(text)).toBe('enqueued_message');
++  expect(s.counts().transcriptions).toBe(1);
++  s.store.close();
++});
++test('in-flight voice does not block commands and owner cancellation aborts without queuing a transcript', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async (_, signal) => blocked(signal),
++  });
++  await s.ingress.handle(update());
++  await new Promise((r) => setTimeout(r, 1));
++  expect(await s.ingress.handle(update(2))).toBe('busy_voice');
++  const cancel = update(3);
++  delete cancel.message!.voice;
++  cancel.message!.text = '/cancel_voice';
++  expect(await s.ingress.handle(cancel)).toBe('command');
++  await s.ingress.voice.idle();
++  expect(s.store.nextRequest()).toBeUndefined();
++  expect(s.receipt()?.status).toBe('cancelled');
++  expect(s.receipt()?.cost_usd).toBe(0.012);
++  s.store.close();
++});
++test('another owner or chat cannot cancel voice', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async (_, signal) => blocked(signal),
++  });
++  await s.ingress.handle(update());
++  expect(s.ingress.voice.cancel('1', '4')).toBe(0);
++  expect(s.ingress.voice.cancel('-1', '3')).toBe(0);
++  await s.ingress.voice.stop();
++  s.store.close();
++});
++test('/clear cancels voice and suppresses stale transcript and voice failure reply', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async (_, signal) => blocked(signal),
++  });
++  await s.ingress.handle(update());
++  await new Promise((r) => setTimeout(r, 1));
++  clearChatContext(s.store, '1');
++  await s.ingress.voice.idle();
++  expect(s.store.nextRequest()).toBeUndefined();
++  expect(s.receipt()?.status).toBe('cancelled');
++  expect(s.replies().some((r) => r.text.includes('недоступно'))).toBe(false);
++  s.store.close();
++});
++test('timeout is bounded, keeps submitted reservation and emits a safe failure', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async (_, signal) => blocked(signal),
++  });
++  s.c.voice.timeoutMs = 10;
++  await s.ingress.handle(update());
++  await s.ingress.voice.idle();
++  expect(s.receipt()?.cost_usd).toBe(0.012);
++  expect(s.store.nextRequest()).toBeUndefined();
++  expect(s.replies().some((r) => r.text.includes('недоступно'))).toBe(true);
++  s.store.close();
++});
++test('failed preparation refunds reservation and never calls transcription', async () => {
++  let calls = 0;
++  const s = setup({
++    prepare: async () => {
++      throw new Error('synthetic token-bearing URL');
++    },
++    transcribe: async () => {
++      calls++;
++      return 'x';
++    },
++  });
++  await s.ingress.handle(update());
++  await s.ingress.voice.idle();
++  expect(calls).toBe(0);
++  expect(s.receipt()?.cost_usd).toBe(0);
++  expect(JSON.stringify(s.replies())).not.toContain('token-bearing');
++  s.store.close();
++});
++test('unknown decoded duration or overlimit audio prevents paid call', async () => {
++  for (const seconds of [NaN, 0, 121]) {
++    let calls = 0;
++    const s = setup({
++      prepare: async () => ({ bytes: new Uint8Array(44), seconds }),
++      transcribe: async () => {
++        calls++;
++        return 'x';
++      },
++    });
++    await s.ingress.handle(update());
++    await s.ingress.voice.idle();
++    expect(calls).toBe(0);
++    expect(s.receipt()?.cost_usd).toBe(0);
++    s.store.close();
++  }
++});
++test('provider upload failure keeps the reservation, remains deduplicated and cannot break text intake', async () => {
++  const s = setup({
++    prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
++    transcribe: async () => {
++      throw new Error('synthetic key and audio text');
++    },
++  });
++  await s.ingress.handle(update());
++  await s.ingress.voice.idle();
++  expect(s.receipt()?.cost_usd).toBe(0.012);
++  expect(await s.ingress.handle(update())).toBe('duplicate_voice');
++  expect(JSON.stringify(s.replies())).not.toContain('synthetic key');
++  const u = update(2);
++  delete u.message!.voice;
++  u.message!.text = '/help';
++  expect(await s.ingress.handle(u)).toBe('command');
++  s.store.close();
++});
++test('global 5 USD limit is persisted and enforced across database connections', () => {
++  const dir = mkdtempSync(path.join(tmpdir(), 'voice-budget-')),
++    db = path.join(dir, 'test.db');
++  const a = new AssistantStore(db),
++    b = new AssistantStore(db),
++    ca = new AssistantVoiceStore(a),
++    cb = new AssistantVoiceStore(b),
++    c = config();
++  try {
++    for (let i = 0; i < 416; i++)
++      (i % 2 ? ca : cb).reserve(
++        {
++          update_id: i,
++          chat_id: String(i),
++          user_id: String(i),
++          thread_id: null,
++          context_version: 0,
++        },
++        c,
++      );
++    expect(a.monthSpend()).toBeCloseTo(4.992);
++    expect(() =>
++      cb.reserve(
++        {
++          update_id: 999,
++          chat_id: 'x',
++          user_id: 'x',
++          thread_id: null,
++          context_version: 0,
++        },
++        c,
++      ),
++    ).toThrow('расходов');
++    expect(() =>
++      ca.reserve(
++        {
++          update_id: 0,
++          chat_id: '0',
++          user_id: '0',
++          thread_id: null,
++          context_version: 0,
++        },
++        c,
++      ),
++    ).toThrow();
++    expect(a.monthSpend()).toBeCloseTo(4.992);
++  } finally {
++    a.close();
++    b.close();
++    rmSync(dir, { recursive: true, force: true });
++  }
++});
++test('restart preserves ambiguous spend and never repeats transcription', async () => {
++  const s = setup();
++  const receipt = new AssistantVoiceStore(s.store);
++  receipt.reserve(
++    {
++      update_id: 1,
++      chat_id: '1',
++      user_id: '3',
++      thread_id: 7,
++      context_version: 0,
++    },
++    s.c,
++  );
++  receipt.submit(1, s.c);
++  const newIngress = new AssistantIngress(
++    s.store,
++    s.c,
++    new AssistantAnalytics(s.c, s.store),
++    s.api,
++    { id: 99 },
++  );
++  expect(s.receipt()?.status).toBe('interrupted');
++  expect(s.receipt()?.cost_usd).toBe(0.012);
++  expect(await newIngress.handle(update())).toBe('duplicate_voice');
++  expect(s.counts().transcriptions).toBe(0);
++  s.store.close();
++});
++test('budget month uses Asia/Tbilisi boundary and decoded cost rounds conservatively', () => {
++  expect(voiceBudgetMonth(new Date('2026-09-30T19:59:59Z'))).toBe('2026-09');
++  expect(voiceBudgetMonth(new Date('2026-09-30T20:00:00Z'))).toBe('2026-10');
++  expect(voiceReservedCost(60.01, 0.006)).toBe(0.012);
++  expect(voiceReservedCost(0.5, 0.006)).toBe(0.006);
++});
++test('upload-time check cannot bypass new month cap with an old month reservation', () => {
++  const s = setup(),
++    receipts = new AssistantVoiceStore(s.store);
++  receipts.reserve(
++    {
++      update_id: 1,
++      chat_id: '1',
++      user_id: '3',
++      thread_id: null,
++      context_version: 0,
++    },
++    s.c,
++  );
++  s.store.db
++    .query(
++      "UPDATE assistant_voice_requests SET budget_month='2000-01' WHERE update_id=1",
++    )
++    .run();
++  receipts.reserve(
++    {
++      update_id: 2,
++      chat_id: '2',
++      user_id: '4',
++      thread_id: null,
++      context_version: 0,
++    },
++    s.c,
++  );
++  s.store.db
++    .query('UPDATE assistant_voice_requests SET cost_usd=5 WHERE update_id=2')
++    .run();
++  expect(() => receipts.submit(1, s.c)).toThrow('расходов');
++  s.store.close();
++});
++test('provider posts only WAV and whisper-1 to fixed OpenAI endpoint with no transcript context', async () => {
++  const c = config();
++  let calls = 0;
++  const p = new OpenAiWhisperVoice(c.voice, (async (
++    url: Parameters<typeof fetch>[0],
++    init?: Parameters<typeof fetch>[1],
++  ) => {
++    calls++;
++    expect(url).toBe('https://api.openai.com/v1/audio/transcriptions');
++    expect(init?.redirect).toBe('error');
++    const form = init!.body as FormData;
++    expect(form.get('model')).toBe('whisper-1');
++    expect(form.get('prompt')).toBeNull();
++    expect((form.get('file') as File).name).toBe('voice.wav');
++    return Response.json({ text: 'Тест' });
++  }) as unknown as typeof fetch);
++  expect(
++    await p.transcribe(
++      { bytes: new Uint8Array(44), seconds: 1 },
++      new AbortController().signal,
++    ),
++  ).toBe('Тест');
++  expect(calls).toBe(1);
++});
++test('provider rejects errors, empty/invalid/oversize results without leaking body', async () => {
++  for (const response of [
++    new Response('SECRET provider error', { status: 401 }),
++    Response.json({ text: '' }),
++    new Response('{'),
++    Response.json({ text: 'x'.repeat(10001) }),
++    new Response('x'.repeat(64001)),
++  ]) {
++    const p = new OpenAiWhisperVoice(
++      config().voice,
++      (async () => response) as unknown as typeof fetch,
++    );
++    await expect(
++      p.transcribe(
++        { bytes: new Uint8Array(44), seconds: 1 },
++        new AbortController().signal,
++      ),
++    ).rejects.toThrow();
++  }
++});
++
++test('voice analytics contains only safe input enum and pseudonyms, never transcript/audio', async () => {
++  const c = config();
++  c.posthogKey = 'synthetic-project';
++  c.analyticsSalt = 'synthetic-salt';
++  const store = new AssistantStore(':memory:');
++  const analytics = new AssistantAnalytics(c, store, () => ({
++    capture() {},
++    async flush() {},
++    async shutdown() {},
++  }));
++  const api = {
++    downloadDocument: async () => new Uint8Array(4),
++  } as unknown as TelegramAssistantApi;
++  const ingress = new AssistantIngress(
++    store,
++    c,
++    analytics,
++    api,
++    { id: 99 },
++    {
++      prepare: async () => ({ bytes: new Uint8Array(44), seconds: 1 }),
++      transcribe: async () => 'PRIVATE TRANSCRIPT',
++    },
++  );
++  await ingress.handle(update());
++  await ingress.voice.idle();
++  await ingress.handle(update());
++  const events = store.db
++    .query('SELECT payload FROM assistant_events')
++    .all() as { payload: string }[];
++  expect(events.length).toBe(2);
++  expect(
++    events.every(
++      (e) => JSON.parse(e.payload).properties.input_type === 'voice',
++    ),
++  ).toBe(true);
++  expect(JSON.stringify(events)).not.toContain('PRIVATE TRANSCRIPT');
++  expect(JSON.stringify(events)).not.toContain('file_id');
++  store.close();
++});
++test('Telegram voice file download is streamed/bounded and accepts cancellation without exposing token', async () => {
++  const previous = globalThis.fetch;
++  try {
++    globalThis.fetch = (async (
++      url: Parameters<typeof fetch>[0],
++      init?: Parameters<typeof fetch>[1],
++    ) => {
++      if (String(url).includes('/getFile'))
++        return Response.json({
++          ok: true,
++          result: { file_path: 'voice/test.ogg' },
++        });
++      expect(init?.signal).toBeDefined();
++      return new Response(new Uint8Array(9), {
++        headers: { 'Content-Length': '9' },
++      });
++    }) as unknown as typeof fetch;
++    const api = new TelegramAssistantApi('synthetic-only');
++    await expect(
++      api.downloadDocument('synthetic', 8, new AbortController().signal),
++    ).rejects.toThrow('размер');
++    let called = 0;
++    globalThis.fetch = (async (
++      _: Parameters<typeof fetch>[0],
++      init?: Parameters<typeof fetch>[1],
++    ) => {
++      called++;
++      init?.signal?.throwIfAborted();
++      throw new Error('synthetic token URL');
++    }) as unknown as typeof fetch;
++    const stop = new AbortController();
++    stop.abort();
++    await expect(
++      api.downloadDocument('synthetic', 8, stop.signal),
++    ).rejects.toThrow('Telegram request failed');
++    expect(called).toBe(1);
++  } finally {
++    globalThis.fetch = previous;
++  }
++});
++
++// Generated tone only, no recorded user audio; the OpenAI HTTP call stays mocked.
++async function syntheticOgg(seconds: number): Promise<Uint8Array> {
++  const p = Bun.spawn(
++    [
++      TEST_FFMPEG,
++      '-nostdin',
++      '-hide_banner',
++      '-loglevel',
++      'error',
++      '-f',
++      'lavfi',
++      '-i',
++      'sine=frequency=440:sample_rate=16000',
++      '-t',
++      String(seconds),
++      '-c:a',
++      'libopus',
++      '-f',
++      'ogg',
++      'pipe:1',
++    ],
++    { stdout: 'pipe', stderr: 'ignore', env: {} },
++  );
++  const bytes = new Uint8Array(await new Response(p.stdout).arrayBuffer());
++  expect(await p.exited).toBe(0);
++  return bytes;
++}
++test('real local decoder emits bounded mono WAV and measures duration before mocked upload', async () => {
++  const c = config();
++  c.voice.ffmpegPath = TEST_FFMPEG;
++  const p = new OpenAiWhisperVoice(c.voice, (async () =>
++    Response.json({ text: 'Synthetic' })) as unknown as typeof fetch);
++  const prepared = await p.prepare(
++    await syntheticOgg(0.5),
++    new AbortController().signal,
++  );
++  expect(prepared.seconds).toBeCloseTo(0.5, 1);
++  expect(new TextDecoder().decode(prepared.bytes.subarray(0, 4))).toBe('RIFF');
++  expect(new DataView(prepared.bytes.buffer).getUint32(24, true)).toBe(16000);
++  expect(await p.transcribe(prepared, new AbortController().signal)).toBe(
++    'Synthetic',
++  );
++});
++test('actual decoded duration over cap and malformed Ogg are rejected before upload', async () => {
++  const c = config();
++  c.voice.ffmpegPath = TEST_FFMPEG;
++  c.voice.maxSeconds = 1;
++  const p = new OpenAiWhisperVoice(c.voice);
++  await expect(
++    p.prepare(await syntheticOgg(2.1), new AbortController().signal),
++  ).rejects.toThrow('секунд');
++  await expect(
++    p.prepare(
++      new TextEncoder().encode('OggSmalformed'),
++      new AbortController().signal,
++    ),
++  ).rejects.toThrow('прочитать');
++  await expect(
++    p.prepare(new Uint8Array(1_048_577), new AbortController().signal),
++  ).rejects.toThrow('1 МиБ');
++});
++
++test('regular task quota also blocks audio upload before any spend', async () => {
++  const s = setup();
++  s.c.dailyTasks = 1;
++  s.store.startRun(
++    'previous',
++    { id: '1', type: 'private', timezone: 'UTC', active: 1 },
++    '3',
++    'other',
++  );
++  expect(await s.ingress.handle(update())).toBe('limited_voice');
++  expect(s.counts().downloads).toBe(0);
++  expect(s.store.monthSpend()).toBe(0);
++  s.store.close();
++});
++
++test('configuration refuses to raise the approved cap or underestimate current Whisper rate', async () => {
++  const { loadVoiceConfig } =
++    await import('../src/config/assistant-voice-config.ts');
++  const budget = process.env.VOICE_MONTHLY_BUDGET_USD,
++    price = process.env.VOICE_USD_PER_MINUTE;
++  try {
++    process.env.VOICE_MONTHLY_BUDGET_USD = '5.01';
++    expect(() => loadVoiceConfig()).toThrow('VOICE_MONTHLY_BUDGET_USD');
++    process.env.VOICE_MONTHLY_BUDGET_USD = '5';
++    process.env.VOICE_USD_PER_MINUTE = '0.005';
++    expect(() => loadVoiceConfig()).toThrow('VOICE_USD_PER_MINUTE');
++    process.env.VOICE_USD_PER_MINUTE = '0.006';
++    expect(loadVoiceConfig().monthlyBudget).toBe(5);
++  } finally {
++    if (budget === undefined) delete process.env.VOICE_MONTHLY_BUDGET_USD;
++    else process.env.VOICE_MONTHLY_BUDGET_USD = budget;
++    if (price === undefined) delete process.env.VOICE_USD_PER_MINUTE;
++    else process.env.VOICE_USD_PER_MINUTE = price;
++  }
++});
++test('two global jobs block a third and shutdown aborts all without an upload', async () => {
++  const s = setup({
++    prepare: async (_, signal) => {
++      await blocked(signal);
++      throw new Error('unreachable');
++    },
++    transcribe: async () => {
++      throw new Error('must not upload');
++    },
++  });
++  expect(await s.ingress.handle(update(1, 'private', 3, 1))).toBe(
++    'processing_voice',
++  );
++  expect(await s.ingress.handle(update(2, 'private', 4, 2))).toBe(
++    'processing_voice',
++  );
++  expect(await s.ingress.handle(update(3, 'private', 5, 3))).toBe('busy_voice');
++  await s.ingress.voice.stop();
++  expect(s.receipt(1)?.cost_usd).toBe(0);
++  expect(s.receipt(2)?.cost_usd).toBe(0);
++  s.store.close();
++});
+diff --git a/checks/fixtures/file-assistant-config.ts b/checks/fixtures/file-assistant-config.ts
+index 761a2a6..20989f4 100644
+--- a/checks/fixtures/file-assistant-config.ts
++++ b/checks/fixtures/file-assistant-config.ts
+@@ -1,5 +1,6 @@
+ import type { AssistantConfig } from '../../src/config/assistant-config.ts';
+ import { DEFAULT_FILE_LIMITS } from '../../src/persistence/assistant-file-policy.ts';
++import { DEFAULT_VOICE_CONFIG } from '../../src/config/assistant-voice-config.ts';
+ 
+ export function fileConfig(): AssistantConfig {
+   return {
+@@ -22,6 +23,7 @@ export function fileConfig(): AssistantConfig {
+     braveKey: undefined,
+     searchCost: 0,
+     timezone: 'UTC',
++    voice: { ...DEFAULT_VOICE_CONFIG },
+     dbPath: ':memory:',
+     fileLimits: { ...DEFAULT_FILE_LIMITS },
+     fileShares: {
+diff --git a/docs/telegram-assistant.md b/docs/telegram-assistant.md
+index 19ab18c..1dc5a33 100644
+--- a/docs/telegram-assistant.md
++++ b/docs/telegram-assistant.md
+@@ -67,3 +67,5 @@ Per the user's instruction, automated tests, type checking, builds, live bot tri
+ # Web/media restoration
+ 
+ The connected runtime restores bounded supplied-URL reading, PDF/CSV/XLSX extraction, chat-scoped image understanding, native Telegram rich tables, private draft streaming and durable group preview edits. See [web-media-runtime.md](web-media-runtime.md) for configuration boundaries, delivery semantics, synthetic checks and the remaining voice requirement. File tool dispatch and document delivery holds remain in force. A final new-send timeout is retained as an uncertain receipt and is not automatically resent.
++
++Telegram voice now has an optional bounded OpenAI `whisper-1` intake with a persisted $5 monthly maximum in Asia/Tbilisi, owner cancellation and restart deduplication. It remains disabled until its existing OpenAI credential is configured. See [telegram-voice.md](telegram-voice.md); that implementation supersedes the earlier local-recognizer proposal in the media notes.
+diff --git a/docs/telegram-voice.md b/docs/telegram-voice.md
+new file mode 100644
+index 0000000..6a2e55c
+--- /dev/null
++++ b/docs/telegram-voice.md
+@@ -0,0 +1,45 @@
++# Telegram voice restoration
++
++## Current checkpoint and activation boundary
++
++This source checkpoint restores native Telegram voice intake through the fixed OpenAI Whisper endpoint. Voice is disabled by default and requires a privately configured `TRANSCRIPTION_API_KEY` and `ENABLE_VOICE_MESSAGES=true`. It never falls back to another key, provider or model.
++
++The configuration enforces at most $5 per calendar month in Asia/Tbilisi. The FFmpeg binary path is explicit operator configuration. Integrating this source does not configure credentials, start services, activate transcription or make paid API requests.
++
++## Data path and limits
++
++`AssistantIngress` applies the usual bot/channel/private/mention/reply gate before any download. An addressed native Telegram voice is accepted only from the current author; forwarded voice is rejected rather than executed as somebody else's instruction. Audio attachments/documents and voice-output/TTS are outside this change.
++
++`AssistantVoiceIntake` starts bounded background work, immediately allowing polling, commands, reminders and deliveries to continue. At most two voice jobs run globally and at most one per author or chat. Telegram download supports an abort signal and streaming byte limits; advertised and actual bytes cannot exceed **1 MiB**. Metadata and decoded audio cannot exceed **120 seconds**. UTC-day quotas default to five voices/author and ten/chat; regular task quota and the 100-item inbox bound also apply before upload.
++
++FFmpeg decodes one forced Ogg audio stream using fixed arguments, no shell, no files, no network protocols, no inherited environment/credentials, one decoder thread, a 16 MiB per-allocation bound, a 10-second kill timeout and a bounded PCM stdout. It stops after the configured duration plus one second, then rejects decoded overlength. Mono 16 kHz PCM becomes a WAV with a duration measured from decoded bytes. This bounds the audio actually sent independently of Telegram duration metadata. It is not an OS-level total-memory sandbox; FFmpeg is the existing trusted operator binary.
++
++OpenAI receives exactly `model=whisper-1`, `response_format=json` and `voice.wav` at the fixed HTTPS endpoint, with redirects forbidden and no automatic retries. No chat context, Telegram ID/name, filename or transcript prompt is supplied. Combined download/decode/upload wall time is at most 60 seconds, transcript JSON at most 64 KiB, text at most 10,000 characters. Errors expose only fixed safe messages.
++
++The transcript enters the ordinary `InboundRequest` queue with original author/chat/topic/time and context version; speech/captions cannot invoke slash commands. LLM task quotas and tool authorization remain in force. A normal response is text. Source audio, WAV and PCM stay in memory and are not persisted. Transcript text is stored/handled like an ordinary request. `/privacy` describes OpenAI/audio and LLM/text handling. `/cancel_voice` cancels only that user's in-flight transcription in that chat; `/clear` also aborts through the existing context registry and suppresses stale completion. Shutdown aborts and awaits active work before closing SQLite.
++
++Analytics reuses `bot_interaction` and `request_accepted`, with allowlisted `input_type=voice|text`; existing task/model/tool events follow as usual. There is no audio, transcript, file ID/name, raw Telegram ID or provider exception in PostHog. No synthetic test event was sent to real PostHog.
++
++## Hard budget and restart behavior
++
++The [official Whisper model page](https://developers.openai.com/api/docs/models/whisper-1) currently lists **$0.006/minute** (verified 2026-10-01). The [official transcription reference](https://developers.openai.com/api/reference/resources/audio/subresources/transcriptions/methods/create) supports Ogg and WAV; the broader [guide](https://developers.openai.com/api/docs/guides/speech-to-text) caps API uploads at 25 MB. This bot uses smaller limits. Pricing is operator configuration and cannot be set below the verified rate; changes in the upstream tariff require updating the configured reservation rate before further paid use. A computed reservation is a conservative estimate, not an exact provider invoice.
++
++`assistant_voice_requests` is an additive table containing only receipt ID, chat/owner/topic, context version, status, timestamps, budget month and reserved/estimated USD. Before starting download, a synchronous SQLite transaction counts daily attempts and reserves the maximum call cost globally against the voice month's budget and the existing shared service monthly spend limit. The hard voice configuration refuses values above **$5**. The default 120-second call reserves **$0.012**, rounded up to whole minutes. A successful bounded result settles to decoded duration rounded up to whole minutes, so even subminute audio is charged a full minute in the local conservative ledger.
++
++The upload-time transaction rechecks the budget and assigns the current Asia/Tbilisi month, including a decode spanning the month boundary. Duplicate Telegram update IDs cannot spend twice. SQLite transactions serialize reservations across database connections. Call failures, empty/invalid responses, timeouts, cancellation or crashes after upload retain the full reservation because billing may already have occurred. A failure known to happen before upload refunds it. Restart marks unfinished receipts interrupted, retains their reserves and sends a safe interruption reply without automatically uploading again. A user-sent retry is a new receipt subject to the same remaining budget/quotas; it never resets earlier charges. New transcriptions stop before the cap with a clear text fallback.
++
++Conservative reservations can stop calls before all $5 is used. For example 416 unresolved 120-second calls consume $4.992; the next $0.012 reservation is rejected. Refunds/settlements never use an unknown audio duration. Receipts and spend persist across deploys in the same private assistant database; do not delete those rows/database or raise the configured cap as a retry mechanism.
++
++## Configuration
++
++See `src/config/assistant-voice-config.ts`: `ENABLE_VOICE_MESSAGES=false`, `TRANSCRIPTION_API_KEY`, `VOICE_MONTHLY_BUDGET_USD=5` (0–5), `VOICE_USD_PER_MINUTE=0.006` (minimum 0.006), `VOICE_MAX_SECONDS=120` (1–120), `VOICE_DAILY_PER_USER=5`, `VOICE_DAILY_PER_CHAT=10`, `VOICE_TIMEOUT_MS=60000` (at most 60000), `VOICE_FFMPEG_PATH=/usr/bin/ffmpeg` (absolute trusted path). There is no configurable provider/base URL/model or implicit chat-key reuse. `LLM_MONTHLY_BUDGET_USD` remains an additional shared spend ceiling.
++
++## Offline verification
++
++`bun test ./checks/assistant-voice.check.ts` uses mocked Telegram and OpenAI HTTP, private test SQLite and locally generated tones only. It checks attribution/group gating/forwards, command isolation, enabled/key/budget gates, quotas/concurrency, streamed download bounds, owner cancellation, `/clear`, timeout, safe provider failures, refunds and ambiguous billing, duplicates/restarts, multiple DB connections, the $5 cap, Asia/Tbilisi month rollover, privacy allowlists and actual local FFmpeg decoding/overlength rejection. No recorded user audio is used.
++
++The two FFmpeg decoder tests use an available local binary (`VOICE_TEST_FFMPEG_PATH`, otherwise `/opt/homebrew/bin/ffmpeg` on macOS and `/usr/bin/ffmpeg` on Linux). Normal mocked tests need no provider key. Run typecheck/build and the existing core, media, documents, files, scheduler and analytics regression checks before integrating. Live OpenAI authentication and actual voice delivery are outside these offline checks.
++
++Validation completed: **27 voice tests**, **68 Bun core/media/files/documents/scheduler/analytics regression tests**, **41 focused Vitest provider/formatting/document tests**, repository typecheck, strict test-file typecheck, build and whitespace checks passed. The unchanged broad legacy Vitest suite is not a clean repository gate: the preceding analytics audit reproduced 150 baseline failures (native SQLite binding and existing Bun tests under Vitest). No broad-suite pass is claimed here.
++
++Maintainability review: the substantial voice workflow (251 lines), provider (184 lines) and ledger (140 lines) are extracted into focused files. Existing ingress remains a command/message router (577 lines, mostly existing commands), with only lifecycle/enqueue hooks; it contains no decoder, provider HTTP or budget SQL. No scrapper, delivery reconciliation, browser worker or production checkout edits.
+diff --git a/docs/web-media-runtime.md b/docs/web-media-runtime.md
+index 3360776..3796fb2 100644
+--- a/docs/web-media-runtime.md
++++ b/docs/web-media-runtime.md
+@@ -28,6 +28,8 @@ Draft stop buttons remain disabled; no unwired cancellation promise is shown. To
+ 
+ ## Voice finding and exact requirement
+ 
++Historical finding below: the separate [OpenAI Telegram voice implementation](telegram-voice.md) now provides the owner's requested `whisper-1` path. It remains disabled pending the existing OpenAI credential; no local Whisper model installation is needed for that path.
++
+ The current model registry advertises text/image/video, not audio: <https://github.com/anomalyco/models.dev/blob/dev/providers/opencode/models/space-bunny-free.toml>. No free audio-transcription route for the existing public provider was established. Voice ingress is now recognized and returns an explicit limitation instead of disappearing silently.
+ 
+ The authoring Mac has `/opt/homebrew/bin/whisper-cli` 1.8.3 and FFmpeg, but its only located model is `/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin` (562 KiB). The upstream documentation confirms that `for-tests-*` files contain **no weights**: <https://github.com/ggml-org/whisper.cpp/blob/master/models/README.md#model-files-for-testing-purposes>. It is not a usable recognizer. No model, software, account, key, or paid provider was installed or enabled.
+diff --git a/src/app/telegram-assistant.ts b/src/app/telegram-assistant.ts
+index 45e5c9e..a65c4a0 100644
+--- a/src/app/telegram-assistant.ts
++++ b/src/app/telegram-assistant.ts
+@@ -57,6 +57,7 @@ async function runService(config: AssistantConfig): Promise<void> {
+   );
+   const stop = new AbortController();
+   let maintenance: Promise<void> | undefined;
++  let ingress: AssistantIngress | undefined;
+   let fileServer: ReturnType<typeof startFileLinkServer>;
+   const shutdown = () => {
+     stop.abort();
+@@ -67,7 +68,7 @@ async function runService(config: AssistantConfig): Promise<void> {
+   process.once('SIGTERM', shutdown);
+   try {
+     const me = await api.me();
+-    const ingress = new AssistantIngress(store, config, analytics, api, me);
++    ingress = new AssistantIngress(store, config, analytics, api, me);
+     worker.recoverInterrupted();
+     fileServer = startFileLinkServer(config, store);
+     maintenance = (async () => {
+@@ -99,6 +100,10 @@ async function runService(config: AssistantConfig): Promise<void> {
+         botVersion: config.botVersion,
+         searchEnabled: !!config.braveKey,
+         analyticsEnabled: analytics.enabled,
++        voiceEnabled:
++          config.voice.enabled &&
++          !!config.voice.apiKey &&
++          config.voice.monthlyBudget > 0,
+       },
+       'GoodKiddo Telegram assistant started',
+     );
+@@ -147,6 +152,7 @@ async function runService(config: AssistantConfig): Promise<void> {
+     }
+   } finally {
+     shutdown();
++    await ingress?.voice.stop();
+     await worker.stop();
+     await maintenance;
+     await analytics.shutdown().catch(() => {
+diff --git a/src/assistant/core-test-fixtures.ts b/src/assistant/core-test-fixtures.ts
+index 471b359..53cf224 100644
+--- a/src/assistant/core-test-fixtures.ts
++++ b/src/assistant/core-test-fixtures.ts
+@@ -1,4 +1,5 @@
+ import { DEFAULT_FILE_LIMITS } from '../persistence/assistant-file-policy.js';
++import { DEFAULT_VOICE_CONFIG } from '../config/assistant-voice-config.js';
+ import type { AssistantConfig } from '../config/assistant-config.js';
+ import type { TelegramAssistantApi } from '../channels/telegram-assistant-api.js';
+ 
+@@ -23,6 +24,7 @@ export function syntheticConfig(): AssistantConfig {
+     braveKey: undefined,
+     searchCost: 0,
+     timezone: 'UTC',
++    voice: { ...DEFAULT_VOICE_CONFIG },
+     dbPath: ':memory:',
+     fileLimits: { ...DEFAULT_FILE_LIMITS },
+     fileShares: {
+diff --git a/src/assistant/ingress.ts b/src/assistant/ingress.ts
+index ad9637e..5e8a31b 100644
+--- a/src/assistant/ingress.ts
++++ b/src/assistant/ingress.ts
+@@ -37,15 +37,41 @@ import {
+ } from '../tasks/assistant-job-delivery.js';
+ import { promptJobCommand } from './prompt-job-commands.js';
+ import { taskOverview } from './task-overview.js';
++import { AssistantVoiceIntake } from './voice-intake.js';
++import type { VoiceProvider } from '../providers/assistant-voice.js';
+ 
+ export class AssistantIngress {
++  readonly voice: AssistantVoiceIntake;
+   constructor(
+     private readonly store: AssistantStore,
+     private readonly config: AssistantConfig,
+     private readonly analytics: AssistantAnalytics,
+     private readonly api: TelegramAssistantApi,
+     private readonly me: TelegramUser,
+-  ) {}
++    voiceProvider?: VoiceProvider,
++  ) {
++    this.voice = new AssistantVoiceIntake(
++      store,
++      config,
++      api,
++      (update, transcript, version) => {
++        const message = update.message!;
++        const chat = this.chat(message.chat);
++        const interaction = this.addressed(
++          message,
++          (message.caption || '').trim(),
++        )!;
++        this.enqueueRequest(
++          update,
++          chat,
++          `${message.caption ? `${message.caption}\n` : ''}${transcript}`,
++          interaction,
++          version,
++        );
++      },
++      voiceProvider,
++    );
++  }
+ 
+   private chat(chat: TelegramMessage['chat']): AssistantChat {
+     const existing = this.store.chat(String(chat.id));
+@@ -91,16 +117,13 @@ export class AssistantIngress {
+       'bot_interaction',
+       chat,
+       actor.id,
+-      { interaction_type: interaction },
++      {
++        interaction_type: interaction,
++        input_type: message.voice ? 'voice' : 'text',
++      },
+     );
+     if (message.voice) {
+-      enqueueReply(
+-        this.store,
+-        `voice-unavailable:${update.update_id}`,
+-        chat.id,
+-        'Голосовые пока не распознаю. Пришлите текст.',
+-      );
+-      return 'unsupported_voice';
++      return this.voice.start(update);
+     }
+     let attachmentContext = '';
+     let imagePaths: string[] | undefined;
+@@ -188,6 +211,27 @@ export class AssistantIngress {
+       (await this.command(update.update_id, message, chat, text))
+     )
+       return 'command';
++    return this.enqueueRequest(
++      update,
++      chat,
++      userText,
++      interaction,
++      contextVersion,
++      attachmentContext,
++      imagePaths,
++    );
++  }
++  private enqueueRequest(
++    update: TelegramUpdate,
++    chat: AssistantChat,
++    userText: string,
++    interaction: InboundRequest['interaction'],
++    contextVersion: number,
++    attachmentContext = '',
++    imagePaths?: string[],
++  ): string {
++    const message = update.message!;
++    const actor = telegramActor(message.from!);
+     const request: InboundRequest = {
+       updateId: update.update_id,
+       chat,
+@@ -200,6 +244,7 @@ export class AssistantIngress {
+       messageAt: telegramMessageTime(message.date),
+       forwarded: !!message.forward_origin || !!message.is_automatic_forward,
+       imagePaths,
++      inputType: message.voice ? 'voice' : undefined,
+       messageThreadId: message.message_thread_id,
+     };
+     const pending = this.store.db
+@@ -220,7 +265,10 @@ export class AssistantIngress {
+       'request_accepted',
+       chat,
+       actor.id,
+-      { interaction_type: interaction },
++      {
++        interaction_type: interaction,
++        input_type: message.voice ? 'voice' : 'text',
++      },
+     );
+     return `enqueued_${interaction}`;
+   }
+@@ -264,6 +312,15 @@ export class AssistantIngress {
+         ownerId: String(message.from!.id),
+         threadId: message.message_thread_id,
+       });
++    if (command === '/cancel_voice') {
++      const cancelled = this.voice.cancel(chat.id, String(message.from!.id));
++      reply(
++        cancelled
++          ? 'Распознавание вашего голосового отменено. Уже отправленный запрос может быть оплачен.'
++          : 'Ваших голосовых в обработке нет.',
++      );
++      return true;
++    }
+     const delivery = deliveryCommand(
+       this.store,
+       command,
+@@ -306,6 +363,11 @@ export class AssistantIngress {
+             : 'При включённой приватности Telegram обычное @упоминание до бота не доходит.\n') +
+           `Например: «Напомни завтра в 10:00 позвонить» или «Собери ужин: пятница 19:00 либо суббота 18:00, ответы до четверга 20:00».\n\n` +
+           `Можно прикрепить документ или попросить создать, изменить и отправить файл. Файлы отдельные для каждого чата.\n\n` +
++          (this.config.voice.enabled &&
++          this.config.voice.apiKey &&
++          this.config.voice.monthlyBudget > 0
++            ? `Голосовые до 1 МиБ и ${this.config.voice.maxSeconds} секунд распознаются через OpenAI Whisper; ответ приходит текстом. /cancel_voice — отменить своё распознавание.\n\n`
++            : '') +
+           `/deliveries — статус последних доставок\n/delivery ID — части ответа или документа\n/retry_delivery ID — повтор недоставленных частей\n\n` +
+           `Часовой пояс: ${chat.timezone}. Изменить: /timezone Europe/Moscow\n/tasks — задачи и дела\n/jobs — периодические поручения и результаты\n/pause ID, /resume ID — остановить/возобновить своё поручение\n/cancel ID — отменить свою задачу\n/clear — очистить историю и сводку\n/memory — записи памяти\n/forget_memory КЛЮЧ — удалить свою запись (all — все свои записи)\n/privacy — данные и хранение\n\n` +
+           (this.config.braveKey
+@@ -319,7 +381,7 @@ export class AssistantIngress {
+     }
+     if (command === '/privacy') {
+       reply(
+-        'В базе этого чата сохраняются история сообщений боту (включая архив), сводка, явно запомненные факты/предпочтения/инструкции, дела, задачи, ответы на встречи, документы, периодические поручения и результаты их запусков. Файлы доступны инструментам только внутри того же чата. Выбранные фрагменты файлов также передаются LLM-провайдеру. Временные ссылки создаются по явной просьбе на выбранные файлы; обладатель ссылки может скачать их до истечения срока (до 24 часов). Снимки ответов и недоставленных документов для сверки доставки хранятся до 7 дней; подтверждённые и отменённые снимки могут удаляться раньше при достижении лимита. Сообщения, адресованные боту, и контекст этого чата передаются настроенному LLM-провайдеру; поисковые запросы — поисковому провайдеру. При включённой аналитике PostHog получает события запусков, взаимодействий и запросов, их результат и длительность, число обращений к инструментам/моделям, токены и оценку стоимости. Идентификаторы пользователя, чата и задачи заменяются постоянными хешами. Тексты, имена, username, названия и содержимое файлов, полные URL и ошибки с деталями не передаются; записи экрана и автосбора нет. На сайте используется отдельный случайный идентификатор браузера и отметка кнопки, по которой открыли бота. /clear удаляет историю, архив, сводку и снимки ответов, прекращая незавершённый ответ. Явные записи памяти, дела, файлы и сохранённые задания/результаты остаются. /memory показывает записи, /forget_memory КЛЮЧ удаляет вашу запись и историю/сводку, all — все ваши записи. Это не удаляет файлы, дела или сохранённые результаты поручений. Задачи отменяются через /cancel ID; периодические можно приостановить /pause ID. Не отправляйте секреты; удаление из базы бота не удаляет уже доставленные сообщения из Telegram или данные провайдера.',
++        'В базе этого чата сохраняются история сообщений боту (включая архив), сводка, явно запомненные факты/предпочтения/инструкции, дела, задачи, ответы на встречи, документы, периодические поручения и результаты их запусков. Файлы доступны инструментам только внутри того же чата. Выбранные фрагменты файлов также передаются LLM-провайдеру. Временные ссылки создаются по явной просьбе на выбранные файлы; обладатель ссылки может скачать их до истечения срока (до 24 часов). Снимки ответов и недоставленных документов для сверки доставки хранятся до 7 дней; подтверждённые и отменённые снимки могут удаляться раньше при достижении лимита. При подключённых голосовых аудио передаётся OpenAI для распознавания через Whisper, расшифровка — настроенному LLM-провайдеру и сохраняется как текст запроса в этом чате. Бот не сохраняет исходное аудио; временная обработка выполняется в памяти. PostHog не получает аудио и расшифровки. Служебные записи лимитов и стоимости распознавания сохраняются после /clear, чтобы повтор или перезапуск не обнулял бюджет. /cancel_voice отменяет своё текущее распознавание; /clear также прекращает его и удаляет сохранённый текст, но не удаляет уже переданные данные у провайдера. Сообщения, адресованные боту, и контекст этого чата передаются настроенному LLM-провайдеру; поисковые запросы — поисковому провайдеру. При включённой аналитике PostHog получает события запусков, взаимодействий и запросов, их результат и длительность, число обращений к инструментам/моделям, токены и оценку стоимости. Идентификаторы пользователя, чата и задачи заменяются постоянными хешами. Тексты, имена, username, названия и содержимое файлов, полные URL и ошибки с деталями не передаются; записи экрана и автосбора нет. На сайте используется отдельный случайный идентификатор браузера и отметка кнопки, по которой открыли бота. /clear удаляет историю, архив, сводку и снимки ответов, прекращая незавершённый ответ. Явные записи памяти, дела, файлы и сохранённые задания/результаты остаются. /memory показывает записи, /forget_memory КЛЮЧ удаляет вашу запись и историю/сводку, all — все ваши записи. Это не удаляет файлы, дела или сохранённые результаты поручений. Задачи отменяются через /cancel ID; периодические можно приостановить /pause ID. Не отправляйте секреты; удаление из базы бота не удаляет уже доставленные сообщения из Telegram или данные провайдера.',
+       );
+       return true;
+     }
+diff --git a/src/assistant/voice-intake.ts b/src/assistant/voice-intake.ts
+new file mode 100644
+index 0000000..3f3d428
+--- /dev/null
++++ b/src/assistant/voice-intake.ts
+@@ -0,0 +1,251 @@
++import type { AssistantConfig } from '../config/assistant-config.js';
++import type {
++  TelegramAssistantApi,
++  TelegramUpdate,
++} from '../channels/telegram-assistant-api.js';
++import type { AssistantStore } from '../persistence/assistant-store.js';
++import {
++  AssistantVoiceStore,
++  voiceReservedCost,
++} from '../persistence/assistant-voice-store.js';
++import {
++  OpenAiWhisperVoice,
++  VoiceError,
++  type VoiceProvider,
++} from '../providers/assistant-voice.js';
++import { registerContextTurn } from './context.js';
++import { enqueueReply } from './messages.js';
++import { logger } from '../config/logger.js';
++
++export class AssistantVoiceIntake {
++  private readonly receipts: AssistantVoiceStore;
++  private readonly active = new Map<
++    number,
++    {
++      chat: string;
++      user: string;
++      controller: AbortController;
++      promise: Promise<void>;
++    }
++  >();
++  constructor(
++    private readonly store: AssistantStore,
++    private readonly config: AssistantConfig,
++    private readonly api: TelegramAssistantApi,
++    private readonly accept: (
++      update: TelegramUpdate,
++      transcript: string,
++      contextVersion: number,
++    ) => void,
++    private readonly provider: VoiceProvider = new OpenAiWhisperVoice(
++      config.voice,
++    ),
++  ) {
++    this.receipts = new AssistantVoiceStore(store);
++    // A prior upload may have been billed. Never repeat it automatically on restart.
++    for (const receipt of this.receipts.active()) {
++      this.receipts.finish(receipt.update_id, 'interrupted', receipt.cost_usd);
++      if (store.contextVersion(receipt.chat_id) === receipt.context_version)
++        enqueueReply(
++          store,
++          `voice:${receipt.update_id}:interrupted`,
++          receipt.chat_id,
++          'Распознавание голосового прервано перезапуском. Пришлите текст или отправьте голосовое заново.',
++          {
++            ownerId: receipt.user_id,
++            threadId: receipt.thread_id ?? undefined,
++          },
++        );
++    }
++  }
++  start(update: TelegramUpdate): string {
++    const message = update.message!;
++    const voice = message.voice!;
++    const chat = String(message.chat.id),
++      user = String(message.from!.id);
++    const reply = (text: string) =>
++      enqueueReply(this.store, `voice:${update.update_id}:notice`, chat, text, {
++        ownerId: user,
++        threadId: message.message_thread_id,
++      });
++    if (this.receipts.receipt(update.update_id)) return 'duplicate_voice';
++    if (
++      !this.config.voice.enabled ||
++      !this.config.voice.apiKey ||
++      this.config.voice.monthlyBudget <= 0 ||
++      this.config.voice.usdPerMinute <= 0
++    ) {
++      reply('Голосовые пока не подключены. Пришлите текст.');
++      return 'unsupported_voice';
++    }
++    if (message.forward_origin || message.is_automatic_forward) {
++      reply(
++        'Пересланное голосовое не выполняю от имени отправителя. Напишите свою задачу текстом.',
++      );
++      return 'rejected_forwarded_voice';
++    }
++    if (
++      !Number.isFinite(voice.duration) ||
++      voice.duration <= 0 ||
++      voice.duration > this.config.voice.maxSeconds ||
++      (voice.file_size !== undefined &&
++        (!Number.isFinite(voice.file_size) ||
++          voice.file_size < 1 ||
++          voice.file_size > this.config.voice.maxBytes)) ||
++      (voice.mime_type &&
++        !['audio/ogg', 'audio/opus', 'application/ogg'].includes(
++          voice.mime_type.toLowerCase().split(';')[0],
++        ))
++    ) {
++      reply(
++        `Нужно голосовое Telegram до 1 МиБ и ${this.config.voice.maxSeconds} секунд.`,
++      );
++      return 'rejected_voice';
++    }
++    if (
++      this.active.size >= 2 ||
++      [...this.active.values()].some(
++        (run) => run.user === user || run.chat === chat,
++      )
++    ) {
++      reply(
++        'Голосовое уже обрабатывается. Подождите или отмените своё через /cancel_voice.',
++      );
++      return 'busy_voice';
++    }
++    const pending = this.store.db
++      .query("SELECT COUNT(*) AS n FROM assistant_inbox WHERE status='pending'")
++      .get() as { n: number };
++    if (pending.n >= 100) {
++      reply('Сейчас много задач. Попробуйте чуть позже.');
++      return 'busy_voice';
++    }
++    if (
++      this.store.dailyCount('user_id', user) >= this.config.dailyTasks ||
++      this.store.dailyCount('chat_id', chat) >= this.config.dailyChatTasks
++    ) {
++      reply(
++        'Лимит задач на сегодня исчерпан. Голосовое не отправлялось на распознавание.',
++      );
++      return 'limited_voice';
++    }
++    const contextVersion = this.store.contextVersion(chat);
++    try {
++      this.receipts.reserve(
++        {
++          update_id: update.update_id,
++          chat_id: chat,
++          user_id: user,
++          thread_id: message.message_thread_id ?? null,
++          context_version: contextVersion,
++        },
++        this.config,
++      );
++    } catch (error) {
++      if (!(error instanceof VoiceError)) throw error;
++      reply(error.message);
++      return 'limited_voice';
++    }
++    const controller = new AbortController();
++    const promise = this.process(update, contextVersion, controller)
++      .catch(() => {
++        logger.warn('Voice processing failed; reservation retained');
++      })
++      .finally(() => this.active.delete(update.update_id));
++    this.active.set(update.update_id, { chat, user, controller, promise });
++    reply('Распознаю голосовое. Отменить: /cancel_voice');
++    return 'processing_voice';
++  }
++  private async process(
++    update: TelegramUpdate,
++    contextVersion: number,
++    controller: AbortController,
++  ): Promise<void> {
++    const message = update.message!,
++      chat = String(message.chat.id);
++    const context = registerContextTurn(this.store, chat);
++    const signal = AbortSignal.any([
++      controller.signal,
++      context.signal,
++      AbortSignal.timeout(this.config.voice.timeoutMs),
++    ]);
++    let submitted = false;
++    let cost = this.receipts.receipt(update.update_id)!.cost_usd;
++    try {
++      const bytes = await this.api.downloadDocument(
++        message.voice!.file_id,
++        this.config.voice.maxBytes,
++        signal,
++      );
++      const prepared = await this.provider.prepare(bytes, signal);
++      signal.throwIfAborted();
++      if (
++        !Number.isFinite(prepared.seconds) ||
++        prepared.seconds <= 0 ||
++        prepared.seconds > this.config.voice.maxSeconds ||
++        !prepared.bytes.length ||
++        prepared.bytes.length > 44 + this.config.voice.maxSeconds * 32000
++      )
++        throw new VoiceError('Голосовое превышает лимиты распознавания.');
++      this.receipts.submit(update.update_id, this.config);
++      submitted = true;
++      const transcript = await this.provider.transcribe(prepared, signal);
++      signal.throwIfAborted();
++      if (this.store.contextVersion(chat) !== contextVersion)
++        throw new VoiceError('Контекст очищен.');
++      cost = voiceReservedCost(
++        prepared.seconds,
++        this.config.voice.usdPerMinute,
++      );
++      // No async gap between final cancellation check and enqueue.
++      this.accept(update, transcript, contextVersion);
++      this.receipts.finish(update.update_id, 'completed', cost);
++    } catch (error) {
++      // Keep the full reservation after an ambiguous paid upload, including cancellation.
++      this.receipts.finish(
++        update.update_id,
++        signal.aborted ? 'cancelled' : 'failed',
++        submitted ? cost : 0,
++      );
++      if (
++        !controller.signal.aborted &&
++        !context.signal.aborted &&
++        this.store.contextVersion(chat) === contextVersion
++      )
++        enqueueReply(
++          this.store,
++          `voice:${update.update_id}:error`,
++          chat,
++          error instanceof VoiceError
++            ? error.message
++            : 'Распознавание прервано или недоступно. Пришлите текст.',
++          {
++            ownerId: String(message.from!.id),
++            threadId: message.message_thread_id,
++          },
++        );
++    } finally {
++      context.release();
++    }
++  }
++  cancel(chat: string, user: string): number {
++    let count = 0;
++    for (const run of this.active.values())
++      if (run.chat === chat && run.user === user) {
++        run.controller.abort();
++        count++;
++      }
++    return count;
++  }
++  async stop(): Promise<void> {
++    for (const run of this.active.values()) run.controller.abort();
++    await Promise.allSettled(
++      [...this.active.values()].map((run) => run.promise),
++    );
++  }
++  async idle(): Promise<void> {
++    await Promise.allSettled(
++      [...this.active.values()].map((run) => run.promise),
++    );
++  }
++}
+diff --git a/src/channels/telegram-assistant-api.ts b/src/channels/telegram-assistant-api.ts
+index 43ddfb0..13e4406 100644
+--- a/src/channels/telegram-assistant-api.ts
++++ b/src/channels/telegram-assistant-api.ts
+@@ -116,15 +116,22 @@ export class TelegramAssistantApi {
+   async call<T>(
+     method: string,
+     body: Record<string, unknown> = {},
++    signal?: AbortSignal,
+   ): Promise<T> {
+-    return this.request<T>(method, JSON.stringify(body), {
+-      'Content-Type': 'application/json',
+-    });
++    return this.request<T>(
++      method,
++      JSON.stringify(body),
++      {
++        'Content-Type': 'application/json',
++      },
++      signal,
++    );
+   }
+   private async request<T>(
+     method: string,
+     body: string | FormData,
+     headers?: Record<string, string>,
++    signal?: AbortSignal,
+   ): Promise<T> {
+     let response: Response;
+     try {
+@@ -138,6 +145,7 @@ export class TelegramAssistantApi {
+           signal: AbortSignal.any([
+             this.controller.signal,
+             AbortSignal.timeout(40_000),
++            ...(signal ? [signal] : []),
+           ]),
+         },
+       );
+@@ -169,10 +177,12 @@ export class TelegramAssistantApi {
+   async downloadDocument(
+     fileId: string,
+     maxBytes: number,
++    signal?: AbortSignal,
+   ): Promise<Uint8Array> {
+     const file = await this.call<{ file_path?: string; file_size?: number }>(
+       'getFile',
+       { file_id: fileId },
++      signal,
+     );
+     if (file.file_size !== undefined && file.file_size > maxBytes)
+       throw new TelegramFileError('Документ превышает допустимый размер.');
+@@ -194,6 +204,7 @@ export class TelegramAssistantApi {
+           signal: AbortSignal.any([
+             this.controller.signal,
+             AbortSignal.timeout(40_000),
++            ...(signal ? [signal] : []),
+           ]),
+         },
+       );
+diff --git a/src/config/assistant-config.ts b/src/config/assistant-config.ts
+index a1f06f3..91df28c 100644
+--- a/src/config/assistant-config.ts
++++ b/src/config/assistant-config.ts
+@@ -1,6 +1,7 @@
+ import path from 'node:path';
+ import { getEnv } from './env.js';
+ import { DEFAULT_FILE_LIMITS } from '../persistence/assistant-file-policy.js';
++import { loadVoiceConfig } from './assistant-voice-config.js';
+ 
+ function numberSetting(key: string, fallback: number): number {
+   const value = Number(getEnv(key) ?? fallback);
+@@ -73,6 +74,7 @@ export function loadAssistantConfig() {
+     braveKey: getEnv('BRAVE_SEARCH_API_KEY'),
+     searchCost: numberSetting('SEARCH_COST_USD_PER_CALL', 0.01),
+     timezone,
++    voice: loadVoiceConfig(),
+     dbPath: path.resolve(getEnv('ASSISTANT_DB_PATH') || 'store/assistant.db'),
+     fileShares: {
+       enabled: getEnv('FILE_SHARES_ENABLED') === 'true',
+diff --git a/src/config/assistant-voice-config.ts b/src/config/assistant-voice-config.ts
+new file mode 100644
+index 0000000..9eb9dd4
+--- /dev/null
++++ b/src/config/assistant-voice-config.ts
+@@ -0,0 +1,53 @@
++import { getEnv } from './env.js';
++
++export const DEFAULT_VOICE_CONFIG = {
++  enabled: false,
++  apiKey: '',
++  monthlyBudget: 5,
++  usdPerMinute: 0.006,
++  maxBytes: 1_048_576,
++  maxSeconds: 120,
++  dailyUser: 5,
++  dailyChat: 10,
++  timeoutMs: 60_000,
++  ffmpegPath: '/usr/bin/ffmpeg',
++};
++export type AssistantVoiceConfig = typeof DEFAULT_VOICE_CONFIG;
++
++export function loadVoiceConfig(): AssistantVoiceConfig {
++  const number = (
++    key: string,
++    fallback: number,
++    max: number,
++    integer = true,
++  ) => {
++    const value = Number(getEnv(key) ?? fallback);
++    if (
++      !Number.isFinite(value) ||
++      value < 0 ||
++      value > max ||
++      (integer && (!Number.isInteger(value) || value < 1))
++    )
++      throw new Error(`Invalid ${key}`);
++    return value;
++  };
++  const ffmpegPath =
++    getEnv('VOICE_FFMPEG_PATH') || DEFAULT_VOICE_CONFIG.ffmpegPath;
++  if (!ffmpegPath.startsWith('/')) throw new Error('Invalid VOICE_FFMPEG_PATH');
++  const usdPerMinute = number('VOICE_USD_PER_MINUTE', 0.006, 1, false);
++  if (usdPerMinute < 0.006) throw new Error('Invalid VOICE_USD_PER_MINUTE');
++  return {
++    ...DEFAULT_VOICE_CONFIG,
++    enabled: getEnv('ENABLE_VOICE_MESSAGES') === 'true',
++    // Dedicated credential only. Never silently reuse the chat-model key.
++    apiKey: getEnv('TRANSCRIPTION_API_KEY')?.trim() || '',
++    // Owner-approved maximum. Operators can lower it, never silently raise it.
++    monthlyBudget: number('VOICE_MONTHLY_BUDGET_USD', 5, 5, false),
++    usdPerMinute,
++    maxSeconds: number('VOICE_MAX_SECONDS', 120, 120),
++    dailyUser: number('VOICE_DAILY_PER_USER', 5, 20),
++    dailyChat: number('VOICE_DAILY_PER_CHAT', 10, 60),
++    timeoutMs: number('VOICE_TIMEOUT_MS', 60_000, 60_000),
++    ffmpegPath,
++  };
++}
+diff --git a/src/integrations/assistant-analytics-policy.ts b/src/integrations/assistant-analytics-policy.ts
+index c6f48d3..9843659 100644
+--- a/src/integrations/assistant-analytics-policy.ts
++++ b/src/integrations/assistant-analytics-policy.ts
+@@ -33,6 +33,7 @@ export function startSource(value?: string): string {
+   return value ? (SOURCES.has(value) ? value : 'unknown') : 'direct';
+ }
+ const ENUMS: Record<string, Set<string>> = {
++  input_type: new Set(['voice', 'text']),
+   interaction_type: new Set([
+     'command',
+     'reply',
+diff --git a/src/persistence/assistant-voice-store.ts b/src/persistence/assistant-voice-store.ts
+new file mode 100644
+index 0000000..83f4d9f
+--- /dev/null
++++ b/src/persistence/assistant-voice-store.ts
+@@ -0,0 +1,140 @@
++import type { AssistantStore } from './assistant-store.js';
++import type { AssistantConfig } from '../config/assistant-config.js';
++import { VoiceError } from '../providers/assistant-voice.js';
++
++export interface VoiceReceipt {
++  update_id: number;
++  chat_id: string;
++  user_id: string;
++  thread_id: number | null;
++  context_version: number;
++  status: string;
++  cost_usd: number;
++}
++
++export function voiceBudgetMonth(now = new Date()): string {
++  const parts = new Intl.DateTimeFormat('en', {
++    timeZone: 'Asia/Tbilisi',
++    year: 'numeric',
++    month: '2-digit',
++  }).formatToParts(now);
++  return `${parts.find((part) => part.type === 'year')!.value}-${parts.find((part) => part.type === 'month')!.value}`;
++}
++export function voiceReservedCost(
++  seconds: number,
++  usdPerMinute: number,
++): number {
++  return Math.ceil(seconds / 60) * usdPerMinute;
++}
++
++export class AssistantVoiceStore {
++  constructor(private readonly store: AssistantStore) {
++    store.db.exec(`CREATE TABLE IF NOT EXISTS assistant_voice_requests (
++      update_id INTEGER PRIMARY KEY, chat_id TEXT NOT NULL, user_id TEXT NOT NULL,
++      thread_id INTEGER, context_version INTEGER NOT NULL, status TEXT NOT NULL,
++      created_at TEXT NOT NULL, cost_usd REAL NOT NULL DEFAULT 0, budget_month TEXT NOT NULL);
++      CREATE INDEX IF NOT EXISTS assistant_voice_limits ON assistant_voice_requests(created_at,user_id,chat_id);`);
++  }
++  receipt(id: number): VoiceReceipt | null {
++    return this.store.db
++      .query('SELECT * FROM assistant_voice_requests WHERE update_id=?')
++      .get(id) as VoiceReceipt | null;
++  }
++  active(): VoiceReceipt[] {
++    return this.store.db
++      .query(
++        "SELECT * FROM assistant_voice_requests WHERE status IN ('processing','submitted')",
++      )
++      .all() as VoiceReceipt[];
++  }
++  reserve(
++    receipt: Omit<VoiceReceipt, 'status' | 'cost_usd'>,
++    config: AssistantConfig,
++  ): void {
++    const cost = voiceReservedCost(
++      config.voice.maxSeconds,
++      config.voice.usdPerMinute,
++    );
++    this.store.transaction(() => {
++      const day = new Date().toISOString().slice(0, 10);
++      const month = voiceBudgetMonth();
++      const count = (column: 'user_id' | 'chat_id', value: string) =>
++        (
++          this.store.db
++            .query(
++              `SELECT COUNT(*) AS n FROM assistant_voice_requests WHERE ${column}=? AND created_at>=?`,
++            )
++            .get(value, day) as { n: number }
++        ).n;
++      if (
++        count('user_id', receipt.user_id) >= config.voice.dailyUser ||
++        count('chat_id', receipt.chat_id) >= config.voice.dailyChat
++      )
++        throw new VoiceError(
++          'Лимит голосовых на сегодня исчерпан. Он обновится в 00:00 UTC; текст можно отправлять дальше.',
++        );
++      const spent = (
++        this.store.db
++          .query(
++            'SELECT COALESCE(SUM(cost_usd),0) AS n FROM assistant_voice_requests WHERE budget_month=?',
++          )
++          .get(month) as { n: number }
++      ).n;
++      if (
++        spent + cost > config.voice.monthlyBudget + 1e-9 ||
++        this.store.monthSpend() + cost > config.monthlyBudget + 1e-9
++      )
++        throw new VoiceError(
++          'Лимит расходов на голосовые исчерпан. Пришлите текст.',
++        );
++      this.store.db
++        .query(
++          'INSERT INTO assistant_voice_requests VALUES (?,?,?,?,?,?,?,?,?)',
++        )
++        .run(
++          receipt.update_id,
++          receipt.chat_id,
++          receipt.user_id,
++          receipt.thread_id,
++          receipt.context_version,
++          'processing',
++          new Date().toISOString(),
++          cost,
++          month,
++        );
++      this.store.reserveSpend(`voice:${receipt.update_id}`, cost);
++    });
++  }
++  submit(id: number, config: AssistantConfig): void {
++    this.store.transaction(() => {
++      const receipt = this.receipt(id)!;
++      const month = voiceBudgetMonth();
++      const spent = (
++        this.store.db
++          .query(
++            'SELECT COALESCE(SUM(cost_usd),0) AS n FROM assistant_voice_requests WHERE budget_month=? AND update_id<>?',
++          )
++          .get(month, id) as { n: number }
++      ).n;
++      if (spent + receipt.cost_usd > config.voice.monthlyBudget + 1e-9)
++        throw new VoiceError(
++          'Лимит расходов на голосовые исчерпан. Пришлите текст.',
++        );
++      this.store.db
++        .query(
++          "UPDATE assistant_voice_requests SET status='submitted',budget_month=? WHERE update_id=?",
++        )
++        .run(month, id);
++    });
++  }
++  finish(id: number, status: string, cost: number): void {
++    this.store.transaction(() => {
++      this.store.db
++        .query(
++          'UPDATE assistant_voice_requests SET status=?,cost_usd=? WHERE update_id=?',
++        )
++        .run(status, cost, id);
++      this.store.settleSpend(`voice:${id}`, cost);
++    });
++  }
++}
+diff --git a/src/providers/assistant-voice.ts b/src/providers/assistant-voice.ts
+new file mode 100644
+index 0000000..8b9b52c
+--- /dev/null
++++ b/src/providers/assistant-voice.ts
+@@ -0,0 +1,184 @@
++import type { AssistantVoiceConfig } from '../config/assistant-voice-config.js';
++
++export class VoiceError extends Error {}
++export interface PreparedVoice {
++  bytes: Uint8Array;
++  seconds: number;
++}
++export interface VoiceProvider {
++  prepare(bytes: Uint8Array, signal: AbortSignal): Promise<PreparedVoice>;
++  transcribe(audio: PreparedVoice, signal: AbortSignal): Promise<string>;
++}
++
++async function boundedBody(
++  body: ReadableStream<Uint8Array> | null,
++  limit: number,
++): Promise<Uint8Array> {
++  if (!body) throw new VoiceError('Распознавание вернуло пустой ответ.');
++  const reader = body.getReader();
++  const chunks: Uint8Array[] = [];
++  let size = 0;
++  try {
++    for (;;) {
++      const next = await reader.read();
++      if (next.done) break;
++      size += next.value.length;
++      if (size > limit) {
++        await reader.cancel();
++        throw new VoiceError('Превышен лимит обработки голосового.');
++      }
++      chunks.push(next.value);
++    }
++  } finally {
++    reader.releaseLock();
++  }
++  const result = new Uint8Array(size);
++  let offset = 0;
++  for (const chunk of chunks) {
++    result.set(chunk, offset);
++    offset += chunk.length;
++  }
++  return result;
++}
++
++function wav(pcm: Uint8Array): Uint8Array {
++  const bytes = new Uint8Array(44 + pcm.length);
++  const header = new DataView(bytes.buffer);
++  bytes.set(new TextEncoder().encode('RIFF'), 0);
++  header.setUint32(4, 36 + pcm.length, true);
++  bytes.set(new TextEncoder().encode('WAVEfmt '), 8);
++  header.setUint32(16, 16, true);
++  header.setUint16(20, 1, true);
++  header.setUint16(22, 1, true);
++  header.setUint32(24, 16000, true);
++  header.setUint32(28, 32000, true);
++  header.setUint16(32, 2, true);
++  header.setUint16(34, 16, true);
++  bytes.set(new TextEncoder().encode('data'), 36);
++  header.setUint32(40, pcm.length, true);
++  bytes.set(pcm, 44);
++  return bytes;
++}
++
++export class OpenAiWhisperVoice implements VoiceProvider {
++  constructor(
++    private readonly config: AssistantVoiceConfig,
++    private readonly fetcher: typeof fetch = fetch,
++  ) {}
++  async prepare(
++    bytes: Uint8Array,
++    signal: AbortSignal,
++  ): Promise<PreparedVoice> {
++    signal.throwIfAborted();
++    if (
++      !bytes.length ||
++      bytes.length > this.config.maxBytes ||
++      new TextDecoder().decode(bytes.subarray(0, 4)) !== 'OggS'
++    )
++      throw new VoiceError('Нужно голосовое Telegram в формате Ogg, до 1 МиБ.');
++    // Decode only one bounded audio stream. No shell, paths, network protocols, inherited credentials or temporary files.
++    const process = Bun.spawn(
++      [
++        this.config.ffmpegPath,
++        '-nostdin',
++        '-hide_banner',
++        '-loglevel',
++        'error',
++        '-max_alloc',
++        '16777216',
++        '-threads',
++        '1',
++        '-protocol_whitelist',
++        'pipe',
++        '-f',
++        'ogg',
++        '-i',
++        'pipe:0',
++        '-t',
++        String(this.config.maxSeconds + 1),
++        '-map',
++        '0:a:0',
++        '-ac',
++        '1',
++        '-ar',
++        '16000',
++        '-acodec',
++        'pcm_s16le',
++        '-f',
++        's16le',
++        'pipe:1',
++      ],
++      { stdin: bytes, stdout: 'pipe', stderr: 'ignore', env: {} },
++    );
++    const abort = () => process.kill('SIGKILL');
++    const timeout = setTimeout(abort, 10_000);
++    signal.addEventListener('abort', abort, { once: true });
++    try {
++      const pcm = await boundedBody(
++        process.stdout,
++        (this.config.maxSeconds + 1) * 32000,
++      );
++      if ((await process.exited) !== 0)
++        throw new VoiceError('Не удалось прочитать голосовое. Пришлите текст.');
++      signal.throwIfAborted();
++      const seconds = pcm.length / 32000;
++      if (seconds <= 0 || seconds > this.config.maxSeconds || pcm.length % 2)
++        throw new VoiceError(
++          `Голосовое должно быть не длиннее ${this.config.maxSeconds} секунд.`,
++        );
++      return { bytes: wav(pcm), seconds };
++    } finally {
++      clearTimeout(timeout);
++      signal.removeEventListener('abort', abort);
++      abort();
++      await process.exited;
++    }
++  }
++  async transcribe(audio: PreparedVoice, signal: AbortSignal): Promise<string> {
++    signal.throwIfAborted();
++    const body = new FormData();
++    body.set('model', 'whisper-1');
++    body.set('response_format', 'json');
++    body.set(
++      'file',
++      new File([Uint8Array.from(audio.bytes)], 'voice.wav', {
++        type: 'audio/wav',
++      }),
++    );
++    try {
++      const response = await this.fetcher(
++        'https://api.openai.com/v1/audio/transcriptions',
++        {
++          method: 'POST',
++          body,
++          redirect: 'error',
++          headers: { Authorization: `Bearer ${this.config.apiKey}` },
++          signal,
++        },
++      );
++      if (!response.ok) {
++        await response.body?.cancel();
++        throw new VoiceError(
++          'Распознавание сейчас недоступно. Пришлите текст или повторите позже.',
++        );
++      }
++      const data = JSON.parse(
++        new TextDecoder().decode(await boundedBody(response.body, 64_000)),
++      ) as { text?: unknown };
++      if (
++        typeof data.text !== 'string' ||
++        !data.text.trim() ||
++        data.text.length > 10_000
++      )
++        throw new VoiceError('Не удалось распознать речь. Пришлите текст.');
++      signal.throwIfAborted();
++      return data.text.trim();
++    } catch (error) {
++      if (error instanceof VoiceError) throw error;
++      // Provider responses and errors can include credentials/audio/text; never surface them.
++      throw new VoiceError(
++        'Распознавание прервано или недоступно. Пришлите текст.',
++      );
++    }
++  }
++}
+diff --git a/src/shared/assistant-types.ts b/src/shared/assistant-types.ts
+index 95de590..994172a 100644
+--- a/src/shared/assistant-types.ts
++++ b/src/shared/assistant-types.ts
+@@ -26,6 +26,7 @@ export interface InboundRequest {
+   messageAt?: string;
+   contextVersion?: number;
+   imagePaths?: string[];
++  inputType?: 'voice';
+   messageThreadId?: number;
+   scheduled?: ScheduledTurn;
+ }
