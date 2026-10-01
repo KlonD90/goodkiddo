@@ -22,17 +22,16 @@ passes. The complete broker socket path passes as the bot identity with its
 environment cleared: rendered public text, public href navigation to IANA,
 private-IP denial, cleanup acknowledgment and frontend capacity release.
 
-After direct user approval named the exact server and browser update, the upload
-succeeded. Only the dedicated browser broker/unit were updated and the browser
-service restarted. The running broker uses this tested image:
+The verified installed broker uses this pinned image:
 
 - Tag: `localhost/goodkiddo-browser:d03b240c101b`
 - Image ID: `4247e7a00a5b2513cda873a419ff02418dd89392b4c3e7038d3ae44148ea01e7`
 - Build-context SHA256: `d03b240c101b3dd70036ea93dffc70ee644dd8eea0787dac1a6573d0a7e7a086`
 
-The main bot release switch and optional app flag remain the integrator's
-responsibility. Existing voice changes must be retained when applying this
-browser-only patch.
+The integrated bot explicitly enables the fixed socket after these worker checks.
+Its full parent-agent/research/browser/final-answer flow passed a harmless public
+request through the configured free model, with cleanup and six shared calls at
+$0. Quiet voice, delivery recovery and persistent state are retained.
 
 ## Boundary
 

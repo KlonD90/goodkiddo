@@ -18,9 +18,19 @@ final, current chat/task propagation, read-only child tools, cleanup before fina
 normal VFS note storage and preserved shared model-call counting. They do not
 contact production, providers, Telegram or Chromium.
 
-## Remaining runtime gates
+## Verified runtime
 
-Keep the socket setting unset until the operator verifies top-level public/private redirects, fresh job storage, the complete socket and public-link flow, cleanup acknowledgement and 60-second expiry. Source publication does not perform installation, deploy code, change runtime settings, activate browsing or authorize any remote operation.
+The installed worker passed top-level public/private redirects, fresh job storage,
+the complete socket and public-link flow, cleanup acknowledgement, native sandbox
+and resource confinement, and observed 60-second expiry. The integrated GoodKiddo
+runtime explicitly enables the verified fixed socket. A harmless public-page test
+through the real configured free model passed the complete parent → research →
+browser → final path: six shared calls, $0, acknowledged cleanup, no Telegram
+messages or analytics events, and a temporary synthetic database.
+
+Source defaults remain disabled. Revalidate confinement and cleanup when changing
+the worker or deploying it to another host. Source publication does not grant
+new host access or authorize unrelated services.
 
 Preserve the current quiet voice behavior, file dispatch, delivery holds, recovery snapshots and shared spend ledger when completing this integration. Credentials and runtime data are private operator configuration and are not part of the public source.
 
