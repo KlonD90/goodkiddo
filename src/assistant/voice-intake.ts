@@ -153,7 +153,6 @@ export class AssistantVoiceIntake {
       })
       .finally(() => this.active.delete(update.update_id));
     this.active.set(update.update_id, { chat, user, controller, promise });
-    reply('Распознаю голосовое. Отменить: /cancel_voice');
     return 'processing_voice';
   }
   private async process(
