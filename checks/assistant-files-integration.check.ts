@@ -56,6 +56,12 @@ test('full synthetic model turn writes, reads, queues file and issues explicit l
       });
     },
   } as unknown as TelegramAssistantApi;
+  const foreignBytes = 'OTHER_CHAT_PRIVATE_CONTENT';
+  new AssistantFiles(store.db).write(
+    '-2',
+    '/report.csv',
+    new TextEncoder().encode(foreignBytes),
+  );
   let round = 0,
     link = '';
   const llm: AssistantLlm = {
@@ -168,7 +174,8 @@ test('full synthetic model turn writes, reads, queues file and issues explicit l
     ).toBe('running');
     await deliverMessages(store, api, analytics);
     expect(sent[0]).toMatchObject({ kind: 'document', chat: '1' });
-    expect(sent[0].text).toContain('synthetic,42');
+    expect(sent[0].text).toBe('name,value\nsynthetic,42Synthetic report');
+    expect(JSON.stringify(sent)).not.toContain(foreignBytes);
     await deliverMessages(store, api, analytics);
     expect(sent[1]).toMatchObject({ kind: 'text', chat: '1' });
     expect(sent[1].text).toContain(link);
@@ -179,9 +186,23 @@ test('full synthetic model turn writes, reads, queues file and issues explicit l
         }
       ).status,
     ).toBe('success');
-    const html = await fileLinkHandler(store)(new Request(link)).text();
+    const handler = fileLinkHandler(store);
+    const html = await handler(new Request(link)).text();
     expect(html).toContain('report.csv');
-    expect(new AssistantFiles(store.db).list('-2')).toEqual([]);
+    expect(html).not.toContain(foreignBytes);
+    const downloadPath = html.match(/href="([^"]+)"/)![1];
+    const downloadUrl = new URL(downloadPath, link);
+    // A caller cannot change a bearer grant's source chat with query parameters.
+    downloadUrl.searchParams.set('chat_id', '-2');
+    const download = handler(new Request(downloadUrl.toString()));
+    expect(download.status).toBe(200);
+    expect(download.headers.get('Content-Disposition')).toContain('attachment');
+    expect(await download.text()).toBe('name,value\nsynthetic,42');
+    expect(
+      new TextDecoder().decode(
+        new AssistantFiles(store.db).get('-2', '/report.csv').content,
+      ),
+    ).toBe(foreignBytes);
   } finally {
     await worker.stop();
     store.close();

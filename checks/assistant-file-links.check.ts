@@ -309,3 +309,48 @@ test('links survive SQLite reopen and download concurrency is bounded with cance
     rmSync(folder, { recursive: true, force: true });
   }
 });
+
+test('mixed same-chat and foreign-only selection fails atomically without publishing a partial grant', async () => {
+  const s = setup();
+  try {
+    s.files.write('b', '/private.txt', textBytes('OTHER_CHAT_PRIVATE_CONTENT'));
+    expect(() =>
+      createFileGrant(s.store.db, s.files, 'a', [
+        '/report.txt',
+        '/private.txt',
+      ]),
+    ).toThrow('Файл не найден');
+    expect(
+      s.store.db.query('SELECT * FROM assistant_file_grants').all(),
+    ).toEqual([]);
+    expect(
+      s.store.db.query('SELECT * FROM assistant_file_grant_items').all(),
+    ).toEqual([]);
+    expect(
+      new TextDecoder().decode(s.files.get('a', '/report.txt').content),
+    ).toBe('shared synthetic');
+    expect(
+      new TextDecoder().decode(s.files.get('b', '/private.txt').content),
+    ).toBe('OTHER_CHAT_PRIVATE_CONTENT');
+
+    const own = createFileGrant(s.store.db, s.files, 'a', ['/report.txt']);
+    const foreign = createFileGrant(s.store.db, s.files, 'b', ['/private.txt']);
+    const handler = fileLinkHandler(s.store);
+    const response = handler(
+      new Request(downloadUrl(own.token, 0, 'private.txt')),
+    );
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain('OTHER_CHAT_PRIVATE_CONTENT');
+    // Possession of each capability exposes only that grant's selected snapshot.
+    expect(await handler(new Request(downloadUrl(own.token))).text()).toBe(
+      'shared synthetic',
+    );
+    expect(
+      await handler(
+        new Request(downloadUrl(foreign.token, 0, 'private.txt')),
+      ).text(),
+    ).toBe('OTHER_CHAT_PRIVATE_CONTENT');
+  } finally {
+    s.store.close();
+  }
+});

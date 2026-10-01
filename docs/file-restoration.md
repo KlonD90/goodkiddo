@@ -35,3 +35,14 @@ Rollback constraint: the original September release does not recognize document 
 Combined integration checkpoint: core memory/TODO 44f7012 -> 1505fc3; core clear/forwarding/delivery dcd9de5 -> 298fbb2; media modules cdf3fa4 -> e4f4b9f; media runtime e70267b merged with current-author link guards, context versions and file holds. 50 Bun tests / 331 assertions and 41 Vitest module tests passed; active-runtime and integration-test typechecks passed. Private visible-content drafts and group previews are closed on context clear, and context is checked again after waiting for their final close. Earlier-selected outbox rows are checked again after intervening API calls, so cancellation in another chat suppresses their later send.
 
 Production packaging must include runtime-resolvable pdf-parse, csv-parse/sync and ExcelJS dependency trees because extraction workers resolve their package paths at runtime. Mac native optional modules cannot be used on the Linux host; prepare a locked Linux dependency payload and validate PDF/CSV/XLSX in the actual Bun runtime before activating. These are per-release application dependencies; no global package/OS install or voice model has been performed.
+
+## Cloud parity regressions
+
+The synthetic full-turn check now verifies exact VFS bytes through both the
+Telegram document mock and the download handler, with a different file at the
+same path in another chat. A download query parameter cannot select that other
+chat. Mixed selections containing a foreign-only file fail atomically without
+creating a partial grant or snapshot. Capabilities remain bearer links: possession
+of a valid link permits its selected snapshots until expiry; this is not Telegram
+chat authentication. Existing tests cover cancellation of queued documents and
+stale link tools after `/clear`, plus download stream cancellation and slot reuse.
