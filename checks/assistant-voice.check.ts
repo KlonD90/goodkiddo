@@ -131,6 +131,53 @@ test('voice reaches the normal inbox with original author/chat/topic/date and si
   await s.ingress.voice.stop();
   s.store.close();
 });
+test('successful private and group voice stay silent during transcription and queue no progress or cancel keyboard', async () => {
+  for (const type of ['private', 'supergroup'] as const) {
+    let resolveTranscript!: (text: string) => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const transcript = new Promise<string>((resolve) => {
+      resolveTranscript = resolve;
+    });
+    const s = setup({
+      prepare: async () => ({ bytes: new Uint8Array(44), seconds: 5 }),
+      transcribe: async () => {
+        entered();
+        return transcript;
+      },
+    });
+    try {
+      const u = update(1, type);
+      if (type === 'supergroup')
+        u.message!.reply_to_message = { from: { id: 99 } };
+      expect(await s.ingress.handle(u)).toBe('processing_voice');
+      await ready;
+      expect(s.replies()).toEqual([]);
+      expect(
+        s.store.db
+          .query('SELECT COUNT(*) n FROM assistant_delivery_parts')
+          .get(),
+      ).toEqual({ n: 0 });
+      resolveTranscript('Synthetic normal request');
+      await s.ingress.voice.idle();
+      expect(s.replies()).toEqual([]);
+      expect(
+        s.store.db
+          .query('SELECT COUNT(*) n FROM assistant_delivery_parts')
+          .get(),
+      ).toEqual({ n: 0 });
+      expect(s.store.nextRequest()?.userText).toBe('Synthetic normal request');
+      expect(s.receipt()?.status).toBe('completed');
+      expect(s.receipt()?.cost_usd).toBe(0.006);
+    } finally {
+      resolveTranscript('Synthetic normal request');
+      await s.ingress.voice.stop();
+      s.store.close();
+    }
+  }
+});
 test('unaddressed groups, bot senders, channels and forwarded voices never download', async () => {
   const s = setup();
   expect(await s.ingress.handle(update(1, 'supergroup'))).toBe(
@@ -282,6 +329,7 @@ test('timeout is bounded, keeps submitted reservation and emits a safe failure',
   await s.ingress.voice.idle();
   expect(s.receipt()?.cost_usd).toBe(0.012);
   expect(s.store.nextRequest()).toBeUndefined();
+  expect(s.replies()).toHaveLength(1);
   expect(s.replies().some((r) => r.text.includes('недоступно'))).toBe(true);
   s.store.close();
 });
@@ -300,6 +348,7 @@ test('failed preparation refunds reservation and never calls transcription', asy
   await s.ingress.voice.idle();
   expect(calls).toBe(0);
   expect(s.receipt()?.cost_usd).toBe(0);
+  expect(s.replies()).toHaveLength(1);
   expect(JSON.stringify(s.replies())).not.toContain('token-bearing');
   s.store.close();
 });
