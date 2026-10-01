@@ -1,0 +1,40 @@
+{
+  "published_baseline": "b8f586b9fb3180e63b290512df02760206d2d8bb",
+  "source_commit": "6356d2fab92e2d331e649727071f35b5836153a8",
+  "source_parent": "08fce09e832d383b18d6cc8ff30b71beb0180d23",
+  "patch": {
+    "path": "0001-browser-final.patch",
+    "sha256": "430c31399e98c07abbeb6b0a53ff85d6af818aada739e7def3b5360939b75600",
+    "bytes": 11643,
+    "changed_paths": [
+      "CLOUD_HANDOFF.md",
+      "checks/browser-adversarial.verify.ts",
+      "checks/browser-confinement.verify.ts",
+      "checks/browser-expiry.verify.ts",
+      "docs/browser-integration.md",
+      "docs/browser-worker-installation.md",
+      "ops/browser-worker/install-prerequisites.sh"
+    ]
+  },
+  "source_parity": [
+    {
+      "path": "checks/browser-adversarial.verify.ts",
+      "sha256": "06288a60d04ff0eb55138fb92558d5ffaa22cd1fd192dcbff55d7b12babf5ed4"
+    },
+    {
+      "path": "checks/browser-confinement.verify.ts",
+      "sha256": "14fded577edcf0448a5af7e0198fc099146197ad8b5451a692c728dbc5c28b59"
+    },
+    {
+      "path": "checks/browser-expiry.verify.ts",
+      "sha256": "1bef3a339f651a0dc7130843596f9c3cad35c2a24552e30f4ebf117f9cdfc9f6"
+    },
+    {
+      "path": "ops/browser-worker/install-prerequisites.sh",
+      "sha256": "121175d6c4e05e7fae8a8b5f84c194e04aa47193b2c3b3088f2012074ceb21aa"
+    }
+  ],
+  "publication_sanitization": "Documentation records generic final checkpoint results without private deployment addresses, host evidence, image identifiers or operator history. Source fixture and installation-script changes are exact.",
+  "upstream_runtime_status": "Worker/parent reports tested and server-ready. Not independently rerun by this publication task.",
+  "publication_checks": "Code delta applies to published baseline; exact file parity and secret scan passed. No test/runtime commands executed."
+}

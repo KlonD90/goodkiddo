@@ -1,0 +1,213 @@
+diff --git a/CLOUD_HANDOFF.md b/CLOUD_HANDOFF.md
+index a09c900..817633a 100644
+--- a/CLOUD_HANDOFF.md
++++ b/CLOUD_HANDOFF.md
+@@ -6,7 +6,7 @@ This checkpoint grants source preservation and publication only. The cloud conti
+ 
+ Browser integration is optional and disabled by default. `ASSISTANT_BROWSER_SOCKET`, when explicitly configured, accepts only `/run/goodkiddo-browser/worker.sock`. Runtime construction does not connect or launch a browser. Preserve quiet voice, document dispatch, delivery holds, context cancellation, immutable delivery recovery and persisted spend reservations.
+ 
+-The unfinished runtime gates are revised top-level public/private redirects, fresh browser storage between jobs, full broker-socket/public-link/cleanup flow, and observed 60-second expiry. A live runtime may still use an older worker/image; this source checkout does not synchronize it. No activation should be claimed from synthetic tests alone. Operator fixture scripts under `checks/browser-*.verify.ts` are explicit runtime actions and must not run as automatic setup.
++The final upstream browser checkpoint `6356d2fab92e2d331e649727071f35b5836153a8 reports passing revised top-level public/private redirects, fresh browser storage, the full broker-socket/public-link/cleanup flow and observed 60-second expiry. The source fixtures are preserved; private host evidence and deployment/image details are omitted. This code handoff does not synchronize a runtime or authorize any host operation. Operator fixture scripts under `checks/browser-*.verify.ts` remain explicit runtime actions and must not run as automatic setup.
+ 
+ Use ordinary offline TypeScript checks, the active Bun build, Bun restoration tests and focused Vitest tests. Browser unit tests inject synthetic workers and temporary Unix sockets; they do not launch Podman or Chromium. Real confinement and adversarial fixtures remain separate runtime verification. No new provider, paid service, credential or spending cap is introduced.
+ 
+diff --git a/checks/browser-adversarial.verify.ts b/checks/browser-adversarial.verify.ts
+index 24aa4e1..e2e49fc 100644
+--- a/checks/browser-adversarial.verify.ts
++++ b/checks/browser-adversarial.verify.ts
+@@ -87,7 +87,7 @@ try {
+   // rules. Top-level navigation exercises interception of the actual next hop.
+   await job.run({ action: 'open', url: 'https://redirect.example/public' });
+   assert.equal(
+-    await job.run({ action: 'get_url' }),
++    (await job.run({ action: 'get_url' })).trim(),
+     'https://public.example/final',
+   );
+   assert.match(
+diff --git a/checks/browser-confinement.verify.ts b/checks/browser-confinement.verify.ts
+index be802b1..d075e71 100644
+--- a/checks/browser-confinement.verify.ts
++++ b/checks/browser-confinement.verify.ts
+@@ -31,7 +31,9 @@ const assert=require('node:assert/strict'); const fs=require('node:fs'); const n
+ `;
+ args.push('-e', fixture);
+ const child = spawn('/usr/bin/podman', args, {
+-  stdio: 'inherit',
++  // The fixture does not consume stdin. Do not let Podman read an operator's
++  // remaining SSH heredoc commands into the container's otherwise unused stdin.
++  stdio: ['ignore', 'inherit', 'inherit'],
+   cwd: '/var/lib/goodkiddo-browser',
+   env: {
+     PATH: '/usr/bin:/bin',
+diff --git a/checks/browser-expiry.verify.ts b/checks/browser-expiry.verify.ts
+new file mode 100644
+index 0000000..690c0f7
+--- /dev/null
++++ b/checks/browser-expiry.verify.ts
+@@ -0,0 +1,112 @@
++// Explicit operator fixture: verify the real broker's watchdog, not a mock clock.
++import assert from 'node:assert/strict';
++import net from 'node:net';
++import { randomUUID } from 'node:crypto';
++
++function connection() {
++  const socket = net.createConnection('/run/goodkiddo-browser/worker.sock');
++  let id = 0;
++  let buffer = '';
++  const pending = new Map<
++    number,
++    {
++      resolve(value: { ok: boolean; output: string }): void;
++      reject(error: Error): void;
++    }
++  >();
++  const fail = () => {
++    for (const item of pending.values())
++      item.reject(new Error('Socket closed'));
++    pending.clear();
++  };
++  socket.on('error', fail);
++  socket.on('close', fail);
++  socket.on('data', (bytes) => {
++    buffer += bytes.toString('utf8');
++    let end: number;
++    while ((end = buffer.indexOf('\n')) >= 0) {
++      const value = JSON.parse(buffer.slice(0, end));
++      buffer = buffer.slice(end + 1);
++      pending.get(value.id)?.resolve(value);
++      pending.delete(value.id);
++    }
++  });
++  return {
++    socket,
++    request(value: Record<string, unknown>) {
++      const requestId = ++id;
++      return new Promise<{ ok: boolean; output: string }>((resolve, reject) => {
++        const timer = setTimeout(
++          () => reject(new Error('Fixture timeout')),
++          20_000,
++        );
++        pending.set(requestId, {
++          resolve: (reply) => {
++            clearTimeout(timer);
++            resolve(reply);
++          },
++          reject: (error) => {
++            clearTimeout(timer);
++            reject(error);
++          },
++        });
++        socket.write(JSON.stringify({ ...value, id: requestId }) + '\n');
++      });
++    },
++  };
++}
++const first = connection();
++let second: ReturnType<typeof connection> | undefined;
++const began = Date.now();
++const waitUntil = (elapsed: number) =>
++  new Promise((resolve) =>
++    setTimeout(resolve, Math.max(0, elapsed - (Date.now() - began))),
++  );
++try {
++  assert.equal(
++    (await first.request({ type: 'start', jobId: `research-${randomUUID()}` }))
++      .ok,
++    true,
++  );
++  assert.equal(
++    (
++      await first.request({ type: 'command', command: { action: 'get_url' } })
++    ).output.trim(),
++    'about:blank',
++  );
++  console.log('PASS real browser started; waiting for 60-second expiry');
++  await waitUntil(55_000);
++  assert.equal(
++    (await first.request({ type: 'command', command: { action: 'get_url' } }))
++      .ok,
++    true,
++  );
++  console.log('PASS real browser remains usable at 55 seconds');
++  await waitUntil(64_000);
++  assert.equal(
++    (await first.request({ type: 'command', command: { action: 'get_url' } }))
++      .ok,
++    false,
++  );
++  second = connection();
++  assert.equal(
++    (await second.request({ type: 'start', jobId: `research-${randomUUID()}` }))
++      .ok,
++    true,
++  );
++  assert.equal(
++    (
++      await second.request({ type: 'command', command: { action: 'get_url' } })
++    ).output.trim(),
++    'about:blank',
++  );
++  console.log(
++    'PASS expired job is closed and global capacity admits a fresh browser',
++  );
++  assert.equal((await second.request({ type: 'close' })).ok, true);
++  assert.equal((await first.request({ type: 'close' })).ok, true);
++  console.log('PASS both cleanup acknowledgments');
++} finally {
++  first.socket.destroy();
++  second?.socket.destroy();
++}
+diff --git a/docs/browser-integration.md b/docs/browser-integration.md
+index 388337b..a61ab3c 100644
+--- a/docs/browser-integration.md
++++ b/docs/browser-integration.md
+@@ -20,7 +20,7 @@ contact production, providers, Telegram or Chromium.
+ 
+ ## Remaining runtime gates
+ 
+-Keep the socket setting unset until the operator verifies top-level public/private redirects, fresh job storage, the complete socket and public-link flow, cleanup acknowledgement and 60-second expiry. Source publication does not perform installation, deploy code, change runtime settings, activate browsing or authorize any remote operation.
++The final worker checkpoint `6356d2fab92e2d331e649727071f35b5836153a8 reports passing top-level public/private redirects, fresh-job state isolation, the complete socket/public-link flow, cleanup and actual 60-second expiry. Its source fixtures are included separately from any private host evidence. Source publication performs no installation, deployment, runtime-setting change or activation. A future deployment must validate its own reviewed worker and image before enabling the optional socket setting.
+ 
+ Preserve the current quiet voice behavior, file dispatch, delivery holds, recovery snapshots and shared spend ledger when completing this integration. Credentials and runtime data are private operator configuration and are not part of the public source.
+ 
+diff --git a/docs/browser-worker-installation.md b/docs/browser-worker-installation.md
+index 047eb5a..ed78f41 100644
+--- a/docs/browser-worker-installation.md
++++ b/docs/browser-worker-installation.md
+@@ -6,11 +6,11 @@ implementation and explicit assistant injection. Default bot bootstrap does not
+ construct this runtime. It changes no Telegram ingress, voice, final delivery,
+ file dispatch, or delivery holds.
+ 
+-## Source checkpoint and remaining verification
++## Final runtime source checkpoint
+ 
+-The source implements a rootless Chromium/agent-browser worker and optional assistant integration. Publication does not install or activate the worker. Keep the browser socket setting unset until an operator completes runtime verification.
++Upstream checkpoint `6356d2fab92e2d331e649727071f35b5836153a8` reports completed runtime verification for revised public/private top-level redirects, fresh-job localStorage isolation, the complete broker-socket/public-link/cleanup path, and actual 60-second expiry with subsequent capacity release. The revised explicit operator fixtures are included in this source patch.
+ 
+-Remaining checks include the revised public/private top-level redirect fixture, fresh-job storage isolation, complete broker-socket/public-link/cleanup flow, and actual 60-second expiry. Local unit and mocked integration checks do not establish that those live runtime gates passed. Installation and deployment require separate authorization for the destination; this source handoff does not grant it.
++This publication preserves those source changes and reported results without private host evidence, deployment addresses or installed image identifiers. No runtime verification, upload, installation or activation is performed by this handoff. Runtime and optional app-flag activation remain the integrator's separately authorized responsibility; preserve current quiet voice behavior.
+ 
+ ## Boundary
+ 
+@@ -25,8 +25,7 @@ Every container has 1 CPU, 1 GiB RAM with no extra swap, 128 PIDs, private IPC,
+ capabilities, new privileges, host mounts, devices, published ports, or direct
+ network access. The service also caps aggregate CPU/RAM and kills its complete
+ cgroup on stop. Three independent 60-second watchdogs cover broker, controller,
+-and Podman; commands have a shared 15-second deadline. The 60-second expiry has
+-not yet been tested by waiting out a live job.
++and Podman; commands have a shared 15-second deadline. The real 60-second expiry and capacity release are covered by the explicit `checks/browser-expiry.verify.ts` fixture and are reported verified in the upstream checkpoint.
+ 
+ Browser resource requests cross a bounded stdin/stdout bridge. The host allows
+ only GET/HEAD, checks every destination against public-IP policy, checks all DNS
+diff --git a/ops/browser-worker/install-prerequisites.sh b/ops/browser-worker/install-prerequisites.sh
+index 65102e5..059b225 100644
+--- a/ops/browser-worker/install-prerequisites.sh
++++ b/ops/browser-worker/install-prerequisites.sh
+@@ -14,6 +14,7 @@ if test "$podman_was_present" = 0; then
+   # Apt enables rootful defaults. This worker needs only daemonless rootless
+   # Podman; preserve any Podman services on hosts where it already existed.
+   systemctl disable --now podman.socket podman.service \
++    podman-auto-update.service podman-clean-transient.service \
+     podman-auto-update.timer podman-restart.service
+ fi
+ if ! id goodkiddo-browser >/dev/null 2>&1; then
