@@ -1,0 +1,23 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "./assistant-files.check.ts",
+    "./assistant-documents.check.ts",
+    "./assistant-file-links.check.ts",
+    "./assistant-files-integration.check.ts",
+    "../src/assistant/core-state.test.ts",
+    "../src/assistant/core-safety.test.ts",
+    "./assistant-media.check.ts",
+    "./assistant-delivery.check.ts",
+    "./assistant-recurring-integration.check.ts",
+    "../src/assistant/prompt-jobs.test.ts",
+    "./analytics/assistant-analytics.test.ts",
+    "./analytics/landing-analytics.test.ts"
+  ],
+  "exclude": ["../node_modules"]
+}
