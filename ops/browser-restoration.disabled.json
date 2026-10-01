@@ -1,0 +1,35 @@
+{
+  "enabled": false,
+  "worker_transport": null,
+  "installation_authorized": false,
+  "runtime": "agent-browser with local Chromium in a separate Linux worker",
+  "isolation": "required; not configured or attested",
+  "network": {
+    "methods": ["GET", "HEAD"],
+    "exact_domains_per_job": true,
+    "maximum_domains": 8,
+    "check_every_request_redirect_and_connection": true,
+    "pin_validated_public_dns_address": true,
+    "direct_egress_websockets_webrtc": false
+  },
+  "state": {
+    "fresh_per_chat_and_job": true,
+    "host_credentials_profiles_extensions_plugins": false,
+    "cleanup_confirmed_before_releasing_slot": true
+  },
+  "limits": {
+    "concurrent_jobs": 2,
+    "job_seconds": 60,
+    "command_seconds": 15,
+    "commands_per_job": 12,
+    "characters_per_output": 20000,
+    "characters_per_job": 60000,
+    "transport_bytes_per_command": 131072,
+    "recommended_cpu_per_worker": 1,
+    "recommended_memory_mib_per_worker": 1024,
+    "recommended_pids_per_worker": 64,
+    "recommended_ephemeral_storage_mib": 128
+  },
+  "actions": ["open_public_url", "snapshot", "follow_link_href", "scroll"],
+  "form_submissions_communications_and_other_external_actions": "unsupported; require task-specific authorization and a separately reviewed adapter"
+}

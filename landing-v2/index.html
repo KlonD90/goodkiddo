@@ -1,0 +1,812 @@
+<!doctype html>
+<!--
+  Лендинг GoodKiddo v2 (RU), концепция «хороший пёс в вашем чате».
+  Страница — это переписка: сценарии идут сценами одного группового чата, а не карточками фич.
+
+  ПРОВЕРКА: откройте страницу с ?draft — неподтверждённые фразы подсветятся,
+            номер = вопрос из files/landing/copy.md.
+  POSTHOG: настройка в analytics-config.js. Пустой ключ — аналитика выключена.
+-->
+<html lang="ru">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GoodKiddo — хороший пёс для вашего Telegram-чата</title>
+  <meta name="description" content="Позовите GoodKiddo в чат с друзьями: он опросит всех, напомнит молчунам и вернётся с датой встречи. В личке найдёт и сравнит варианты. Бесплатно." />
+  <meta name="theme-color" content="#f7eee3" />
+  <link rel="canonical" href="https://whosagoodkiddo.me/" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="GoodKiddo" />
+  <meta property="og:locale" content="ru_RU" />
+  <meta property="og:url" content="https://whosagoodkiddo.me/" />
+  <meta property="og:title" content="GoodKiddo — соберёт всех. Даже Диму." />
+  <meta property="og:description" content="Хороший пёс для вашего Telegram-чата: опросит друзей, напомнит молчунам и вернётся с датой встречи." />
+  <meta property="og:image" content="https://whosagoodkiddo.me/og-image.png" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" href="./favicon.ico" sizes="any" />
+  <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+  <!-- Оба шрифта поддерживают кириллицу. Без сети страница откатится на системный шрифт. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    :root {
+      --cream: #f7eee3;
+      --cream-deep: #efe0cf;
+      --paper: #fffaf3;
+      --ink: #1d1a17;
+      --ink-soft: #4a423b;
+      --muted: #8a7d70;
+      --orange: #f0913a;
+      --orange-deep: #d9721d;
+      --orange-soft: #fde3c8;
+      --glow: #4fdc9c;
+      --glow-soft: #d9f7e8;
+      --tg: #2aabee;
+      --line: rgba(29, 26, 23, 0.12);
+      --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+      --text: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
+      --wrap: min(1120px, calc(100% - 32px));
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--cream);
+      color: var(--ink);
+      font: 400 17px/1.5 var(--text);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    a { color: inherit; }
+    img { display: block; max-width: 100%; }
+    .wrap { width: var(--wrap); margin: 0 auto; }
+
+    /* ---------- Кнопки ---------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 15px 22px;
+      border: 2px solid var(--ink);
+      border-radius: 999px;
+      font: 600 16px/1 var(--text);
+      text-decoration: none;
+      white-space: nowrap;
+      transition: transform .15s ease, box-shadow .15s ease;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 0 var(--ink); }
+    .btn:active { transform: translateY(0); box-shadow: none; }
+    .btn-main { background: var(--orange); }
+    .btn-ghost { background: var(--paper); }
+    .btn svg { width: 18px; height: 18px; flex: none; }
+
+    /* ---------- Шапка ---------- */
+    .nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 18px 0;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font: 700 18px/1 var(--display);
+      text-decoration: none;
+    }
+    .logo img { width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--ink); }
+    .nav .btn { padding: 11px 18px; font-size: 15px; }
+
+    /* ---------- Первый экран ---------- */
+    .hero {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      align-items: center;
+      gap: 32px;
+      padding: 40px 0 72px;
+    }
+    .kicker {
+      display: inline-block;
+      margin-bottom: 20px;
+      padding: 6px 12px;
+      border: 1.5px solid var(--ink);
+      border-radius: 999px;
+      background: var(--paper);
+      font-size: 14px;
+      font-weight: 600;
+    }
+    h1 {
+      margin: 0;
+      font: 900 clamp(44px, 7.4vw, 92px)/0.98 var(--display);
+      letter-spacing: -0.03em;
+    }
+    h1 .under {
+      position: relative;
+      white-space: nowrap;
+      color: var(--orange-deep);
+    }
+    h1 .under::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: -0.04em;
+      height: 0.12em;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 12' preserveAspectRatio='none'%3E%3Cpath d='M2 8 Q 50 2 100 7 T 198 5' fill='none' stroke='%231d1a17' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E") center/100% 100% no-repeat;
+    }
+    .lead {
+      max-width: 540px;
+      margin: 28px 0 32px;
+      font-size: 20px;
+      color: var(--ink-soft);
+    }
+    .lead b { color: var(--ink); }
+    .actions { display: flex; flex-wrap: wrap; gap: 12px; }
+    .fineprint { margin-top: 18px; font-size: 14px; color: var(--muted); }
+
+    .dog {
+      position: relative;
+      justify-self: center;
+      width: min(420px, 100%);
+    }
+    .dog button {
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: none;
+      cursor: pointer;
+    }
+    .dog .badge {
+      display: block;
+      aspect-ratio: 1;
+      overflow: hidden;
+      border: 3px solid var(--ink);
+      border-radius: 50%;
+      background: var(--orange-soft);
+      box-shadow: 0 8px 0 var(--ink);
+      transform-origin: 50% 80%;
+    }
+    .dog img.face {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.32) translateY(3%);
+    }
+    .dog.is-petted .badge { animation: wiggle .6s ease; }
+    @keyframes wiggle {
+      0%, 100% { transform: rotate(0); }
+      20% { transform: rotate(-7deg) scale(1.03); }
+      45% { transform: rotate(6deg) scale(1.03); }
+      70% { transform: rotate(-3deg); }
+    }
+    .dog .ball {
+      position: absolute;
+      right: -4%;
+      bottom: 2%;
+      width: 24%;
+      mix-blend-mode: multiply;
+      animation: bounce 2.4s ease-in-out infinite;
+    }
+    @keyframes bounce {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      50% { transform: translateY(-14px) rotate(25deg); }
+    }
+    .dog .says {
+      position: absolute;
+      left: -6%;
+      top: 6%;
+      padding: 12px 16px;
+      border: 2px solid var(--ink);
+      border-radius: 20px 20px 20px 4px;
+      background: var(--paper);
+      font-weight: 600;
+      box-shadow: 0 4px 0 var(--ink);
+      transform: rotate(-4deg);
+    }
+
+    /* ---------- Полоса переписки ---------- */
+    .thread-band {
+      position: relative;
+      padding: 88px 0 96px;
+      border-top: 2px solid var(--ink);
+      border-bottom: 2px solid var(--ink);
+      background-color: var(--cream-deep);
+      /* Обои чата: редкие лапки */
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 120 120'%3E%3Cg fill='%23d9c4ad' opacity='.55'%3E%3Cg transform='translate(22 26) rotate(-18)'%3E%3Cellipse cx='0' cy='6' rx='6' ry='5'/%3E%3Ccircle cx='-6' cy='-3' r='2.4'/%3E%3Ccircle cx='-2' cy='-6' r='2.4'/%3E%3Ccircle cx='3' cy='-6' r='2.4'/%3E%3Ccircle cx='7' cy='-3' r='2.4'/%3E%3C/g%3E%3Cg transform='translate(84 82) rotate(22)'%3E%3Cellipse cx='0' cy='6' rx='6' ry='5'/%3E%3Ccircle cx='-6' cy='-3' r='2.4'/%3E%3Ccircle cx='-2' cy='-6' r='2.4'/%3E%3Ccircle cx='3' cy='-6' r='2.4'/%3E%3Ccircle cx='7' cy='-3' r='2.4'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .section-title {
+      max-width: 760px;
+      margin: 0 auto 56px;
+      text-align: center;
+    }
+    h2 {
+      margin: 0;
+      font: 700 clamp(30px, 4.4vw, 52px)/1.05 var(--display);
+      letter-spacing: -0.02em;
+    }
+    .section-title p { margin: 16px 0 0; font-size: 19px; color: var(--ink-soft); }
+
+    .chat-head {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      width: min(640px, 100%);
+      margin: 0 auto;
+      padding: 12px 16px;
+      border: 2px solid var(--ink);
+      border-radius: 18px;
+      background: var(--paper);
+    }
+    .chat-head .ava {
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: var(--orange-soft);
+      font-size: 20px;
+    }
+    .chat-head b { display: block; font-weight: 700; }
+    .chat-head span { font-size: 14px; color: var(--muted); }
+
+    /* Сцена: колонка чата + заметки на полях */
+    .scene {
+      display: grid;
+      grid-template-columns: 1fr minmax(0, 640px) 1fr;
+      column-gap: 28px;
+      margin-top: 28px;
+    }
+    .scene > * { grid-column: 2; }
+    .scene .note { grid-column: 3; }
+    .scene .note.left { grid-column: 1; text-align: right; }
+
+    .day {
+      justify-self: center;
+      margin: 18px 0 10px;
+      padding: 4px 12px;
+      border-radius: 999px;
+      background: rgba(29, 26, 23, 0.72);
+      color: var(--paper);
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .msg {
+      max-width: 82%;
+      margin: 4px 0;
+      padding: 10px 14px 8px;
+      border-radius: 18px 18px 18px 6px;
+      background: var(--paper);
+      box-shadow: 0 1px 0 rgba(29, 26, 23, 0.14);
+    }
+    .msg .who { display: block; margin-bottom: 2px; font-size: 14px; font-weight: 700; }
+    .msg .time { float: right; margin: 6px 0 0 12px; font-size: 12px; color: var(--muted); }
+    .msg.me {
+      justify-self: end;
+      border-radius: 18px 18px 6px 18px;
+      background: #fbe6cf;
+    }
+    .msg.kiddo {
+      display: grid;
+      grid-template-columns: 36px 1fr;
+      column-gap: 10px;
+      max-width: 88%;
+      border: 2px solid var(--ink);
+      background: var(--paper);
+    }
+    .msg.kiddo img { width: 36px; height: 36px; border-radius: 50%; grid-row: span 3; }
+    .msg.kiddo .who { color: var(--orange-deep); }
+    .mention { color: var(--tg); font-weight: 600; }
+    .reply {
+      margin-bottom: 6px;
+      padding: 2px 0 2px 8px;
+      border-left: 3px solid var(--tg);
+      font-size: 14px;
+      color: var(--ink-soft);
+    }
+    .c-anya { color: #c2410c; }
+    .c-dima { color: #7c3aed; }
+    .c-olya { color: #0f766e; }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .chip {
+      padding: 5px 10px;
+      border: 1.5px solid var(--ink);
+      border-radius: 999px;
+      font-size: 14px;
+      font-weight: 600;
+      background: var(--paper);
+    }
+    .chip.win { background: var(--glow); }
+    .result {
+      margin-top: 6px;
+      font: 700 22px/1.2 var(--display);
+    }
+    .options { margin: 8px 0 0; padding: 0; list-style: none; }
+    .options li {
+      margin-top: 6px;
+      padding: 8px 10px;
+      border-radius: 10px;
+      background: var(--cream);
+    }
+    .options b { display: block; }
+    .options small { color: var(--muted); }
+
+    .gap {
+      justify-self: center;
+      margin: 14px 0;
+      font-size: 15px;
+      font-style: italic;
+      color: var(--muted);
+    }
+
+    /* Рукописные заметки на полях */
+    .note {
+      align-self: center;
+      max-width: 230px;
+      font: 600 16px/1.35 var(--text);
+      color: var(--ink);
+    }
+    .note::before {
+      content: "";
+      display: block;
+      width: 28px;
+      height: 3px;
+      margin-bottom: 8px;
+      border-radius: 2px;
+      background: var(--orange);
+    }
+    .note.left::before { margin-left: auto; }
+
+    .inline-cta {
+      justify-self: center;
+      margin: 26px 0 8px;
+      text-align: center;
+    }
+    .inline-cta p { margin: 0 0 12px; font-size: 14px; color: var(--muted); }
+
+    .switch {
+      margin: 72px auto 0;
+      text-align: center;
+    }
+    .switch h3 {
+      margin: 0 0 8px;
+      font: 700 clamp(24px, 3vw, 34px)/1.1 var(--display);
+    }
+    .switch p { margin: 0 0 28px; color: var(--ink-soft); }
+
+    /* ---------- Приходит только на кличку ---------- */
+    .privacy {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 48px;
+      align-items: center;
+      padding: 104px 0;
+    }
+    .privacy h2 { font-size: clamp(34px, 5vw, 60px); }
+    .privacy ul { margin: 0; padding: 0; list-style: none; }
+    .privacy li {
+      position: relative;
+      padding: 18px 0 18px 44px;
+      border-bottom: 1.5px solid var(--line);
+      font-size: 18px;
+    }
+    .privacy li::before {
+      content: "🐾";
+      position: absolute;
+      left: 0;
+      top: 16px;
+      font-size: 22px;
+    }
+
+    /* ---------- Как завести ---------- */
+    .steps-band {
+      padding: 96px 0;
+      background: var(--ink);
+      color: var(--paper);
+    }
+    .steps-band h2 { text-align: center; }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      margin: 48px 0 40px;
+      padding: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+    .steps li {
+      padding: 28px;
+      border: 2px solid rgba(255, 250, 243, 0.25);
+      border-radius: 24px;
+      counter-increment: step;
+    }
+    .steps li::before {
+      content: counter(step);
+      display: block;
+      margin-bottom: 18px;
+      font: 900 48px/1 var(--display);
+      color: var(--orange);
+    }
+    .steps b { display: block; margin-bottom: 6px; font-size: 20px; }
+    .steps span { color: rgba(255, 250, 243, 0.72); }
+    .steps code {
+      padding: 2px 6px;
+      border-radius: 6px;
+      background: rgba(255, 250, 243, 0.12);
+      font: 600 15px var(--text);
+      color: var(--glow);
+    }
+    .steps-band .center { text-align: center; }
+    .steps-band .btn { border-color: var(--paper); }
+
+    /* ---------- Вопросы как переписка ---------- */
+    .faq { padding: 104px 0 40px; }
+    .faq .qa {
+      display: grid;
+      width: min(640px, 100%);
+      margin: 0 auto;
+    }
+    .faq .qa + .qa { margin-top: 18px; }
+    .faq .msg.me { font-weight: 600; }
+    .faq .msg.kiddo p { margin: 0; }
+    .faq .msg.kiddo p + p { margin-top: 8px; }
+
+    /* ---------- Финал ---------- */
+    .final {
+      padding: 80px 0 104px;
+      text-align: center;
+    }
+    .final img {
+      width: 132px;
+      margin: 0 auto 24px;
+      border: 3px solid var(--ink);
+      border-radius: 50%;
+    }
+    .final h2 { font-size: clamp(38px, 6vw, 76px); }
+    .final p { margin: 18px auto 32px; max-width: 520px; font-size: 19px; color: var(--ink-soft); }
+    .final .actions { justify-content: center; }
+
+    footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 28px 0 40px;
+      border-top: 1.5px solid var(--line);
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* ---------- Появление сообщений при прокрутке ---------- */
+    html.js .reveal { opacity: 0; transform: translateY(14px); transition: opacity .45s ease, transform .45s ease; }
+    html.js .reveal.is-in { opacity: 1; transform: none; }
+    @media (prefers-reduced-motion: reduce) {
+      html.js .reveal { opacity: 1; transform: none; transition: none; }
+      .dog .ball { animation: none; }
+    }
+
+    /* ---------- Режим проверки: ?draft ---------- */
+    html.draft [data-q] {
+      outline: 2px dashed var(--orange-deep);
+      outline-offset: 3px;
+      background-color: rgba(240, 145, 58, 0.16);
+    }
+    html.draft [data-q]::after {
+      content: " ❓" attr(data-q);
+      font-weight: 700;
+      color: var(--orange-deep);
+    }
+    .draft-bar { display: none; }
+    html.draft .draft-bar {
+      display: block;
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 16px;
+      z-index: 20;
+      padding: 12px 16px;
+      border: 2px solid var(--ink);
+      border-radius: 14px;
+      background: var(--orange-soft);
+      font-size: 14px;
+      font-weight: 600;
+      text-align: center;
+    }
+
+    /* ---------- Мобильная вёрстка ---------- */
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; padding-top: 16px; }
+      .dog { width: min(200px, 56%); order: -1; }
+      .dog .says { left: -10%; font-size: 15px; }
+      .scene { grid-template-columns: minmax(0, 1fr); }
+      .scene > *, .scene .note, .scene .note.left { grid-column: 1; }
+      .scene .note, .scene .note.left {
+        max-width: none;
+        margin: 6px 0 14px;
+        padding-left: 12px;
+        border-left: 3px solid var(--orange);
+        text-align: left;
+        font-size: 15px;
+      }
+      .scene .note::before { display: none; }
+      .privacy { grid-template-columns: 1fr; gap: 24px; padding: 72px 0; }
+      .steps { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 520px) {
+      body { font-size: 16px; }
+      .nav .btn span { display: none; }
+      .lead { font-size: 18px; }
+      .actions .btn { width: 100%; justify-content: center; }
+      .msg, .msg.kiddo { max-width: 94%; }
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <nav class="nav">
+      <a class="logo" href="#"><img src="./kiddo-logo.jpg" alt="" />GoodKiddo</a>
+      <a class="btn btn-ghost" href="https://t.me/goodkiddo_bot?start=landing_nav" data-ph-event="nav_telegram_clicked">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.9 4.3 18.7 19.4c-.2 1-.9 1.3-1.8.8l-4.9-3.6-2.4 2.3c-.3.3-.5.5-1 .5l.3-5 9.1-8.2c.4-.4-.1-.6-.6-.2L6.2 13l-4.8-1.5c-1-.3-1-1 .2-1.5L20.5 2.9c.9-.3 1.6.2 1.4 1.4Z"/></svg>
+        <span>Открыть в Telegram</span>
+      </a>
+    </nav>
+
+    <header class="hero">
+      <div>
+        <span class="kicker">Хороший пёс для вашего Telegram-чата</span>
+        <h1>Соберёт всех. <span class="under">Даже Диму.</span></h1>
+        <p class="lead">
+          Позовите <b>GoodKiddo</b> в чат с друзьями: он опросит всех, напомнит молчунам и вернётся с датой встречи.
+          А в личке сбегает за тем, что вы ищете, и принесёт три лучших варианта.
+        </p>
+        <div class="actions">
+          <a class="btn btn-main" href="https://t.me/goodkiddo_bot?startgroup=landing_hero" data-ph-event="hero_add_to_chat_clicked">Добавить в чат</a>
+          <a class="btn btn-ghost" href="https://t.me/goodkiddo_bot?start=landing_hero" data-ph-event="hero_cta_clicked">Написать в личку</a>
+        </div>
+        <p class="fineprint">Бесплатно. Ранняя версия: иногда грызёт тапки, и мы хотим об этом знать.</p>
+      </div>
+
+      <div class="dog">
+        <button type="button" aria-label="Погладить GoodKiddo">
+          <span class="badge"><img class="face" src="./kiddo-logo.jpg" alt="GoodKiddo — пёс-робот в наушниках" /></span>
+        </button>
+        <img class="ball" src="./tennis-ball.png" alt="" />
+        <div class="says" aria-live="polite">Кто хороший пёс?</div>
+      </div>
+    </header>
+  </div>
+
+  <!-- Сцены переписки: встреча в группе → поиск в личке -->
+  <section class="thread-band" id="chat">
+    <div class="wrap">
+      <div class="section-title">
+        <h2>Знакомая переписка?</h2>
+        <p>Вот как она заканчивается, когда в чате есть GoodKiddo.</p>
+      </div>
+
+      <div class="chat-head">
+        <div class="ava">🎓</div>
+        <div><b>Универ навсегда</b><span>6 участников, 1 хороший пёс</span></div>
+      </div>
+
+      <div class="scene">
+        <div class="day reveal">3 недели назад</div>
+        <div class="msg reveal"><span class="who c-anya">Аня</span>Ну что, когда уже встречаемся? 😩<span class="time">19:02</span></div>
+        <div class="msg reveal"><span class="who c-dima">Дима</span>посмотрю<span class="time">22:47</span></div>
+        <div class="msg reveal"><span class="who c-olya">Оля</span>давайте на след неделе<span class="time">23:10</span></div>
+        <div class="gap reveal">…и тишина</div>
+
+        <div class="day reveal">Понедельник</div>
+        <div class="msg me reveal"><span class="mention">@goodkiddo_bot</span>, собери нас на ужин до пятницы<span class="time">12:15</span></div>
+        <p class="note reveal">Позвали по имени — он пришёл</p>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div>Гав! Варианты — отметьтесь до среды:
+            <div class="chips"><span class="chip">чт 19:30</span><span class="chip">пт 20:00</span><span class="chip">сб 19:00</span></div>
+          </div>
+        </div>
+
+        <div class="day reveal">Среда</div>
+        <p class="note left reveal">Напомнил сам. Никому не пришлось быть занудой</p>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div>Ждём <span class="mention">@dima</span> и <span class="mention">@olya</span> 🙂 Остальные уже ответили.</div>
+        </div>
+        <div class="msg reveal"><span class="who c-dima">Дима</span>сб ок, я в деле<span class="time">14:03</span></div>
+
+        <div class="day reveal">Четверг</div>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div>Итог:
+            <div class="result">суббота, 19:00</div>
+            <div class="chips"><span class="chip">чт — 2</span><span class="chip">пт — 3</span><span class="chip win">сб — 5 из 6 ✓</span></div>
+          </div>
+        </div>
+        <p class="note reveal">Вернулся с итогом к сроку</p>
+
+        <div class="inline-cta reveal">
+          <p>Три недели «посмотрю» — или четыре дня с GoodKiddo</p>
+          <a class="btn btn-main" href="https://t.me/goodkiddo_bot?startgroup=landing_meet" data-ph-event="meet_add_to_chat_clicked">Добавить в свой чат</a>
+        </div>
+      </div>
+
+      <div class="switch reveal">
+        <h3>А в личке — ищейка</h3>
+        <p>Напишите, что найти и какие условия. Он сбегает и принесёт лучшее.</p>
+      </div>
+
+      <div class="chat-head">
+        <img src="./kiddo-logo.jpg" alt="" style="width:40px;height:40px;border-radius:50%" />
+        <div><b>GoodKiddo</b><span>бот</span></div>
+      </div>
+
+      <div class="scene">
+        <div class="msg me reveal">Отель в Стамбуле на 10–14 ноября, до 8 тыс. за ночь, рядом с метро<span class="time">20:31</span></div>
+        <p class="note reveal">Вместо второго вечера на сайтах бронирования</p>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div data-q="4">Принёс три варианта:
+            <ul class="options">
+              <li><b>1. Каракёй, 5 мин до метро</b><small>+ вид на Босфор · − шумная улица</small></li>
+              <li><b>2. Шишли, у самой станции</b><small>+ дешевле всех · − далеко от центра</small></li>
+              <li><b>3. Бейоглу, 7 мин до метро</b><small>+ лучшие отзывы · − маленькие номера</small></li>
+            </ul>
+          </div>
+        </div>
+        <p class="note left reveal">Цены и наличие проверяйте по ссылке перед покупкой</p>
+
+        <div class="inline-cta reveal">
+          <a class="btn btn-ghost" href="https://t.me/goodkiddo_bot?start=landing_dm" data-ph-event="dm_cta_clicked">Поручить поиск</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap privacy" id="privacy">
+    <div>
+      <h2>Приходит только на&nbsp;кличку</h2>
+    </div>
+    <ul>
+      <li>В группе видит только сообщения, где его позвали или ответили ему. Остальная переписка — не его дело.</li>
+      <li>Историю чата до своего появления не видит: так устроен Telegram.</li>
+      <li data-q="8">При включённой аналитике PostHog получает события открытия страницы, кнопок, запуска бота и использования: число и результат запросов, длительность, обращения к моделям и инструментам. Идентификаторы Telegram заменяются постоянными хешами; на сайте хранится случайный идентификатор браузера. Тексты, имена, username, названия и содержимое файлов, полные URL в события не попадают. Записи экрана и автоматического сбора действий нет. Сайт учитывает Do Not Track и Global Privacy Control. /privacy в боте — о данных и хранении.</li>
+      <li data-q="8">Не используем модели, которые учатся на ваших запросах.</li>
+    </ul>
+  </section>
+
+  <section class="steps-band" id="add">
+    <div class="wrap">
+      <h2>Как завести пса</h2>
+      <ol class="steps">
+        <li><b>Добавьте в чат</b><span>Нажмите кнопку ниже и выберите группу с друзьями.</span></li>
+        <li><b>Позовите по имени</b><span>Напишите <code>@goodkiddo_bot</code> и задачу: собрать встречу или найти что-то.</span></li>
+        <li><b>Похвалите</b><span>Необязательно, но он старается. Ответ видят все в чате — и тоже могут его позвать.</span></li>
+      </ol>
+      <div class="center">
+        <a class="btn btn-main" href="https://t.me/goodkiddo_bot?startgroup=landing_steps" data-ph-event="steps_add_to_chat_clicked">Добавить в чат</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="faq" id="faq">
+    <div class="wrap">
+      <div class="section-title"><h2>Вопросы к псу</h2></div>
+
+      <div class="qa">
+        <div class="msg me reveal">Ты вообще кто?</div>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div><p>Один ассистент, а не набор ботов. Ищу и сравниваю, разбираюсь в вопросе и отвечаю со ссылками, собираю отчёты и мини-страницы. В групповом чате ещё и организую встречи.</p></div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="msg me reveal">Сколько стоишь?</div>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div><p>Нисколько, пока идёт ранняя версия. <span data-q="6">Чтобы так и оставалось, на тяжёлые задачи — долгий поиск, отчёты — есть дневной лимит.</span></p></div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="msg me reveal">Почему ты мне не пишешь первым?</div>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div><p>Так устроен Telegram: написать в личку я могу, только если вы меня уже открыли и нажали «Старт». В группе прихожу, когда зовут через @.</p></div>
+        </div>
+      </div>
+
+      <div class="qa">
+        <div class="msg me reveal">Ты ошибся. Что делать?</div>
+        <div class="msg kiddo reveal">
+          <img src="./kiddo-logo.jpg" alt="" />
+          <span class="who">GoodKiddo</span>
+          <div><p>Простите, я ещё учусь. Напишите <a href="https://t.me/klond90" target="_blank" rel="noopener">Коле</a> — каждое такое сообщение делает меня лучше.</p></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="wrap final" id="start">
+    <img src="./kiddo-logo.jpg" alt="" />
+    <h2>Кто хороший пёс?</h2>
+    <p>Узнаете на ближайшей встрече с друзьями. Добавьте GoodKiddo в чат — и пусть он всех соберёт.</p>
+    <div class="actions">
+      <a class="btn btn-main" href="https://t.me/goodkiddo_bot?startgroup=landing_final" data-ph-event="final_add_to_chat_clicked">Добавить в чат</a>
+      <a class="btn btn-ghost" href="https://t.me/goodkiddo_bot?start=landing_final" data-ph-event="final_cta_clicked">Написать в личку</a>
+    </div>
+  </section>
+
+  <div class="wrap">
+    <footer>
+      <span data-q="10">GoodKiddo делает Коля, один. Ранняя версия, бесплатно.</span>
+      <a href="https://t.me/klond90" target="_blank" rel="noopener">Связаться</a>
+    </footer>
+  </div>
+
+  <div class="draft-bar" role="status">
+    Режим проверки: подсвечены фразы, которые ждут ответа (номер вопроса из copy.md)
+  </div>
+
+  <script>
+    (function () {
+      var root = document.documentElement;
+      var params = new URLSearchParams(location.search);
+      root.classList.add('js');
+
+      // Режим проверки: ?draft
+      if (params.has('draft')) root.classList.add('draft');
+
+      // Погладить пса: он виляет и каждый раз отвечает по-новому
+      var dog = document.querySelector('.dog');
+      var says = dog.querySelector('.says');
+      var replies = ['Я! Я хороший пёс!', 'Гав! Кого собрать?', 'Ещё! Ещё почеши!', 'Кто хороший пёс?'];
+      var petCount = 0;
+      dog.querySelector('button').addEventListener('click', function () {
+        dog.classList.remove('is-petted');
+        void dog.offsetWidth;
+        dog.classList.add('is-petted');
+        says.textContent = replies[petCount % replies.length];
+        petCount += 1;
+      });
+
+      // Сообщения переписки появляются по мере прокрутки
+      var revealed = document.querySelectorAll('.reveal');
+      if (!('IntersectionObserver' in window)) {
+        revealed.forEach(function (el) { el.classList.add('is-in'); });
+        return;
+      }
+      var observer = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('is-in');
+          observer.unobserve(entry.target);
+        });
+      }, { rootMargin: '0px 0px -8% 0px' });
+      revealed.forEach(function (el) { observer.observe(el); });
+    })();
+  </script>
+
+  <script src="./analytics-config.js"></script>
+  <script src="./analytics.js"></script>
+</body>
+
+</html>

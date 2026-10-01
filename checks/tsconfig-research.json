@@ -1,0 +1,6 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": { "noEmit": true },
+  "include": ["../src/assistant/research-tools.ts"],
+  "exclude": ["../node_modules"]
+}

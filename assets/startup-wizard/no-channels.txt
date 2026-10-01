@@ -1,0 +1,10 @@
+Setup wizard: no channels are connected yet.
+
+1. Run the guided setup: `bun run setup`.
+2. Or add at least one channel credential to `.env`:
+   - Discord: `DISCORD_BOT_TOKEN=...`{{discord_token_status}}
+   - Telegram: `TELEGRAM_BOT_TOKEN=...`{{telegram_token_status}}
+{{installed_channels_section}}
+3. If you prefer the manual path, register at least one chat/channel:
+   - Discord example: `bun run setup -- --step register -- --jid dc:<channel_id> --name "My Server #general" --folder discord_main --trigger @Codex --is-main --no-trigger-required`
+   - Telegram example: `bun run setup -- --step register -- --channel telegram --jid tg:<chat_id> --name "Telegram chat" --folder telegram_main --trigger @Codex --no-trigger-required`

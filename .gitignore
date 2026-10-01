@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+.npm-cache/
+# Build output
+dist/
+runners/*/dist/
+
+# Local data & auth
+store/
+store-*/
+data/
+data-*/
+logs/
+
+# Groups - only track base structure and specific CLAUDE.md files
+groups-*/
+groups/*
+!groups/main/
+!groups/global/
+groups/main/*
+groups/global/*
+!groups/main/CLAUDE.md
+!groups/global/CLAUDE.md
+
+# Secrets
+*.keys.json
+.env
+.env.codex
+.env.minimax
+
+# Temp files
+.tmp-*
+tmp/
+backups/
+dist-backups/
+.deploy-backups/
+cache/
+runners/*/node_modules/
+runners/codex-runner-backups/
+*.bak-*
+
+# OS
+.DS_Store
+._*
+
+# IDE
+.idea/
+.vscode/
+
+# Skills system (local per-installation state)
+.nanoclaw/
+
+agents-sdk-docs
+
+.history/

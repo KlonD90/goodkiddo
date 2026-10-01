@@ -1,0 +1,5 @@
+Setup wizard: channels are connected, but no chats are registered yet.
+
+Next step: run `bun run setup` to finish the guided setup, or register at least one room manually before expecting replies.
+   - Discord example: `bun run setup -- --step register -- --jid dc:<channel_id> --name "My Server #general" --folder discord_main --trigger @Codex --is-main --no-trigger-required`
+   - Telegram example: `bun run setup -- --step register -- --channel telegram --jid tg:<chat_id> --name "Telegram chat" --folder telegram_main --trigger @Codex --no-trigger-required`

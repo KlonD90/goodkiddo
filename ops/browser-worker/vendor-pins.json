@@ -1,0 +1,13 @@
+{
+  "playwright_version": "1.63.0",
+  "base_image": "mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27",
+  "seccomp_source": "https://raw.githubusercontent.com/microsoft/playwright/v1.63.0/utils/docker/seccomp_profile.json",
+  "seccomp_sha256": "cc3e61cabda6bbc1e53e54d27ba4d55a9d3be829b6dd1a596f4a7b31b1cc7849",
+  "agent_browser_version": "0.38.1",
+  "agent_browser_integrity": "sha512-k58FCz0yUOCANoNkMiqJe+H2y6r6sUZazqXsWF+MYq1iRC42PjtLcBoag6SSTOD/FRQppvPDvE5HDYEhclvnhw==",
+  "agent_browser_binary_sha256": "5100149a1903211c889de4e545bf36d90803740cea4f99aa22651649f9205ea1",
+  "prepared_seccomp_sha256": "33e53d269bd19ff35bb6bbd667cf78ae354b6516cf09d3b66e44d3489739b492",
+  "tested_image": "localhost/goodkiddo-browser:d03b240c101b",
+  "tested_image_id": "4247e7a00a5b2513cda873a419ff02418dd89392b4c3e7038d3ae44148ea01e7",
+  "tested_build_context_sha256": "d03b240c101b3dd70036ea93dffc70ee644dd8eea0787dac1a6573d0a7e7a086"
+}

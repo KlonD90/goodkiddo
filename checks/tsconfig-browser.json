@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "..",
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "../src/browser-worker/**/*.ts",
+    "./browser-adversarial.verify.ts",
+    "./browser-confinement.verify.ts",
+    "./browser-controller.verify.ts",
+    "./browser-host.verify.ts"
+  ],
+  "exclude": ["../node_modules"]
+}

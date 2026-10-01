@@ -1,0 +1,6 @@
+{
+  "plugins": [],
+  "maxOutput": 20000,
+  "contentBoundaries": false,
+  "actionPolicy": "/app/action-policy.json"
+}

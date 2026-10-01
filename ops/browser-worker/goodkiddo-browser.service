@@ -1,0 +1,38 @@
+[Unit]
+Description=GoodKiddo isolated read-only browser broker
+Requires=goodkiddo-browser.socket
+After=goodkiddo-browser.socket
+
+[Service]
+User=goodkiddo-browser
+Group=goodkiddo-browser
+WorkingDirectory=/var/lib/goodkiddo-browser
+Environment=HOME=/var/lib/goodkiddo-browser
+Environment=XDG_RUNTIME_DIR=/run/goodkiddo-browser-owner
+Environment=PATH=/usr/bin:/bin
+ExecStart=/usr/bin/node /opt/goodkiddo-browser/broker.js IMAGE_TAG
+Restart=on-failure
+RestartSec=2
+Delegate=yes
+DelegateSubgroup=broker
+CPUQuota=100%
+MemoryMax=1G
+MemorySwapMax=0
+TasksMax=256
+RuntimeDirectory=goodkiddo-browser-owner
+RuntimeDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/var/lib/goodkiddo-browser /run/goodkiddo-browser-owner
+InaccessiblePaths=-/opt/goodkiddo -/var/lib/goodkiddo -/etc/goodkiddo
+# Rootless uidmap helpers need their standard setuid transition on the broker.
+# Every child browser container separately enforces no-new-privileges/cap-drop.
+NoNewPrivileges=no
+KillMode=control-group
+TimeoutStopSec=10
+StandardOutput=null
+StandardError=null
+
+[Install]
+WantedBy=multi-user.target

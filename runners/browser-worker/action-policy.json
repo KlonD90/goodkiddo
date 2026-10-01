@@ -1,0 +1,4 @@
+{
+  "default": "deny",
+  "allow": ["launch", "navigate", "snapshot", "url", "gettext", "getattribute", "scroll"]
+}

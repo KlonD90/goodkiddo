@@ -1,0 +1,13 @@
+[Unit]
+Description=Private GoodKiddo browser worker transport
+
+[Socket]
+ListenStream=/run/goodkiddo-browser/worker.sock
+SocketUser=goodkiddo-browser
+SocketGroup=goodkiddo
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target
