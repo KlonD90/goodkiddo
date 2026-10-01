@@ -23,6 +23,10 @@ import {
 } from './attachment-tools.js';
 import { AssistantFiles } from '../persistence/assistant-files.js';
 import { visionToolDefinitions, executeVisionTool } from './vision-tools.js';
+import {
+  researchToolDefinitions,
+  executeResearchTool,
+} from './research-tools.js';
 import type { AssistantLlm } from '../providers/assistant-llm.js';
 import type { AssistantAnalytics } from '../integrations/assistant-analytics.js';
 import {
@@ -105,6 +109,7 @@ export function toolDefinitions(
       webToolDefinitions(),
       attachmentToolDefinitions(),
       visionToolDefinitions(),
+      researchToolDefinitions(),
     );
 }
 export interface ToolContext {
@@ -179,6 +184,28 @@ export async function executeTool(
       new AssistantFiles(ctx.store.db, ctx.config.fileLimits),
     );
   if (name === 'describe_image') return executeVisionTool(input, ctx);
+  if (name === 'research')
+    return executeResearchTool(input, ctx, {
+      search: ctx.config.braveKey
+        ? {
+            definition: toolDefinitions(true).find(
+              (tool) => tool.function.name === 'search_web',
+            )!,
+            execute: async (args, signal) => {
+              const searchContext = { ...ctx, signal };
+              try {
+                return await executeTool(
+                  'search_web',
+                  JSON.stringify(args),
+                  searchContext,
+                );
+              } finally {
+                ctx.searches = searchContext.searches;
+              }
+            },
+          }
+        : undefined,
+    });
   if (isFileTool(name)) return executeFileTool(name, input, ctx);
   const { store, config, request, taskId } = ctx;
   switch (name) {
