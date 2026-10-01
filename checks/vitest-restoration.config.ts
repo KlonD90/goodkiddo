@@ -8,6 +8,9 @@ export default defineConfig({
       'src/channels/telegram-rich-delivery.test.ts',
       'src/channels/telegram-markdown-chunks.test.ts',
       'src/capabilities/documents/extract.test.ts',
+      'src/capabilities/browser/job.test.ts',
+      'src/capabilities/browser/network-policy.test.ts',
+      'src/capabilities/research/agent.test.ts',
     ],
   },
 });

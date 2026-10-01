@@ -174,3 +174,25 @@ optional search allowance. All model/search calls are synthetic.
 Run: `bun test ./checks/assistant-research.check.ts`,
 `bunx --no-install vitest run src/capabilities/browser src/capabilities/research`,
 `bunx --no-install tsc -p checks/tsconfig-research.json`.
+
+## Cloud integration validation
+
+The two source handoff patches were applied to published restoration baseline
+`dd9faa9e17d9b8b783c52c6af182f5bcc28dc476`. The combined restoration Vitest
+configuration includes the browser contract, network policy and research unit
+tests; the restoration check typecheck also includes the research integration
+checks. Install dependencies with Bun 1.3.13 and the frozen lockfile. Run Vitest
+under Node (the default package executable runtime), not by running its `.mjs`
+entrypoint directly with Bun; the latter produced Zod import failures in cloud.
+
+```sh
+bun test ./checks/assistant-research.check.ts
+node node_modules/vitest/vitest.mjs run --config checks/vitest-restoration.config.ts
+bun run node_modules/typescript/bin/tsc -p checks/tsconfig-assistant.json
+bun run node_modules/typescript/bin/tsc -p checks/tsconfig-file-checks.json
+bun run build
+```
+
+Use synthetic fixtures and an environment without live analytics/provider
+credentials. These checks do not start the bot or enable a rendered browser.
+The real Chromium worker and voice support are separate checkpoints.
