@@ -31,7 +31,9 @@ const assert=require('node:assert/strict'); const fs=require('node:fs'); const n
 `;
 args.push('-e', fixture);
 const child = spawn('/usr/bin/podman', args, {
-  stdio: 'inherit',
+  // The fixture does not consume stdin. Do not let Podman read an operator's
+  // remaining SSH heredoc commands into the container's otherwise unused stdin.
+  stdio: ['ignore', 'inherit', 'inherit'],
   cwd: '/var/lib/goodkiddo-browser',
   env: {
     PATH: '/usr/bin:/bin',

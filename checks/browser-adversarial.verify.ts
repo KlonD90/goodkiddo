@@ -87,7 +87,7 @@ try {
   // rules. Top-level navigation exercises interception of the actual next hop.
   await job.run({ action: 'open', url: 'https://redirect.example/public' });
   assert.equal(
-    await job.run({ action: 'get_url' }),
+    (await job.run({ action: 'get_url' })).trim(),
     'https://public.example/final',
   );
   assert.match(

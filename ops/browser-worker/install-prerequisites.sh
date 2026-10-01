@@ -14,6 +14,7 @@ if test "$podman_was_present" = 0; then
   # Apt enables rootful defaults. This worker needs only daemonless rootless
   # Podman; preserve any Podman services on hosts where it already existed.
   systemctl disable --now podman.socket podman.service \
+    podman-auto-update.service podman-clean-transient.service \
     podman-auto-update.timer podman-restart.service
 fi
 if ! id goodkiddo-browser >/dev/null 2>&1; then
