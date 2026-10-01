@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { getEnv } from './env.js';
 import { DEFAULT_FILE_LIMITS } from '../persistence/assistant-file-policy.js';
+import { loadVoiceConfig } from './assistant-voice-config.js';
 
 function numberSetting(key: string, fallback: number): number {
   const value = Number(getEnv(key) ?? fallback);
@@ -73,6 +74,7 @@ export function loadAssistantConfig() {
     braveKey: getEnv('BRAVE_SEARCH_API_KEY'),
     searchCost: numberSetting('SEARCH_COST_USD_PER_CALL', 0.01),
     timezone,
+    voice: loadVoiceConfig(),
     dbPath: path.resolve(getEnv('ASSISTANT_DB_PATH') || 'store/assistant.db'),
     fileShares: {
       enabled: getEnv('FILE_SHARES_ENABLED') === 'true',

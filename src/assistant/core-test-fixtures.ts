@@ -1,4 +1,5 @@
 import { DEFAULT_FILE_LIMITS } from '../persistence/assistant-file-policy.js';
+import { DEFAULT_VOICE_CONFIG } from '../config/assistant-voice-config.js';
 import type { AssistantConfig } from '../config/assistant-config.js';
 import type { TelegramAssistantApi } from '../channels/telegram-assistant-api.js';
 
@@ -23,6 +24,7 @@ export function syntheticConfig(): AssistantConfig {
     braveKey: undefined,
     searchCost: 0,
     timezone: 'UTC',
+    voice: { ...DEFAULT_VOICE_CONFIG },
     dbPath: ':memory:',
     fileLimits: { ...DEFAULT_FILE_LIMITS },
     fileShares: {

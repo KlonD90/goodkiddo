@@ -116,15 +116,22 @@ export class TelegramAssistantApi {
   async call<T>(
     method: string,
     body: Record<string, unknown> = {},
+    signal?: AbortSignal,
   ): Promise<T> {
-    return this.request<T>(method, JSON.stringify(body), {
-      'Content-Type': 'application/json',
-    });
+    return this.request<T>(
+      method,
+      JSON.stringify(body),
+      {
+        'Content-Type': 'application/json',
+      },
+      signal,
+    );
   }
   private async request<T>(
     method: string,
     body: string | FormData,
     headers?: Record<string, string>,
+    signal?: AbortSignal,
   ): Promise<T> {
     let response: Response;
     try {
@@ -138,6 +145,7 @@ export class TelegramAssistantApi {
           signal: AbortSignal.any([
             this.controller.signal,
             AbortSignal.timeout(40_000),
+            ...(signal ? [signal] : []),
           ]),
         },
       );
@@ -169,10 +177,12 @@ export class TelegramAssistantApi {
   async downloadDocument(
     fileId: string,
     maxBytes: number,
+    signal?: AbortSignal,
   ): Promise<Uint8Array> {
     const file = await this.call<{ file_path?: string; file_size?: number }>(
       'getFile',
       { file_id: fileId },
+      signal,
     );
     if (file.file_size !== undefined && file.file_size > maxBytes)
       throw new TelegramFileError('Документ превышает допустимый размер.');
@@ -194,6 +204,7 @@ export class TelegramAssistantApi {
           signal: AbortSignal.any([
             this.controller.signal,
             AbortSignal.timeout(40_000),
+            ...(signal ? [signal] : []),
           ]),
         },
       );

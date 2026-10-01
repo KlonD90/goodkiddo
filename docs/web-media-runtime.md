@@ -28,6 +28,8 @@ Draft stop buttons remain disabled; no unwired cancellation promise is shown. To
 
 ## Voice finding and exact requirement
 
+Historical finding below: the separate [OpenAI Telegram voice implementation](telegram-voice.md) now provides the owner's requested `whisper-1` path. It remains disabled pending the existing OpenAI credential; no local Whisper model installation is needed for that path.
+
 The current model registry advertises text/image/video, not audio: <https://github.com/anomalyco/models.dev/blob/dev/providers/opencode/models/space-bunny-free.toml>. No free audio-transcription route for the existing public provider was established. Voice ingress is now recognized and returns an explicit limitation instead of disappearing silently.
 
 The authoring Mac has `/opt/homebrew/bin/whisper-cli` 1.8.3 and FFmpeg, but its only located model is `/opt/homebrew/share/whisper-cpp/for-tests-ggml-tiny.bin` (562 KiB). The upstream documentation confirms that `for-tests-*` files contain **no weights**: <https://github.com/ggml-org/whisper.cpp/blob/master/models/README.md#model-files-for-testing-purposes>. It is not a usable recognizer. No model, software, account, key, or paid provider was installed or enabled.

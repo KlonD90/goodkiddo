@@ -57,6 +57,7 @@ async function runService(config: AssistantConfig): Promise<void> {
   );
   const stop = new AbortController();
   let maintenance: Promise<void> | undefined;
+  let ingress: AssistantIngress | undefined;
   let fileServer: ReturnType<typeof startFileLinkServer>;
   const shutdown = () => {
     stop.abort();
@@ -67,7 +68,7 @@ async function runService(config: AssistantConfig): Promise<void> {
   process.once('SIGTERM', shutdown);
   try {
     const me = await api.me();
-    const ingress = new AssistantIngress(store, config, analytics, api, me);
+    ingress = new AssistantIngress(store, config, analytics, api, me);
     worker.recoverInterrupted();
     fileServer = startFileLinkServer(config, store);
     maintenance = (async () => {
@@ -99,6 +100,10 @@ async function runService(config: AssistantConfig): Promise<void> {
         botVersion: config.botVersion,
         searchEnabled: !!config.braveKey,
         analyticsEnabled: analytics.enabled,
+        voiceEnabled:
+          config.voice.enabled &&
+          !!config.voice.apiKey &&
+          config.voice.monthlyBudget > 0,
       },
       'GoodKiddo Telegram assistant started',
     );
@@ -147,6 +152,7 @@ async function runService(config: AssistantConfig): Promise<void> {
     }
   } finally {
     shutdown();
+    await ingress?.voice.stop();
     await worker.stop();
     await maintenance;
     await analytics.shutdown().catch(() => {

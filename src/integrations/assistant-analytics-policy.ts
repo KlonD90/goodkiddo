@@ -33,6 +33,7 @@ export function startSource(value?: string): string {
   return value ? (SOURCES.has(value) ? value : 'unknown') : 'direct';
 }
 const ENUMS: Record<string, Set<string>> = {
+  input_type: new Set(['voice', 'text']),
   interaction_type: new Set([
     'command',
     'reply',

@@ -16,6 +16,7 @@
     "./assistant-media.check.ts",
     "./assistant-delivery.check.ts",
     "./assistant-recurring-integration.check.ts",
+    "./assistant-voice.check.ts",
     "../src/assistant/prompt-jobs.test.ts",
     "./analytics/assistant-analytics.test.ts",
     "./analytics/landing-analytics.test.ts"

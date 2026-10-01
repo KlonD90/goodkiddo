@@ -67,3 +67,5 @@ Per the user's instruction, automated tests, type checking, builds, live bot tri
 # Web/media restoration
 
 The connected runtime restores bounded supplied-URL reading, PDF/CSV/XLSX extraction, chat-scoped image understanding, native Telegram rich tables, private draft streaming and durable group preview edits. See [web-media-runtime.md](web-media-runtime.md) for configuration boundaries, delivery semantics, synthetic checks and the remaining voice requirement. File tool dispatch and document delivery holds remain in force. A final new-send timeout is retained as an uncertain receipt and is not automatically resent.
+
+Telegram voice now has an optional bounded OpenAI `whisper-1` intake with a persisted $5 monthly maximum in Asia/Tbilisi, owner cancellation and restart deduplication. It remains disabled until its existing OpenAI credential is configured. See [telegram-voice.md](telegram-voice.md); that implementation supersedes the earlier local-recognizer proposal in the media notes.

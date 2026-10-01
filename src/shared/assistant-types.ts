@@ -26,6 +26,7 @@ export interface InboundRequest {
   messageAt?: string;
   contextVersion?: number;
   imagePaths?: string[];
+  inputType?: 'voice';
   messageThreadId?: number;
   scheduled?: ScheduledTurn;
 }

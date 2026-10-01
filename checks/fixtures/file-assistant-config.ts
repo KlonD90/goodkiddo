@@ -1,5 +1,6 @@
 import type { AssistantConfig } from '../../src/config/assistant-config.ts';
 import { DEFAULT_FILE_LIMITS } from '../../src/persistence/assistant-file-policy.ts';
+import { DEFAULT_VOICE_CONFIG } from '../../src/config/assistant-voice-config.ts';
 
 export function fileConfig(): AssistantConfig {
   return {
@@ -22,6 +23,7 @@ export function fileConfig(): AssistantConfig {
     braveKey: undefined,
     searchCost: 0,
     timezone: 'UTC',
+    voice: { ...DEFAULT_VOICE_CONFIG },
     dbPath: ':memory:',
     fileLimits: { ...DEFAULT_FILE_LIMITS },
     fileShares: {
