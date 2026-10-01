@@ -1,0 +1,30 @@
+{
+  "published_baseline": "dd9faa9e17d9b8b783c52c6af182f5bcc28dc476",
+  "source_snapshot": "5a0e39c1474943110728afbfa6a0174dfb123de5",
+  "source_commits": [
+    {
+      "commit": "cafebef7892513c95731af69bc71b65574300899",
+      "base": "e70267b2aff25b16697adf6a7f0a856f301b266c"
+    },
+    {
+      "commit": "3e6316d41f12686778d61979c0a218454d1ec11b",
+      "base": "cafebef7892513c95731af69bc71b65574300899"
+    }
+  ],
+  "patches": [
+    {
+      "path": "0001-research.patch",
+      "sha256": "efad5703a0bb6d5545ae3b41440615793456483f4e7ec558a843d0b9acbc85de"
+    },
+    {
+      "path": "0002-research.patch",
+      "sha256": "02d1767d6ec4b92c10e587c579f88485a3e817c46f78142e9e4005522e820856"
+    }
+  ],
+  "ordered_apply_check": "passed on published baseline in an isolated worktree",
+  "synthetic_tests": {
+    "bun": 9,
+    "vitest": 37
+  },
+  "research_typecheck": "passed"
+}
