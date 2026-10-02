@@ -52,7 +52,7 @@ Usage is measured after every attempted LLM call. Missing usage/network uncertai
 
 ## Data and operation
 
-Only addressed group messages enter model context. The retained conversational window is 24 messages, each capped at 12,000 characters. Processed inbox request bodies are erased; pending request bodies stay until processing. Completed jobs, votes and usage metadata remain in the local database. `/clear` removes conversational context, not the job archive. Backups of this database contain private data.
+Only addressed group messages enter model context. There is no message-count or per-message history clipping limit. The complete request fits min(verified model window, 200,000), with the configured output reserve inside that window. Whole older messages are selected by a conservative token budget and remain searchable in the full chat-scoped archive. After one idle hour a bounded model call produces a semantic summary; the original archive remains intact. Unknown model/image token limits prevent the call. See [context-compaction.md](context-compaction.md) for metadata, accounting and restart behavior. Processed inbox request bodies are erased; pending request bodies stay until processing. Completed jobs, votes and usage metadata remain in the local database. `/clear` removes conversational context and its archive, not the job archive. Backups of this database contain private data.
 
 Set valid Telegram credentials, a provider/model with function calling, actual token prices, timezone and optional Brave/PostHog credentials before starting. Changing `src/config/assistant-config.ts` does not alter the existing private `.env`. No production deployment or macOS service re-enablement is part of this implementation.
 
@@ -64,6 +64,7 @@ Per the user's instruction, automated tests, type checking, builds, live bot tri
 - [OpenRouter Chat Completions schema](https://openrouter.ai/docs/api_reference/overview): the compatible adapter's request/tool/usage shape; this does not select OpenRouter as the provider.
 - [Brave web search API](https://api-dashboard.search.brave.com/app/documentation/web-search/get-started): search results and links.
 - [PostHog Node SDK](https://posthog.com/docs/libraries/node): server-side event client.
+
 # Web/media restoration
 
 The connected runtime restores bounded supplied-URL reading, PDF/CSV/XLSX extraction, chat-scoped image understanding, native Telegram rich tables, private draft streaming and durable group preview edits. See [web-media-runtime.md](web-media-runtime.md) for configuration boundaries, delivery semantics, synthetic checks and the remaining voice requirement. File tool dispatch and document delivery holds remain in force. A final new-send timeout is retained as an uncertain receipt and is not automatically resent.

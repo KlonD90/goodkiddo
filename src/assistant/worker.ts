@@ -17,6 +17,8 @@ import {
   registerContextTurn,
 } from './context.js';
 import { TelegramTurnPreview } from '../channels/telegram-turn-preview.js';
+import { ContextBudgetError } from '../providers/assistant-context-budget.js';
+import { compactIdleChat } from './idle-compaction.js';
 import { ensureTextDeliverySchema } from '../persistence/assistant-text-outbox.js';
 import {
   assertScheduledTurn,
@@ -57,6 +59,17 @@ export class AssistantWorker {
         this.store.nextRequest() || claimPromptRequest(this.store, this.config))
     )
       await this.process(request);
+    for (const chatId of this.store.compaction.due()) {
+      if (this.stopped || this.store.nextRequest()) break;
+      await compactIdleChat({
+        config: this.config,
+        store: this.store,
+        analytics: this.analytics,
+        llm: this.llm,
+        chatId,
+        signal: this.controller.signal,
+      });
+    }
   }
   private async process(request: InboundRequest): Promise<void> {
     const { store, analytics, config } = this;
@@ -214,6 +227,7 @@ export class AssistantWorker {
     }
   }
   recoverInterrupted(): void {
+    this.store.compaction.recover();
     const rows = this.store.db
       .query(
         `SELECT id,chat_id,user_id FROM assistant_runs WHERE status='running' AND (id NOT IN
@@ -224,6 +238,16 @@ export class AssistantWorker {
     this.store.transaction(() => {
       for (const row of rows) {
         if (row.id.startsWith('prompt-run:')) continue;
+        if (row.id.startsWith('context-compaction:')) {
+          this.analytics.finish(
+            row.id,
+            this.store.chat(row.chat_id)!,
+            null,
+            'cancelled',
+            'internal',
+          );
+          continue;
+        }
         const chat = this.store.chat(row.chat_id);
         if (!chat) continue;
         this.analytics.finish(
@@ -277,7 +301,7 @@ function describeFailure(
       message:
         'Обработка остановлена. Уже сохранённые задачи остаются в /tasks.',
     };
-  if (error instanceof BudgetExceeded)
+  if (error instanceof BudgetExceeded || error instanceof ContextBudgetError)
     return {
       status: 'refused',
       errorType: 'rate_limit',

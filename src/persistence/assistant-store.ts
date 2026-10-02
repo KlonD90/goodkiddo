@@ -8,6 +8,7 @@ import { ASSISTANT_PAGE_SCHEMA } from './assistant-page-schema.js';
 import { AssistantMemory } from './assistant-memory.js';
 import { AssistantTodos } from './assistant-todos.js';
 import { AssistantPromptJobs } from './assistant-prompt-jobs.js';
+import { AssistantCompactionState } from './assistant-compaction.js';
 import type {
   Actor,
   AssistantChat,
@@ -24,6 +25,7 @@ export class AssistantStore {
   readonly memory: AssistantMemory;
   readonly todos: AssistantTodos;
   readonly promptJobs: AssistantPromptJobs;
+  readonly compaction: AssistantCompactionState;
   constructor(file: string) {
     mkdirSync(path.dirname(file), { recursive: true });
     this.db = new Database(file, { create: true });
@@ -35,6 +37,7 @@ export class AssistantStore {
     this.todos = new AssistantTodos(this.db);
     this.promptJobs = new AssistantPromptJobs(this.db, this);
     this.memory.seedHistory();
+    this.compaction = new AssistantCompactionState(this.db);
   }
   transaction<T>(fn: () => T): T {
     return this.db.transaction(fn)();
@@ -66,9 +69,11 @@ export class AssistantStore {
   }
   enqueue(request: InboundRequest): void {
     request.contextVersion ??= this.contextVersion(request.chat.id);
-    this.db
+    const inserted = this.db
       .query('INSERT OR IGNORE INTO assistant_inbox(id,request) VALUES (?,?)')
       .run(request.updateId, JSON.stringify(request));
+    if (!request.scheduled && inserted.changes)
+      this.compaction.activity(request.chat.id);
   }
   nextRequest(): InboundRequest | undefined {
     const row = this.db
@@ -99,21 +104,15 @@ export class AssistantStore {
         .query(
           'INSERT INTO assistant_history(chat_id,role,content) VALUES (?,?,?)',
         )
-        .run(chatId, role, content.slice(0, 12000));
+        .run(chatId, role, content);
       this.memory.archive(
         Number(inserted.lastInsertRowid),
         chatId,
         role,
-        content.slice(0, 12000),
+        content,
         recordedAt,
       );
-      this.memory.summarizeEvicted(chatId);
-      this.db
-        .query(
-          `DELETE FROM assistant_history WHERE chat_id=? AND id NOT IN
-      (SELECT id FROM assistant_history WHERE chat_id=? ORDER BY id DESC LIMIT 24)`,
-        )
-        .run(chatId, chatId);
+      this.compaction.changed(chatId, role === 'user');
     });
   }
   history(chatId: string): LlmMessage[] {
@@ -129,6 +128,7 @@ export class AssistantStore {
         .query('DELETE FROM assistant_history WHERE chat_id=?')
         .run(chatId);
       this.memory.clearContext(chatId);
+      this.compaction.clear(chatId);
       this.setState(
         `context_version:${chatId}`,
         String(this.contextVersion(chatId) + 1),

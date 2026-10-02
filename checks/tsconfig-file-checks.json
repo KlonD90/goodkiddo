@@ -7,6 +7,8 @@
   },
   "include": [
     "./assistant-files.check.ts",
+    "./assistant-context-budget.check.ts",
+    "./assistant-idle-compaction.check.ts",
     "./assistant-research.check.ts",
     "./assistant-browser.check.ts",
     "./assistant-documents.check.ts",

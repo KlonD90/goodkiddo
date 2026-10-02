@@ -5,6 +5,37 @@ import { cancelDeliverySnapshots } from '../persistence/assistant-delivery-ledge
 
 export class ContextCleared extends Error {}
 const turns = new WeakMap<AssistantStore, Map<string, Set<AbortController>>>();
+const idleCompactions = new WeakMap<
+  AssistantStore,
+  Map<string, AbortController>
+>();
+
+export function noteUserActivity(
+  store: AssistantStore,
+  chatId: string,
+  updateId?: number,
+): void {
+  if (updateId !== undefined) {
+    const key = `context_activity_update:${chatId}`;
+    if (Number(store.state(key) ?? -1) >= updateId) return;
+    store.setState(key, String(updateId));
+  }
+  idleCompactions.get(store)?.get(chatId)?.abort();
+  store.compaction.activity(chatId);
+}
+export function registerIdleCompaction(store: AssistantStore, chatId: string) {
+  const chats =
+    idleCompactions.get(store) ?? new Map<string, AbortController>();
+  idleCompactions.set(store, chats);
+  const controller = new AbortController();
+  chats.set(chatId, controller);
+  return {
+    signal: controller.signal,
+    release: () => {
+      if (chats.get(chatId) === controller) chats.delete(chatId);
+    },
+  };
+}
 
 export function assertCurrentContext(
   store: AssistantStore,
@@ -35,6 +66,7 @@ export function registerContextTurn(
   };
 }
 export function clearChatContext(store: AssistantStore, chatId: string): void {
+  idleCompactions.get(store)?.get(chatId)?.abort(new ContextCleared());
   for (const controller of turns.get(store)?.get(chatId) || [])
     controller.abort(new ContextCleared());
   store.transaction(() => {

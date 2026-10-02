@@ -8,6 +8,8 @@ const READ_TOOLS = new Set([
   'delivery_status',
   'memory_list',
   'history_search',
+  'history_read',
+  'context_result_read',
   'todo_list',
   'list_prompt_jobs',
   'prompt_job_runs',

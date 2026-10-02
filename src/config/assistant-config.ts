@@ -3,6 +3,7 @@ import { getEnv } from './env.js';
 import { DEFAULT_FILE_LIMITS } from '../persistence/assistant-file-policy.js';
 import { loadVoiceConfig } from './assistant-voice-config.js';
 import { loadBrowserConfig } from './assistant-browser-config.js';
+import { loadContextConfig } from './assistant-context-config.js';
 
 function numberSetting(key: string, fallback: number): number {
   const value = Number(getEnv(key) ?? fallback);
@@ -67,6 +68,7 @@ export function loadAssistantConfig() {
     baseUrl,
     apiKey,
     model,
+    context: loadContextConfig(baseUrl, model),
     provider: getEnv('LLM_PROVIDER') || new URL(baseUrl).hostname,
     inputPrice: numberSetting('LLM_INPUT_USD_PER_MILLION', 1),
     outputPrice: numberSetting('LLM_OUTPUT_USD_PER_MILLION', 5),

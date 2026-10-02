@@ -32,17 +32,17 @@ afterEach(() => {
     rmSync(root, { recursive: true, force: true });
 });
 
-test('rolling history archives old messages and persists a digest across reopen', () => {
+test('full history has no message-count limit and survives reopen without extractive summaries', () => {
   const { store, file } = fixture();
   for (let i = 0; i < 60; i++)
     store.remember('synthetic-a', 'user', `decision-${i}`);
-  expect(store.history('synthetic-a')).toHaveLength(24);
-  expect(store.memory.summary('synthetic-a')).toContain('decision-0');
+  expect(store.history('synthetic-a')).toHaveLength(60);
+  expect(store.memory.summary('synthetic-a')).toBe('');
   expect(store.memory.search('synthetic-a', 'decision-0')).toHaveLength(1);
   const reopened = new AssistantStore(file);
   stores.push(reopened);
   expect(reopened.memory.search('synthetic-a', 'decision-0')).toHaveLength(1);
-  expect(reopened.memory.summary('synthetic-a')).toContain('decision-0');
+  expect(reopened.history('synthetic-a')).toHaveLength(60);
 });
 test('history and memory searches stay within the chat and escape LIKE wildcards', () => {
   const { store } = fixture();
@@ -189,6 +189,11 @@ test('agent advertises and executes core tools and injects stored memory on next
     outputPrice: 0,
     maxOutputTokens: 100,
     model: 'fake',
+    context: {
+      windowTokens: 200_000,
+      inputTokens: 200_000,
+      source: 'synthetic fixture',
+    },
     provider: 'fake',
   } as AssistantConfig;
   const analytics = new AssistantAnalytics(config, store);

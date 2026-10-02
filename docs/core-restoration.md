@@ -6,11 +6,11 @@ Records are committed to the assistant SQLite database before tools report succe
 TODOs have open/done/dismissed states and author-only mutation; they do not imply a timer.
 Memory records hold facts/preferences/skills and also require their author's permission to change.
 
-The immediate dialogue window stays at 24 messages. Older messages are archived in the same
-database and remain searchable within their chat. A bounded extractive digest survives restarts
-without additional LLM calls; the agent can replace it with a curated summary. Important lasting
-facts should be saved explicitly, because the digest is bounded. Only a bounded subset of notes
-and open TODOs is injected into each turn; read tools expose the complete lists.
+The original checkpoint kept 24 messages and an extractive digest. [context-compaction.md](context-compaction.md)
+supersedes those limits with token budgeting and idle semantic compaction. Complete available
+source messages remain archived and searchable within their chat. Lasting facts should still
+be saved explicitly; summaries and original sources remain historical data. The full injected
+summary, notes and open TODOs count toward the aggregate request budget.
 
 `/clear` deletes dialogue history, its archive and its summary, preserving explicit memory and
 saved tasks. `memory_delete` removes a lasting note; `/forget_memory` also clears historical

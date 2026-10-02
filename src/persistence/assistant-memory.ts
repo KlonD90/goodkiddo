@@ -41,27 +41,6 @@ export class AssistantMemory {
       .run(id, chatId, role, content, recordedAt);
   }
 
-  summarizeEvicted(chatId: string): void {
-    const evicted = this.db
-      .query(
-        `SELECT id,role,content FROM assistant_history WHERE chat_id=? AND id NOT IN
-      (SELECT id FROM assistant_history WHERE chat_id=? ORDER BY id DESC LIMIT 24) ORDER BY id`,
-      )
-      .all(chatId, chatId) as { id: number; role: string; content: string }[];
-    if (!evicted.length) return;
-    // Extractive digest has no extra provider calls/cost. Full older messages remain searchable.
-    const additions = evicted
-      .map((row) => `[${row.id} ${row.role}] ${row.content.slice(0, 800)}`)
-      .join('\n');
-    this.setSummary(
-      chatId,
-      [this.summary(chatId), additions]
-        .filter(Boolean)
-        .join('\n')
-        .slice(-16000),
-    );
-  }
-
   summary(chatId: string): string {
     return (
       (
@@ -144,6 +123,14 @@ export class AssistantMemory {
         `%${escaped}%`,
         Math.max(1, Math.min(20, limit)),
       ) as ArchivedMessage[];
+  }
+
+  read(chatId: string, id: number): ArchivedMessage | null {
+    return this.db
+      .query(
+        'SELECT id,role,content,recorded_at FROM assistant_history_archive WHERE chat_id=? AND id=?',
+      )
+      .get(chatId, id) as ArchivedMessage | null;
   }
 
   clearContext(chatId: string): void {

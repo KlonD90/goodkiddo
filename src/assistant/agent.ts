@@ -27,6 +27,8 @@ import {
 } from './core-tools.js';
 import type { ContentSnapshot } from '../providers/assistant-stream.js';
 import { storedImages } from './images.js';
+import { selectHistory } from '../providers/assistant-context-budget.js';
+import { toolResultContext } from './tool-result-context.js';
 
 export class AssistantTurnLimit extends Error {}
 export async function runAssistant(args: {
@@ -50,9 +52,12 @@ export async function runAssistant(args: {
     ...coreToolDefinitions(),
     ...promptJobToolDefinitions(),
   ].filter((tool) => toolAllowedForRequest(tool.function.name, request));
+  const history = store.history(request.chat.id);
+  // The newest user's message is mandatory; earlier whole messages are selected by tokens.
   const messages: LlmMessage[] = [
-    { role: 'system', content: assistantPrompt(request, !!config.braveKey) },
-    ...store.history(request.chat.id),
+    !request.scheduled && history.at(-1)?.role === 'user'
+      ? history.pop()!
+      : { role: 'user', content: request.text },
   ];
   const ctx: ToolContext = { ...args, searches: 0 };
   const images = storedImages(
@@ -61,13 +66,12 @@ export async function runAssistant(args: {
     request.chat.id,
     request.imagePaths,
   );
-  if (request.scheduled) messages.push({ role: 'user', content: request.text });
   for (let turn = 0; turn < config.maxCalls; turn++) {
     assertCurrentContext(store, request);
     assertScheduledTurn(store, request);
     args.signal.throwIfAborted();
     // Refresh time/timezone after a tool changes the chat settings.
-    messages[0] = {
+    const system: LlmMessage = {
       role: 'system',
       content:
         assistantPrompt(request, !!config.braveKey) + durableChatContext(ctx),
@@ -75,7 +79,14 @@ export async function runAssistant(args: {
     args.onContent?.('');
     const message = await meteredCompletion({
       ...args,
-      messages,
+      messages: selectHistory({
+        system,
+        history,
+        current: messages,
+        tools,
+        config,
+        images,
+      }),
       tools,
       images,
       onContent: args.onContent
@@ -139,7 +150,7 @@ export async function runAssistant(args: {
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: JSON.stringify(result),
+        content: toolResultContext(result, ctx),
       });
     }
     if (message.tool_calls.length > 8)

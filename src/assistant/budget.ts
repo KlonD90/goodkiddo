@@ -6,6 +6,7 @@ import type { AssistantLlm, LlmTool } from '../providers/assistant-llm.js';
 import type { InboundRequest, LlmMessage } from '../shared/assistant-types.js';
 import type { ContentSnapshot } from '../providers/assistant-stream.js';
 import type { ImageInput } from '../providers/assistant-vision.js';
+import { assertRequestFits } from '../providers/assistant-context-budget.js';
 
 export class BudgetExceeded extends Error {
   constructor(
@@ -91,14 +92,12 @@ export async function meteredCompletion(args: {
     throw new BudgetExceeded(
       'Достигнут лимит обращений к модели в этой задаче. Сохранённые задания остаются в /tasks.',
     );
-  // Conservative reservation: one token per UTF-8 byte plus framing; actual usage settles it.
-  const estimatedInput =
-    Buffer.byteLength(JSON.stringify({ messages, tools }), 'utf8') +
-    1024 +
-    (args.images || []).reduce(
-      (total, image) => total + Math.ceil((image.bytes.length * 4) / 3) + 256,
-      0,
-    );
+  const estimatedInput = assertRequestFits(
+    messages,
+    tools,
+    config,
+    args.images,
+  );
   const reserved =
     (estimatedInput * config.inputPrice +
       config.maxOutputTokens * config.outputPrice) /

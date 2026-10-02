@@ -9,6 +9,11 @@ export function syntheticConfig(): AssistantConfig {
     baseUrl: 'https://invalid.example',
     apiKey: '',
     model: 'fake',
+    context: {
+      windowTokens: 200_000,
+      inputTokens: 200_000,
+      source: 'synthetic fixture',
+    },
     provider: 'fake',
     inputPrice: 0,
     outputPrice: 0,

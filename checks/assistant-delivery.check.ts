@@ -81,7 +81,7 @@ function queue(s: ReturnType<typeof setup>, text = 'x'.repeat(16000)) {
   return { ids, batch: deliveryPart(s.store, ids[0])!.batch_id, text };
 }
 
-test('full 16000-character immutable reply survives ambiguous partial delivery and 12000-character history', async () => {
+test('full 16000-character immutable reply and history survive ambiguous partial delivery', async () => {
   const s = setup(),
     q = queue(s);
   s.store.remember('1', 'assistant', q.text);
@@ -95,7 +95,7 @@ test('full 16000-character immutable reply survives ambiguous partial delivery a
   for (let i = 0; i < 3; i++)
     await deliverMessages(s.store, s.api, s.analytics);
   expect(sends).toBe(2);
-  expect(s.store.history('1')[0].content!.length).toBe(12000);
+  expect(s.store.history('1')[0].content).toBe(q.text);
   expect(deliveryBatch(s.store, '1', q.batch)?.full_text).toBe(q.text);
   expect(batchParts(s.store, q.batch).map((p) => p.status)).toEqual([
     'sent',

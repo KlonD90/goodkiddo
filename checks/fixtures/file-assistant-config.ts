@@ -8,6 +8,13 @@ export function fileConfig(): AssistantConfig {
     baseUrl: 'https://example.invalid/v1',
     apiKey: '',
     model: 'synthetic',
+    context: {
+      windowTokens: 200_000,
+      inputTokens: 200_000,
+      source: 'synthetic fixture',
+      imageTokens: 1000,
+      imageSource: 'synthetic image fixture',
+    },
     provider: 'synthetic',
     inputPrice: 0,
     outputPrice: 0,

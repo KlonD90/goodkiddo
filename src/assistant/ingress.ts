@@ -25,7 +25,7 @@ import {
   ingestDocument,
   telegramDate,
 } from './documents.js';
-import { clearChatContext } from './context.js';
+import { clearChatContext, noteUserActivity } from './context.js';
 import { deliveryCommand } from './delivery-commands.js';
 import {
   telegramMessageTime,
@@ -110,6 +110,7 @@ export class AssistantIngress {
     const interaction = this.addressed(message, text);
     if (!interaction) return 'ignored_unaddressed';
     const chat = this.chat(message.chat);
+    noteUserActivity(this.store, chat.id, update.update_id);
     const contextVersion = this.store.contextVersion(chat.id);
     const actor = telegramActor(message.from);
     this.analytics.track(
@@ -505,6 +506,12 @@ export class AssistantIngress {
   }
   private async callback(update: TelegramUpdate): Promise<void> {
     const cb = update.callback_query!;
+    if (cb.message && !cb.from.is_bot)
+      noteUserActivity(
+        this.store,
+        String(cb.message.chat.id),
+        update.update_id,
+      );
     const message = cb.message;
     if (!message || message.chat.type === 'channel' || cb.from.is_bot) return;
     let answer = 'Эта кнопка больше не действует.';
