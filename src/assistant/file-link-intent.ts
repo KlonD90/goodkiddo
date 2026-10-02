@@ -16,7 +16,7 @@ export function requestedFileLink(
       text,
     );
   const artifact =
-    /(?:файл|документ|отч[её]т|таблиц|архив|\b(?:file|document|report|attachment)\b)/iu.test(
+    /(?:файл|папк|каталог|документ|отч[её]т|таблиц|архив|\b(?:file|folder|directory|document|report|attachment|explorer)\b)/iu.test(
       text,
     ) ||
     paths.some(

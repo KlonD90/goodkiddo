@@ -46,3 +46,14 @@ creating a partial grant or snapshot. Capabilities remain bearer links: possessi
 of a valid link permits its selected snapshots until expiry; this is not Telegram
 chat authentication. Existing tests cover cancellation of queued documents and
 stale link tools after `/clear`, plus download stream cancellation and slot reuse.
+
+## Selected VFS browser and isolated HTML follow-up (2026-10-02)
+
+The follow-up to deployed `7e0bf94...` adds hierarchical navigation of a selected
+immutable folder (at most 100 files; root forbidden), safe text/image previews,
+and separate landing-origin HTML previews with only referenced selected assets.
+Existing selected-file links and attachment downloads remain compatible. HTML
+never executes on the app origin, and the public page handler never queries VFS
+or file-grant tables. Limits, new additive tables, rollback behavior and the
+integrator-only deployment sequence are in `docs/mini-pages-restoration.md`.
+The folder snapshot is not a live namespace; newer files/edits remain private.

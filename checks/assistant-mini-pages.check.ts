@@ -75,12 +75,12 @@ test('published HTML renders selected immutable chat snapshot with isolated head
       s.ctx,
     )) as Publication;
     expect(result.url).toMatch(
-      /^https:\/\/whosagoodkiddo\.me\/p\/[A-Za-z0-9_-]{43}$/,
+      /^https:\/\/whosagoodkiddo\.me\/p\/[A-Za-z0-9_-]{43}\/page\.html$/,
     );
     expect(Date.parse(result.expires_at) - Date.now()).toBeLessThanOrEqual(
       86400000,
     );
-    const token = result.url.split('/').at(-1)!;
+    const token = new URL(result.url).pathname.split('/')[2];
     const row = s.store.db
       .query('SELECT * FROM assistant_mini_pages')
       .get() as { token_hash: string };
@@ -273,7 +273,7 @@ test('unknown/expired/traversal URLs fail uniformly; correct host, HEAD and GET 
       s.ctx,
     )) as Publication;
     const handler = miniPageHandler(s.store);
-    const token = result.url.split('/').at(-1)!;
+    const token = new URL(result.url).pathname.split('/')[2];
     for (const url of [
       result.url + '?chat_id=b',
       result.url + '/../../fs/',

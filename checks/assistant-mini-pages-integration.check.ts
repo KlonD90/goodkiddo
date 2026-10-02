@@ -35,12 +35,13 @@ test('Telegram ingress → existing agent → static publication → durable sam
   const foreign = 'FOREIGN_CHAT_PRIVATE';
   new AssistantFiles(store.db).write(
     '2',
-    '/trip.html',
+    '/trip/index.html',
     new TextEncoder().encode(foreign),
   );
   store.memory.write('2', '2', 'secret', 'FOREIGN_MEMORY_PRIVATE', 'fact');
   let round = 0;
   let link = '';
+  let browserLink = '';
   const llm: AssistantLlm = {
     complete: async (messages, tools) => {
       round++;
@@ -57,11 +58,20 @@ test('Telegram ingress → existing agent → static publication → durable sam
               call(
                 'write_file',
                 {
-                  file_path: '/trip.html',
+                  file_path: '/trip/index.html',
                   content:
-                    '<!doctype html><html lang="ru"><style>body{font:18px sans-serif;max-width:60rem;margin:auto}h1{color:#123456}</style><h1>План поездки</h1><p>Суббота: прогулка.</p></html>',
+                    '<!doctype html><html lang="ru"><link rel="stylesheet" href="style.css"><h1>План поездки</h1><p>Суббота: прогулка.</p></html>',
                 },
                 'write',
+              ),
+              call(
+                'write_file',
+                {
+                  file_path: '/trip/style.css',
+                  content:
+                    'body{font:18px sans-serif;max-width:60rem;margin:auto}h1{color:#123456}',
+                },
+                'style',
               ),
             ],
           },
@@ -74,9 +84,14 @@ test('Telegram ingress → existing agent → static publication → durable sam
             tool_calls: [
               call(
                 'publish_page',
-                { file_path: '/trip.html', title: 'План поездки' },
+                {
+                  file_path: '/trip/index.html',
+                  title: 'План поездки',
+                  asset_paths: ['/trip/style.css'],
+                },
                 'publish',
               ),
+              call('grant_fs_access', { scope_path: '/trip/' }, 'browser'),
             ],
           },
         };
@@ -85,6 +100,24 @@ test('Telegram ingress → existing agent → static publication → durable sam
           .content!,
       ) as { url: string; expires_at: string; id: string };
       link = result.url;
+      const browser = JSON.parse(
+        messages.find((m) => m.role === 'tool' && m.tool_call_id === 'browser')!
+          .content!,
+      ) as { url: string; html_previews: { url: string }[] };
+      browserLink = browser.url;
+      expect(browserLink).toStartWith('https://app.whosagoodkiddo.me/fs/');
+      expect(
+        await publicArtifactHandler(
+          config,
+          store,
+        )(new Request(browserLink)).text(),
+      ).toContain('index.html');
+      expect(
+        await publicArtifactHandler(
+          config,
+          store,
+        )(new Request(browser.html_previews[0].url)).text(),
+      ).toContain('<h1>План поездки</h1>');
       expect(link).toStartWith('https://whosagoodkiddo.me/p/');
       expect(
         publicArtifactHandler(config, store)(new Request(link)).status,
@@ -94,7 +127,7 @@ test('Telegram ingress → existing agent → static publication → durable sam
       return {
         message: {
           role: 'assistant',
-          content: `[План поездки](${link})\nДоступна до ${result.expires_at}; любой обладатель ссылки может открыть её. ID: ${result.id}.`,
+          content: `[План поездки](${link})\n[Файловый браузер](${browserLink})\nДоступна до ${result.expires_at}; любой обладатель ссылки может открыть её. ID: ${result.id}.`,
         },
       };
     },
@@ -113,7 +146,7 @@ test('Telegram ingress → existing agent → static publication → durable sam
           date: 1700000000,
           from: { id: 1, first_name: 'Synthetic' },
           chat: { id: 1, type: 'private' },
-          text: 'Создай мини-страницу с планом поездки и дай ссылку',
+          text: 'Создай мини-страницу с планом поездки и дай ссылку на неё и браузерную ссылку на папку /trip/',
         },
       }),
     ).toBe('enqueued_message');
@@ -136,7 +169,7 @@ test('Telegram ingress → existing agent → static publication → durable sam
     expect(sent).toEqual([]);
     expect(
       store.db.query('SELECT * FROM assistant_mini_pages').all(),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
     expect(
       store.db
         .query(
@@ -148,6 +181,7 @@ test('Telegram ingress → existing agent → static publication → durable sam
     expect(sent).toHaveLength(1);
     expect(sent[0].chat).toBe('1');
     expect(sent[0].text).toContain(link);
+    expect(sent[0].text).toContain(browserLink);
     for (const tool_name of ['publish_page', 'list_pages', 'revoke_page'])
       expect(
         analyticsProperties({
@@ -168,9 +202,9 @@ test('Telegram ingress → existing agent → static publication → durable sam
         .query('SELECT llm_calls,cost_usd,status FROM assistant_runs')
         .get(),
     ).toMatchObject({ llm_calls: 3, cost_usd: 0, status: 'success' });
-    expect(store.db.query('SELECT * FROM assistant_file_grants').all()).toEqual(
-      [],
-    );
+    expect(
+      store.db.query('SELECT * FROM assistant_file_grants').all(),
+    ).toHaveLength(1);
     // A group conversation without addressing the bot stays outside its context.
     expect(
       await ingress.handle({

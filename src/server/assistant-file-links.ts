@@ -1,10 +1,12 @@
 import type { AssistantStore } from '../persistence/assistant-store.js';
 import type { AssistantConfig } from '../config/assistant-config.js';
 import { miniPageHandler } from './assistant-mini-pages.js';
+import { renderFileBrowser } from './assistant-file-browser.js';
+import { staticAsset, resourceKind } from '../capabilities/pages/resources.js';
+import { fileGrantEntries } from '../persistence/assistant-file-grants.js';
 import {
   fileGrant,
   grantedFileBytes,
-  type GrantedFile,
 } from '../persistence/assistant-file-grants.js';
 
 export const FILE_LINK_BIND = { hostname: '127.0.0.1', port: 4184 } as const;
@@ -16,15 +18,6 @@ const headers = {
     "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; sandbox allow-downloads",
   'X-Robots-Tag': 'noindex, nofollow, noarchive',
 };
-function escaped(value: string): string {
-  return value.replace(
-    /[&<>"']/g,
-    (char) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[
-        char
-      ]!,
-  );
-}
 function unicode(value: string): string {
   return Buffer.from(value, 'utf8').toString('utf8');
 }
@@ -34,11 +27,12 @@ function encoded(value: string): string {
     (char) => '%' + char.charCodeAt(0).toString(16).toUpperCase(),
   );
 }
-function downloadPath(token: string, file: GrantedFile): string {
-  return `/fs/${token}/${file.ordinal}/${encoded(file.filename)}`;
-}
-export function fileGrantUrl(origin: string, token: string): string {
-  return `${origin}/fs/?uuid=${token}`;
+export function fileGrantUrl(
+  origin: string,
+  token: string,
+  directory?: string,
+): string {
+  return `${origin}/fs/?uuid=${token}${directory ? '&dir=' + encoded(directory) : ''}`;
 }
 function absent(): Response {
   return new Response('Файл или ссылка недоступны.', {
@@ -65,35 +59,56 @@ export function fileLinkHandler(
       const match = url.pathname.match(
         /^\/fs\/([A-Za-z0-9_-]{43})\/([0-9]{1,2})\/([^/]{1,600})$/,
       );
-      const token = index ? url.searchParams.get('uuid') : match?.[1];
+      const image = /^\/fs\/([A-Za-z0-9_-]{43})\/image\/(0|[1-9][0-9]?)$/.exec(
+        url.pathname,
+      );
+      const token = index
+        ? url.searchParams.get('uuid')
+        : match?.[1] || image?.[1];
       if (!token) return absent();
       const grant = fileGrant(store.db, token, clock());
       if (!grant) return absent();
       if (index) {
-        const list = grant.files
-          .map(
-            (file) =>
-              `<li><a href="${downloadPath(token, file)}" rel="noreferrer">${escaped(file.filename)}</a> · ${file.size} байт</li>`,
-          )
-          .join('');
-        const html = `<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Файлы GoodKiddo</title><h1>Файлы GoodKiddo</h1><p>Ссылка доступна любому, кто её получил, до ${escaped(new Date(grant.expires_at).toISOString())}.</p><ul>${list}</ul></html>`;
+        const html = renderFileBrowser(store, grant, token, url, clock());
+        if (!html) return absent();
         return new Response(request.method === 'HEAD' ? null : html, {
-          headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' },
+          headers: {
+            ...headers,
+            'Content-Type': 'text/html; charset=utf-8',
+            'Content-Security-Policy':
+              headers['Content-Security-Policy'].replace(
+                'sandbox allow-downloads',
+                'sandbox allow-downloads allow-popups allow-popups-to-escape-sandbox',
+              ) +
+              `; style-src 'unsafe-inline'; img-src https://app.whosagoodkiddo.me/fs/${token}/image/`,
+          },
         });
       }
-      if (!match) return absent();
+      if (!match && !image) return absent();
       const file = grant.files.find(
-        (file) => String(file.ordinal) === match[2],
+        (file) => String(file.ordinal) === (match?.[2] || image?.[2]),
       );
-      if (!file || decodeURIComponent(match[3]) !== file.filename)
+      if (!file || (match && decodeURIComponent(match[3]) !== file.filename))
         return absent();
       const disposition = `attachment; filename="${file.filename.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encoded(file.filename)}`;
-      const downloadHeaders = {
+      const downloadHeaders: Record<string, string> = {
         ...headers,
         'Content-Type': 'application/octet-stream',
         'Content-Disposition': disposition,
         'Content-Length': String(file.size),
       };
+      if (image) {
+        const entry = fileGrantEntries(store.db, grant).find(
+          (entry) => entry.ordinal === file.ordinal,
+        )!;
+        if (resourceKind(entry.path) !== 'image') return absent();
+        const asset = staticAsset(
+          entry.path,
+          grantedFileBytes(store.db, grant, file.ordinal)!,
+        );
+        downloadHeaders['Content-Type'] = asset.mimeType;
+        delete downloadHeaders['Content-Disposition'];
+      }
       if (request.method === 'HEAD')
         return new Response(null, { headers: downloadHeaders });
       if (downloading >= 4)

@@ -3,7 +3,11 @@ import type { LlmTool } from '../providers/assistant-llm.js';
 import { AssistantFiles } from '../persistence/assistant-files.js';
 import { textBytes } from '../persistence/assistant-file-policy.js';
 import { queueDocument } from '../persistence/assistant-document-outbox.js';
-import { createFileGrant } from '../persistence/assistant-file-grants.js';
+import {
+  createFileGrant,
+  createFolderFileGrant,
+} from '../persistence/assistant-file-grants.js';
+import { createFileGrantPreviews } from '../persistence/assistant-file-previews.js';
 import { AssistantFileError } from '../persistence/assistant-file-policy.js';
 import { fileGrantUrl } from '../server/assistant-file-links.js';
 import { requestedFileLink } from './file-link-intent.js';
@@ -43,7 +47,7 @@ const schemas = {
         .string()
         .optional()
         .describe(
-          'Compatibility: a single file path, never root or a directory.',
+          'One file or an explicitly selected directory with trailing slash. Root is forbidden. Directory snapshot contains at most 100 files.',
         ),
       ttl_hours: z
         .number()
@@ -69,7 +73,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
   send_file:
     'Queue an immutable file snapshot as a Telegram document to this same chat. Use when the user requested the file. queued means persisted for delivery, not sent yet. Never supply a destination/chat ID.',
   grant_fs_access:
-    'Create an expiring browser download link only after the current author explicitly asks for a file link. Select 1–20 file_paths from this chat; no root/directory listing, other chats or host files. Snapshots expire within 24h and are accessible to whoever holds the link. Never publish automatically after write_file or send_file.',
+    'Create an expiring VFS browser link only after the current author explicitly asks for a file/folder browser link. Select 1–20 file_paths, or one scope_path file/directory (trailing slash, at most 100 files) from this chat. Root/other chats/host files forbidden. UI navigates only selected immutable snapshots, with safe text/image previews and downloads; when mini-pages are enabled, selected HTML gets a separate isolated preview with referenced selected assets. Links expire within 24h and any holder can read the selected snapshots. Never grant a whole namespace automatically.',
 };
 export function fileToolDefinitions(sharesEnabled = false): LlmTool[] {
   return (Object.keys(schemas) as (keyof typeof schemas)[])
@@ -151,19 +155,48 @@ export function executeFileTool(
         throw new AssistantFileError(
           'Для публикации файла нужна явная просьба автора текущего сообщения о браузерной ссылке.',
         );
-      const grant = createFileGrant(
-        ctx.store.db,
-        files,
-        chatId,
-        paths,
-        a.ttl_hours,
-      );
+      const { grant, previews } = ctx.store.transaction(() => {
+        const now = Date.now();
+        const grant = a.scope_path?.endsWith('/')
+          ? createFolderFileGrant(
+              ctx.store.db,
+              files,
+              chatId,
+              a.scope_path,
+              a.ttl_hours,
+              now,
+            )
+          : createFileGrant(
+              ctx.store.db,
+              files,
+              chatId,
+              paths,
+              a.ttl_hours,
+              now,
+            );
+        const previews = ctx.config.miniPages?.enabled
+          ? createFileGrantPreviews(
+              ctx.store.db,
+              files.limits,
+              chatId,
+              ctx.request.actor.id,
+              grant.token,
+              now,
+            )
+          : [];
+        return { grant, previews };
+      });
       return {
-        url: fileGrantUrl(ctx.config.fileShares.publicBaseUrl, grant.token),
+        url: fileGrantUrl(
+          ctx.config.fileShares.publicBaseUrl,
+          grant.token,
+          a.scope_path?.endsWith('/') ? a.scope_path : undefined,
+        ),
         expires_at: new Date(grant.expiresAt).toISOString(),
         files: grant.files,
+        html_previews: previews,
         access:
-          'Anyone holding this link can download only these file snapshots until expiry.',
+          'Anyone holding this link can browse/preview/download only these immutable selected snapshots until expiry. HTML previews have separate restricted capabilities.',
       };
     }
     default:

@@ -25,7 +25,8 @@ export function checkFileQuota(
   const sql = `SELECT chat_id,length(content) AS bytes FROM assistant_files
     UNION ALL SELECT chat_id,length(content) FROM assistant_file_deliveries WHERE content IS NOT NULL
     UNION ALL SELECT chat_id,length(content) FROM assistant_file_grant_items
-    UNION ALL SELECT chat_id,length(content) FROM assistant_mini_pages`;
+    UNION ALL SELECT chat_id,length(content) FROM assistant_mini_pages
+    UNION ALL SELECT chat_id,length(content) FROM assistant_mini_page_assets`;
   const { bytes: chatBytes } = db
     .query(
       `SELECT COALESCE(SUM(bytes),0) AS bytes FROM (${sql}) WHERE chat_id=?`,

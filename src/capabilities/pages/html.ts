@@ -46,7 +46,17 @@ function safeHref(value: string): string | undefined {
 }
 
 /** Parse first, then serialize an allowlist. CSP separately blocks all active/network content. */
-export function sanitizeMiniPage(input: string, title: string) {
+export function sanitizeMiniPage(
+  input: string,
+  title: string,
+  options?: {
+    resource(
+      reference: string,
+      kind: 'style' | 'image' | 'navigation',
+    ): string | undefined;
+    css(value: string): string;
+  },
+) {
   if (!input.trim() || Buffer.byteLength(input) > MAX_MINI_PAGE_BYTES)
     throw new Error(
       'HTML мини-страницы должен занимать от 1 байта до 256 КиБ.',
@@ -57,21 +67,34 @@ export function sanitizeMiniPage(input: string, title: string) {
   let removed = 0;
   $('*').each((_, element) => {
     if (!('name' in element) || !('attribs' in element)) return;
-    if (!tags.has(element.name)) {
+    const node = $(element);
+    const stylesheet =
+      element.name === 'link' &&
+      node.attr('rel')?.toLowerCase() === 'stylesheet'
+        ? options?.resource(node.attr('href') || '', 'style')
+        : undefined;
+    if (!tags.has(element.name) && !stylesheet) {
       $(element).remove();
       removed++;
       return;
     }
-    const node = $(element);
+    const navigation =
+      element.name === 'a'
+        ? options?.resource(node.attr('href') || '', 'navigation')
+        : undefined;
     const href =
-      element.name === 'a' ? safeHref(node.attr('href') || '') : undefined;
+      element.name === 'a'
+        ? navigation || safeHref(node.attr('href') || '')
+        : stylesheet;
     const src =
       element.name === 'img' &&
       /^data:image\/(?:png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\r\n]+$/i.test(
         node.attr('src') || '',
       )
         ? node.attr('src')
-        : undefined;
+        : element.name === 'img'
+          ? options?.resource(node.attr('src') || '', 'image')
+          : undefined;
     for (const [name] of Object.entries(element.attribs)) {
       const extra =
         (element.name === 'img' && ['alt', 'width', 'height'].includes(name)) ||
@@ -85,10 +108,15 @@ export function sanitizeMiniPage(input: string, title: string) {
     }
     if (href) {
       node.attr('href', href);
-      if (!href.startsWith('#'))
+      if (stylesheet) node.attr('rel', 'stylesheet');
+      else if (!href.startsWith('#') && !navigation)
         node.attr('target', '_blank').attr('rel', 'noopener noreferrer');
     }
     if (src) node.attr('src', src);
+    if (options && node.attr('style'))
+      node.attr('style', options.css(node.attr('style')!));
+    if (options && element.name === 'style')
+      node.text(options.css(node.text()));
   });
   $('head').prepend(
     `<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title.trim())}</title>`,

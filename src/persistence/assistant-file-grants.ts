@@ -10,6 +10,7 @@ import { checkFileQuota, expireFileGrants } from './assistant-file-quota.js';
 
 export const MAX_FILE_GRANT_HOURS = 24;
 export const MAX_FILE_GRANT_ITEMS = 20;
+export const MAX_FOLDER_GRANT_ITEMS = 100;
 export interface GrantedFile {
   ordinal: number;
   filename: string;
@@ -38,10 +39,11 @@ export function createFileGrant(
   inputs: string[],
   hours = 24,
   now = Date.now(),
+  maximumItems = MAX_FILE_GRANT_ITEMS,
 ) {
   if (!Number.isFinite(hours) || hours < 1 / 60 || hours > MAX_FILE_GRANT_HOURS)
     throw new AssistantFileError('Срок ссылки — от минуты до 24 часов.');
-  if (!inputs.length || inputs.length > MAX_FILE_GRANT_ITEMS)
+  if (!inputs.length || inputs.length > maximumItems)
     throw new AssistantFileError(
       'Выберите от 1 до 20 файлов. Корень и папки не публикуются.',
     );
@@ -96,6 +98,64 @@ export function createFileGrant(
       })),
     };
   })();
+}
+
+/** A directory grant is a bounded snapshot, never a live root/namespace grant. */
+export function createFolderFileGrant(
+  db: Database,
+  files: AssistantFiles,
+  chatId: string,
+  input: string,
+  hours = 24,
+  now = Date.now(),
+) {
+  const directory = virtualPath(input, true);
+  if (directory === '/')
+    throw new AssistantFileError(
+      'Корень VFS не публикуется. Выберите конкретную папку.',
+    );
+  const entries = files.list(chatId, directory);
+  if (!entries.length || entries.length > MAX_FOLDER_GRANT_ITEMS)
+    throw new AssistantFileError(
+      'Выберите непустую папку не больше 100 файлов.',
+    );
+  return createFileGrant(
+    db,
+    files,
+    chatId,
+    entries.map((file) => file.path),
+    hours,
+    now,
+    MAX_FOLDER_GRANT_ITEMS,
+  );
+}
+
+export function fileGrantEntries(
+  db: Database,
+  grant: FileGrant,
+): (GrantedFile & { path: string; mime_type: string })[] {
+  return db
+    .query(
+      'SELECT ordinal,path,filename,mime_type,length(content) AS size FROM assistant_file_grant_items WHERE token_hash=? AND chat_id=? ORDER BY path',
+    )
+    .all(grant.token_hash, grant.chat_id) as (GrantedFile & {
+    path: string;
+    mime_type: string;
+  })[];
+}
+
+/** The HTML capability cannot be reversed into the broader file-browser capability. */
+export function previewPageToken(fileToken: string, ordinal: number): string {
+  if (
+    !tokenHash(fileToken) ||
+    !Number.isInteger(ordinal) ||
+    ordinal < 0 ||
+    ordinal >= MAX_FOLDER_GRANT_ITEMS
+  )
+    throw new Error('Invalid preview capability input.');
+  return createHash('sha256')
+    .update(`goodkiddo-static-preview:v1:${fileToken}:${ordinal}`)
+    .digest('base64url');
 }
 
 export function fileGrant(

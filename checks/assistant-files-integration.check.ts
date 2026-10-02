@@ -190,7 +190,9 @@ test('full synthetic model turn writes, reads, queues file and issues explicit l
     const html = await handler(new Request(link)).text();
     expect(html).toContain('report.csv');
     expect(html).not.toContain(foreignBytes);
-    const downloadPath = html.match(/href="([^"]+)"/)![1];
+    const downloadPath = html.match(
+      /href="(\/fs\/[A-Za-z0-9_-]{43}\/0\/report\.csv)"/,
+    )![1];
     const downloadUrl = new URL(downloadPath, link);
     // A caller cannot change a bearer grant's source chat with query parameters.
     downloadUrl.searchParams.set('chat_id', '-2');
