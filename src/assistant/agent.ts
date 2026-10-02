@@ -42,7 +42,11 @@ export async function runAssistant(args: {
 }): Promise<string> {
   const { store, request, config } = args;
   const tools = [
-    ...toolDefinitions(!!config.braveKey, config.fileShares?.enabled ?? false),
+    ...toolDefinitions(
+      !!config.braveKey,
+      config.fileShares?.enabled ?? false,
+      config.miniPages?.enabled ?? false,
+    ),
     ...coreToolDefinitions(),
     ...promptJobToolDefinitions(),
   ].filter((tool) => toolAllowedForRequest(tool.function.name, request));

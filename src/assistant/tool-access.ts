@@ -19,6 +19,7 @@ const READ_TOOLS = new Set([
   'read_url',
   'extract_file',
   'describe_image',
+  'list_pages',
 ]);
 export function toolAllowedForRequest(
   name: string,

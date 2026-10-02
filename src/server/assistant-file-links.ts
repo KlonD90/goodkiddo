@@ -1,5 +1,6 @@
 import type { AssistantStore } from '../persistence/assistant-store.js';
 import type { AssistantConfig } from '../config/assistant-config.js';
+import { miniPageHandler } from './assistant-mini-pages.js';
 import {
   fileGrant,
   grantedFileBytes,
@@ -142,7 +143,24 @@ export function startFileLinkServer(
   return Bun.serve({
     ...FILE_LINK_BIND,
     maxRequestBodySize: 1024,
-    fetch: fileLinkHandler(store),
+    fetch: publicArtifactHandler(config, store),
     error: () => new Response('Service unavailable', { status: 503, headers }),
   });
+}
+
+/** Mini-pages have a separate namespace and never change the attachment-only file handler. */
+export function publicArtifactHandler(
+  config: AssistantConfig,
+  store: AssistantStore,
+) {
+  const files = fileLinkHandler(store);
+  const pages = miniPageHandler(store);
+  return (request: Request): Response => {
+    if (new URL(request.url).pathname.startsWith('/p/')) {
+      if (config.fileShares.enabled && config.miniPages?.enabled)
+        return pages(request);
+      return absent();
+    }
+    return files(request);
+  };
 }

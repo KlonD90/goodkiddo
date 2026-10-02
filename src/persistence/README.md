@@ -4,6 +4,8 @@ This folder owns database schema, migrations, and storage access for GoodKiddo s
 
 ## Main Files
 
+- `assistant-store.ts` — active assistant SQLite entrypoint; existing schemas plus additive `assistant-page-schema.ts`.
+- `assistant-pages.ts`, `assistant-page-expiry.ts` — static mini-page snapshots, same-chat metadata, owner revocation and bounded expiry; snapshot bytes count in shared file quotas.
 - `db.ts` - current SQLite schema setup and persistence helpers
 - `restart-context.ts` - restart-related recovery and resume context
 

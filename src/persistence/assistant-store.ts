@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ASSISTANT_SCHEMA } from './assistant-schema.js';
 import { ASSISTANT_CORE_SCHEMA } from './assistant-core-schema.js';
 import { ASSISTANT_DELIVERY_SCHEMA } from './assistant-delivery-schema.js';
+import { ASSISTANT_PAGE_SCHEMA } from './assistant-page-schema.js';
 import { AssistantMemory } from './assistant-memory.js';
 import { AssistantTodos } from './assistant-todos.js';
 import { AssistantPromptJobs } from './assistant-prompt-jobs.js';
@@ -29,6 +30,7 @@ export class AssistantStore {
     this.db.exec(ASSISTANT_SCHEMA);
     this.db.exec(ASSISTANT_CORE_SCHEMA);
     this.db.exec(ASSISTANT_DELIVERY_SCHEMA);
+    this.db.exec(ASSISTANT_PAGE_SCHEMA);
     this.memory = new AssistantMemory(this.db);
     this.todos = new AssistantTodos(this.db);
     this.promptJobs = new AssistantPromptJobs(this.db, this);

@@ -6,7 +6,7 @@ This is the first single-agent runtime for the 2026-09-29 GoodKiddo handoff. Bot
 
 Included: a bounded tool-calling agent, current web search through Brave, supplied public URL reading, PDF/CSV/XLSX extraction, chat-scoped configured-model image understanding, native rich tables and streamed replies, text answers/reports with sources, persistent one-time reminders, group availability collection, a reminder before the deadline, final tally, cancellation, chat timezone and context, usage limits, optional PostHog events.
 
-Not included: hosted mini-pages, mini-apps, voice transcription without a configured recognizer, recurring reminders, ticket inventory, bookings, payments, participant enumeration, automatic private messages to group members. Search returns current snippets and links, not independently verified live inventory. Users must supply concrete options/deadlines; the agent asks for missing details.
+Optional static mini-pages are restored through `publish_page`, `list_pages` and `revoke_page`; see [mini-pages-restoration.md](mini-pages-restoration.md). Not included: arbitrary user-code execution, interactive mini-apps, ticket inventory, bookings, payments, participant enumeration, automatic private messages to group members. Search returns current snippets and links, not independently verified live inventory. Users must supply concrete options/deadlines; the agent asks for missing details.
 
 ## Entry points and boundaries
 

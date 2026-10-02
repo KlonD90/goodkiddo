@@ -30,6 +30,7 @@ export function fileConfig(): AssistantConfig {
       enabled: false,
       publicBaseUrl: 'https://app.whosagoodkiddo.me',
     },
+    miniPages: { enabled: false },
     botVersion: 'test',
     posthogKey: undefined,
     analyticsSalt: undefined,

@@ -54,6 +54,12 @@ export function loadAssistantConfig() {
     : required('LLM_API_KEY');
   const posthogKey = getEnv('POSTHOG_PROJECT_KEY');
   const analyticsSalt = getEnv('ANALYTICS_SALT');
+  const fileSharesEnabled = getEnv('FILE_SHARES_ENABLED') === 'true';
+  const miniPagesEnabled = getEnv('MINI_PAGES_ENABLED') === 'true';
+  if (miniPagesEnabled && !fileSharesEnabled)
+    throw new Error(
+      'Invalid MINI_PAGES_ENABLED: requires FILE_SHARES_ENABLED=true',
+    );
   // Incomplete optional analytics stays disabled; never hash unsalted IDs.
   return {
     ...loadBrowserConfig(),
@@ -79,8 +85,11 @@ export function loadAssistantConfig() {
     voice: loadVoiceConfig(),
     dbPath: path.resolve(getEnv('ASSISTANT_DB_PATH') || 'store/assistant.db'),
     fileShares: {
-      enabled: getEnv('FILE_SHARES_ENABLED') === 'true',
+      enabled: fileSharesEnabled,
       publicBaseUrl: 'https://app.whosagoodkiddo.me',
+    },
+    miniPages: {
+      enabled: miniPagesEnabled,
     },
     fileLimits: {
       maxFileBytes: boundedInteger(

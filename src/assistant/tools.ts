@@ -39,6 +39,11 @@ import {
   meetingKeyboard,
   meetingResult,
 } from './meetings.js';
+import {
+  pageToolDefinitions,
+  isPageTool,
+  executePageTool,
+} from './page-tools.js';
 
 const schemas = {
   search_web: z.object({ query: z.string().min(2).max(400) }),
@@ -93,6 +98,7 @@ const descriptions: Record<keyof typeof schemas, string> = {
 export function toolDefinitions(
   searchEnabled: boolean,
   sharesEnabled = false,
+  pagesEnabled = false,
 ): LlmTool[] {
   return (Object.keys(schemas) as (keyof typeof schemas)[])
     .filter((key) => key !== 'search_web' || searchEnabled)
@@ -106,6 +112,7 @@ export function toolDefinitions(
     }))
     .concat(
       fileToolDefinitions(sharesEnabled),
+      pageToolDefinitions(sharesEnabled && pagesEnabled),
       webToolDefinitions(),
       attachmentToolDefinitions(),
       visionToolDefinitions(),
@@ -177,6 +184,7 @@ export async function executeTool(
   ctx: ToolContext,
 ): Promise<unknown> {
   const input: unknown = JSON.parse(raw);
+  if (isPageTool(name)) return executePageTool(name, input, ctx);
   if (name === 'read_url') return executeWebTool(input, ctx);
   if (name === 'extract_file')
     return executeAttachmentTool(

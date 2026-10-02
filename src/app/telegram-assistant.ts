@@ -17,6 +17,7 @@ import { advanceAssistantJobs } from '../tasks/assistant-scheduler.js';
 import { acquireAssistantLock } from './assistant-lock.js';
 import { startFileLinkServer } from '../server/assistant-file-links.js';
 import { expireFileGrants } from '../persistence/assistant-file-quota.js';
+import { expireMiniPages } from '../persistence/assistant-page-expiry.js';
 import { BrowserResearchRuntime } from '../assistant/browser-runtime.js';
 
 function delay(ms: number, signal: AbortSignal): Promise<void> {
@@ -84,6 +85,7 @@ async function runService(config: AssistantConfig): Promise<void> {
           advanceAssistantJobs(store, analytics);
           if (Date.now() - lastFileCleanup > 60_000) {
             expireFileGrants(store.db);
+            expireMiniPages(store.db);
             lastFileCleanup = Date.now();
           }
           worker.wake();

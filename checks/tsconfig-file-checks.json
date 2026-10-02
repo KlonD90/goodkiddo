@@ -11,6 +11,8 @@
     "./assistant-browser.check.ts",
     "./assistant-documents.check.ts",
     "./assistant-file-links.check.ts",
+    "./assistant-mini-pages.check.ts",
+    "./assistant-mini-pages-integration.check.ts",
     "./assistant-files-integration.check.ts",
     "../src/assistant/core-state.test.ts",
     "../src/assistant/core-safety.test.ts",
