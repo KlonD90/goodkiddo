@@ -9,11 +9,10 @@ export function fileConfig(): AssistantConfig {
     apiKey: '',
     model: 'synthetic',
     context: {
+      textBudgetEnabled: true,
       windowTokens: 200_000,
       inputTokens: 200_000,
       source: 'synthetic fixture',
-      imageTokens: 1000,
-      imageSource: 'synthetic image fixture',
     },
     provider: 'synthetic',
     inputPrice: 0,

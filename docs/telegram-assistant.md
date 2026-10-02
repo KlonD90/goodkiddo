@@ -52,7 +52,20 @@ Usage is measured after every attempted LLM call. Missing usage/network uncertai
 
 ## Data and operation
 
-Only addressed group messages enter model context. There is no message-count or per-message history clipping limit. The complete request fits min(verified model window, 200,000), with the configured output reserve inside that window. Whole older messages are selected by a conservative token budget and remain searchable in the full chat-scoped archive. After one idle hour a bounded model call produces a semantic summary; the original archive remains intact. Unknown model/image token limits prevent the call. See [context-compaction.md](context-compaction.md) for metadata, accounting and restart behavior. Processed inbox request bodies are erased; pending request bodies stay until processing. Completed jobs, votes and usage metadata remain in the local database. `/clear` removes conversational context and its archive, not the job archive. Backups of this database contain private data.
+Only addressed group messages enter model context. Full user/assistant sources are
+stored without message-count or per-message persistence clipping. With
+`LLM_TEXT_CONTEXT_BUDGET_ENABLED=true` (default off), text-only input selection uses
+whole messages without a count limit and a conservative UTF-8 byte estimate against
+min(verified window, 200000) with output reserve included. This is not an exact model
+tokenizer. Unverified image calls retain the working baseline vision pipeline and its
+bounded input view/financial reservation, even when the text flag is on; their total
+model-token budget is unproven. There is no unknown-image shutdown. After one idle
+hour strict bounded semantic compaction runs independently of the foreground flag,
+preserving the full archive. See [context-compaction.md](context-compaction.md) for
+the requested parent/integrator activation decision and limits. Processed inbox bodies
+are erased; pending bodies stay until processing. Completed jobs, votes and usage
+metadata remain. `/clear` removes conversation and archive, not the job archive.
+Database backups contain private data.
 
 Set valid Telegram credentials, a provider/model with function calling, actual token prices, timezone and optional Brave/PostHog credentials before starting. Changing `src/config/assistant-config.ts` does not alter the existing private `.env`. No production deployment or macOS service re-enablement is part of this implementation.
 

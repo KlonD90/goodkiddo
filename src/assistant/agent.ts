@@ -27,7 +27,10 @@ import {
 } from './core-tools.js';
 import type { ContentSnapshot } from '../providers/assistant-stream.js';
 import { storedImages } from './images.js';
-import { selectHistory } from '../providers/assistant-context-budget.js';
+import {
+  conversationMessages,
+  strictContextEnabled,
+} from '../providers/assistant-context-policy.js';
 import { toolResultContext } from './tool-result-context.js';
 
 export class AssistantTurnLimit extends Error {}
@@ -74,12 +77,13 @@ export async function runAssistant(args: {
     const system: LlmMessage = {
       role: 'system',
       content:
-        assistantPrompt(request, !!config.braveKey) + durableChatContext(ctx),
+        assistantPrompt(request, !!config.braveKey) +
+        durableChatContext(ctx, !strictContextEnabled(config, images)),
     };
     args.onContent?.('');
     const message = await meteredCompletion({
       ...args,
-      messages: selectHistory({
+      messages: conversationMessages({
         system,
         history,
         current: messages,
@@ -150,7 +154,11 @@ export async function runAssistant(args: {
       messages.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: toolResultContext(result, ctx),
+        content: toolResultContext(
+          result,
+          ctx,
+          strictContextEnabled(config, images),
+        ),
       });
     }
     if (message.tool_calls.length > 8)

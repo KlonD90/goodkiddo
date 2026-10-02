@@ -9,8 +9,13 @@ import {
 
 // Keep a complete source rather than cutting arbitrary phrases out of tool JSON.
 // Existing VFS quotas still apply. A quota failure fails the turn safely.
-export function toolResultContext(result: unknown, ctx: ToolContext): string {
+export function toolResultContext(
+  result: unknown,
+  ctx: ToolContext,
+  strict = true,
+): string {
   const content = JSON.stringify(result) ?? 'null';
+  if (!strict) return content;
   if (
     messageTokens({ role: 'tool', content }) <=
     contextLimits(ctx.config).input / 4

@@ -197,6 +197,18 @@ test('real worker wake runs idle compaction silently and repeated wakes do not c
   expect(outbox(s.store)).toEqual([]);
   await worker.stop();
 });
+
+test('full archive and idle compaction remain enabled while the expanded-text flag is off', async () => {
+  const s = fixture();
+  s.config.context.textBudgetEnabled = false;
+  const full = 'Полный исходник '.repeat(2000);
+  s.store.remember(s.chatId, 'user', full);
+  expect(s.store.memory.read(s.chatId, 3)?.content).toBe(full);
+  expect(await compactIdleChat(s)).toBe(true);
+  expect(s.store.history(s.chatId)).toEqual([]);
+  expect(s.store.memory.read(s.chatId, 3)?.content).toBe(full);
+  expect(outbox(s.store)).toEqual([]);
+});
 test('new user message aborts in-flight compaction; ignored abort still cannot commit stale summary', async () => {
   const s = fixture();
   let resolve!: (result: Completion) => void;

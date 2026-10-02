@@ -7,6 +7,7 @@ import type { InboundRequest, LlmMessage } from '../shared/assistant-types.js';
 import type { ContentSnapshot } from '../providers/assistant-stream.js';
 import type { ImageInput } from '../providers/assistant-vision.js';
 import { assertRequestFits } from '../providers/assistant-context-budget.js';
+import { completionInputEstimate } from '../providers/assistant-context-policy.js';
 
 export class BudgetExceeded extends Error {
   constructor(
@@ -73,6 +74,7 @@ export async function meteredCompletion(args: {
   signal: AbortSignal;
   onContent?: ContentSnapshot;
   images?: ImageInput[];
+  forceContextBudget?: boolean;
 }): Promise<LlmMessage> {
   const {
     store,
@@ -92,12 +94,9 @@ export async function meteredCompletion(args: {
     throw new BudgetExceeded(
       'Достигнут лимит обращений к модели в этой задаче. Сохранённые задания остаются в /tasks.',
     );
-  const estimatedInput = assertRequestFits(
-    messages,
-    tools,
-    config,
-    args.images,
-  );
+  const estimatedInput = args.forceContextBudget
+    ? assertRequestFits(messages, tools, config, args.images)
+    : completionInputEstimate(messages, tools, config, args.images);
   const reserved =
     (estimatedInput * config.inputPrice +
       config.maxOutputTokens * config.outputPrice) /

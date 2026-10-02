@@ -10,6 +10,7 @@ export function syntheticConfig(): AssistantConfig {
     apiKey: '',
     model: 'fake',
     context: {
+      textBudgetEnabled: true,
       windowTokens: 200_000,
       inputTokens: 200_000,
       source: 'synthetic fixture',

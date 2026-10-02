@@ -150,6 +150,7 @@ export async function compactIdleChat(args: {
         signal,
         messages,
         tools: [],
+        forceContextBudget: true,
       });
       signal.throwIfAborted();
       if (response.tool_calls?.length)

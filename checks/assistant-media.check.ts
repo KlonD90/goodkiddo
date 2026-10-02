@@ -220,12 +220,14 @@ test('group streams edits then finalizes the same persisted message without a se
     s.store.close();
   }
 });
-test('photo gating, forwarding and current-turn metered image payload stay chat scoped', async () => {
+test('photo pipeline without image-token metadata stays working with the expanded-text flag enabled', async () => {
   const s = setup();
   const original = globalThis.fetch;
   const downloads: string[] = [];
   let modelBody: any;
   const jpeg = Uint8Array.from([255, 216, 255, 224, 0, 0]);
+  expect(s.config.context.textBudgetEnabled).toBe(true);
+  expect(s.config.context.imageTokens).toBeUndefined();
   s.api.downloadDocument = async (id) => {
     downloads.push(id);
     return jpeg;
@@ -291,7 +293,7 @@ test('photo gating, forwarding and current-turn metered image payload stay chat 
     s.store.close();
   }
 });
-test('media tool dispatch preserves file dispatch and limits metered vision calls', async () => {
+test('describe_image without image-token metadata preserves file dispatch and model-call cap', async () => {
   const s = setup();
   s.analytics.start('test', s.chat, '3', 'other', 'user');
   const ctx: ToolContext = {

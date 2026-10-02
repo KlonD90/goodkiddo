@@ -12,6 +12,12 @@ import {
   selectHistory,
 } from '../src/providers/assistant-context-budget.js';
 import type { LlmMessage } from '../src/shared/assistant-types.js';
+import {
+  conversationMessages,
+  completionInputEstimate,
+  strictContextEnabled,
+} from '../src/providers/assistant-context-policy.js';
+import { CompatibleAssistantLlm } from '../src/providers/assistant-llm.js';
 
 const system: LlmMessage = { role: 'system', content: 'instructions' };
 const current: LlmMessage[] = [{ role: 'user', content: 'latest request' }];
@@ -36,9 +42,34 @@ test('official pinned metadata resolves model window; unknown model requires evi
   expect(known.windowTokens).toBe(1_048_576);
   expect(known.inputTokens).toBe(524_288);
   expect(known.source).toBe(SPACE_BUNNY_METADATA.source);
+  expect(known.textBudgetEnabled).toBe(false);
+  expect(
+    loadContextConfig(
+      'https://opencode.ai/inference/openai/v1',
+      'space-bunny-free',
+      (key) => (key === 'LLM_TEXT_CONTEXT_BUDGET_ENABLED' ? 'true' : undefined),
+    ).textBudgetEnabled,
+  ).toBe(true);
   expect(() =>
-    loadContextConfig('https://example.invalid', 'unknown', empty),
+    loadContextConfig(
+      'https://opencode.ai/inference/openai/v1',
+      'space-bunny-free',
+      (key) => (key === 'LLM_TEXT_CONTEXT_BUDGET_ENABLED' ? 'yes' : undefined),
+    ),
+  ).toThrow('Invalid LLM_TEXT_CONTEXT_BUDGET_ENABLED');
+  expect(() =>
+    loadContextConfig('https://example.invalid', 'unknown', (key) =>
+      key === 'LLM_TEXT_CONTEXT_BUDGET_ENABLED' ? 'true' : undefined,
+    ),
   ).toThrow('Set LLM_CONTEXT_WINDOW');
+  const legacyUnknown = loadContextConfig(
+    'https://example.invalid',
+    'unknown',
+    empty,
+  );
+  expect(legacyUnknown.textBudgetEnabled).toBe(false);
+  expect(legacyUnknown.windowTokens).toBe(0);
+  expect(legacyUnknown.source).toBe('');
   const settings: Record<string, string> = {
     LLM_CONTEXT_WINDOW_TOKENS: '32000',
     LLM_CONTEXT_METADATA_SOURCE:
@@ -58,6 +89,111 @@ test('official pinned metadata resolves model window; unknown model requires evi
   expect(() =>
     loadContextConfig('https://example.invalid', 'unknown', (k) => settings[k]),
   ).toThrow('Invalid');
+});
+
+test('strict expanded text is opt-in; unverified images preserve the legacy request pipeline', () => {
+  const config = syntheticConfig();
+  const history: LlmMessage[] = Array.from({ length: 100 }, (_, i) => ({
+    role: 'user',
+    content: `message-${i}`,
+  }));
+  expect(
+    conversationMessages({ system, current, history, tools, config }),
+  ).toHaveLength(102);
+  config.context.textBudgetEnabled = false;
+  expect(
+    conversationMessages({ system, current, history, tools, config }),
+  ).toHaveLength(25);
+  const image = {
+    filename: 'synthetic.png',
+    mimeType: 'image/png',
+    bytes: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  };
+  config.context.textBudgetEnabled = true;
+  expect(strictContextEnabled(config, [image])).toBe(false);
+  expect(() =>
+    completionInputEstimate(current, tools, config, [image]),
+  ).not.toThrow();
+  expect(
+    conversationMessages({
+      system,
+      current,
+      history,
+      tools,
+      config,
+      images: [image],
+    }),
+  ).toHaveLength(25);
+  config.context.imageTokens = 4096;
+  config.context.imageSource = 'synthetic verified ceiling';
+  expect(strictContextEnabled(config, [image])).toBe(true);
+  expect(
+    conversationMessages({
+      system,
+      current,
+      history,
+      tools,
+      config,
+      images: [image],
+    }),
+  ).toHaveLength(102);
+});
+
+test('real HTTP adapter still sends the original image body without bounds for either text flag state', async () => {
+  const originalFetch = globalThis.fetch;
+  const image = {
+    filename: 'synthetic.png',
+    mimeType: 'image/png',
+    bytes: Uint8Array.from([137, 80, 78, 71, 13, 10, 26, 10]),
+  };
+  const bodies: any[] = [];
+  try {
+    globalThis.fetch = (async (_url: any, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({
+        choices: [
+          {
+            message: {
+              role: 'assistant',
+              content: 'Synthetic photo description',
+            },
+          },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 4 },
+      });
+    }) as typeof fetch;
+    for (const enabled of [false, true]) {
+      const config = syntheticConfig();
+      config.baseUrl = 'https://opencode.ai/inference/openai/v1';
+      config.model = 'space-bunny-free';
+      config.context.textBudgetEnabled = enabled;
+      const llm = new CompatibleAssistantLlm(config);
+      expect(
+        (
+          await llm.complete(
+            current,
+            [],
+            new AbortController().signal,
+            undefined,
+            [image],
+          )
+        ).message.content,
+      ).toBe('Synthetic photo description');
+    }
+    expect(bodies).toHaveLength(2);
+    for (const body of bodies) {
+      expect(body.messages[0].content[1].image_url).toEqual({
+        url:
+          'data:image/png;base64,' +
+          Buffer.from(image.bytes).toString('base64'),
+        detail: 'auto',
+      });
+      expect(body.max_tokens).toBe(100);
+      expect(body.model).toBe('space-bunny-free');
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 test('min(model window,200k) includes output reserve and separate provider input limit', () => {
   const config = syntheticConfig();

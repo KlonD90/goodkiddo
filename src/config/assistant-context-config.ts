@@ -7,6 +7,8 @@ export const SPACE_BUNNY_METADATA = {
     'https://github.com/anomalyco/models.dev/blob/fd6fdfaee0679ba8a8a6ef29def6900751e1061f/providers/opencode/models/space-bunny-free.toml',
 };
 export interface ContextConfig {
+  /** Opt-in strict expanded text context; legacy vision remains compatible without image metadata. */
+  textBudgetEnabled?: boolean;
   windowTokens: number;
   inputTokens: number;
   source: string;
@@ -54,6 +56,9 @@ export function loadContextConfig(
   model: string,
   setting = getEnv,
 ): ContextConfig {
+  const enabled = setting('LLM_TEXT_CONTEXT_BUDGET_ENABLED');
+  if (enabled !== undefined && enabled !== 'true' && enabled !== 'false')
+    throw new Error('Invalid LLM_TEXT_CONTEXT_BUDGET_ENABLED');
   const known =
     [
       'https://opencode.ai/inference/openai/v1',
@@ -65,14 +70,15 @@ export function loadContextConfig(
     throw new Error(
       'Invalid LLM_CONTEXT_WINDOW_TOKENS: requires LLM_CONTEXT_METADATA_SOURCE',
     );
-  if (!known && !override)
+  if (!known && !override && enabled === 'true')
     throw new Error(
       'Set LLM_CONTEXT_WINDOW_TOKENS and LLM_CONTEXT_METADATA_SOURCE for this model',
     );
-  const windowTokens = override ?? SPACE_BUNNY_METADATA.windowTokens;
+  const windowTokens =
+    override ?? (known ? SPACE_BUNNY_METADATA.windowTokens : 0);
   const inputTokens =
     verifiedInteger('LLM_MAX_INPUT_TOKENS', setting) ??
-    (override ? windowTokens : SPACE_BUNNY_METADATA.inputTokens);
+    (override ? windowTokens : known ? SPACE_BUNNY_METADATA.inputTokens : 0);
   if (inputTokens > windowTokens)
     throw new Error('Invalid LLM_MAX_INPUT_TOKENS');
   const imageTokens = verifiedInteger('LLM_IMAGE_TOKEN_UPPER_BOUND', setting);
@@ -85,9 +91,10 @@ export function loadContextConfig(
       'Invalid LLM_IMAGE_TOKEN_UPPER_BOUND: requires LLM_IMAGE_TOKEN_METADATA_SOURCE',
     );
   return {
+    textBudgetEnabled: enabled === 'true',
     windowTokens,
     inputTokens,
-    source: source ?? SPACE_BUNNY_METADATA.source,
+    source: source ?? (known ? SPACE_BUNNY_METADATA.source : ''),
     imageTokens,
     imageSource,
   };

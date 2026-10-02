@@ -190,6 +190,7 @@ test('agent advertises and executes core tools and injects stored memory on next
     maxOutputTokens: 100,
     model: 'fake',
     context: {
+      textBudgetEnabled: true,
       windowTokens: 200_000,
       inputTokens: 200_000,
       source: 'synthetic fixture',

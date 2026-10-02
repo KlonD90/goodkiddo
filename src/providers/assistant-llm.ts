@@ -5,7 +5,7 @@ import {
   type ContentSnapshot,
 } from './assistant-stream.js';
 import { withImages, type ImageInput } from './assistant-vision.js';
-import { assertRequestFits } from './assistant-context-budget.js';
+import { completionInputEstimate } from './assistant-context-policy.js';
 
 export interface LlmTool {
   type: 'function';
@@ -42,7 +42,7 @@ export class CompatibleAssistantLlm implements AssistantLlm {
     onContent?: ContentSnapshot,
     images?: ImageInput[],
   ): Promise<Completion> {
-    assertRequestFits(messages, tools, this.config, images);
+    completionInputEstimate(messages, tools, this.config, images);
     const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
