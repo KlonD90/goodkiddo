@@ -10,7 +10,9 @@ import {
   messageTokens,
   requestTokens,
   selectHistory,
+  textRequestTokens,
 } from '../src/providers/assistant-context-budget.js';
+import { textTokens } from '../src/providers/assistant-token-estimate.js';
 import type { LlmMessage } from '../src/shared/assistant-types.js';
 import {
   conversationMessages,
@@ -213,7 +215,7 @@ test('min(model window,200k) includes output reserve and separate provider input
   config.context = undefined as any;
   expect(() => contextLimits(config)).toThrow('Окно');
 });
-test('whole-request accounting includes system, memory, tools, JSON arguments/results and UTF-8', () => {
+test('whole-request BPE accounting includes system, memory, tools, JSON arguments/results and framing', () => {
   const config = syntheticConfig();
   const messages: LlmMessage[] = [
     system,
@@ -236,12 +238,19 @@ test('whole-request accounting includes system, memory, tools, JSON arguments/re
     },
   ];
   const count = requestTokens(messages, tools, config);
+  expect(count).toBe(Math.ceil(1.25 * textRequestTokens(messages, tools)));
   config.context.windowTokens = count + config.maxOutputTokens;
   expect(assertRequestFits(messages, tools, config)).toBe(count);
   config.context.windowTokens--;
   expect(() => assertRequestFits(messages, tools, config)).toThrow('превышает');
-  expect(messageTokens({ role: 'user', content: '🙂' })).toBeGreaterThan(
-    messageTokens({ role: 'user', content: 'x' }),
+  expect(textTokens('Полный контекст без обрезания.')).toBe(9);
+  expect(textTokens('<|endoftext|>')).toBe(7);
+  const russian = {
+    role: 'user' as const,
+    content: 'Полный контекст без обрезания. '.repeat(100),
+  };
+  expect(messageTokens(russian)).toBeLessThan(
+    Buffer.byteLength(JSON.stringify(russian)) / 2,
   );
   expect(
     requestTokens(
@@ -278,9 +287,30 @@ test('history selection uses tokens with no 12/24-message limit or fragment clip
       history,
       tools,
       config,
-      current: [{ role: 'user', content: 'mandatory'.repeat(1000) }],
+      current: [{ role: 'user', content: 'mandatory '.repeat(3000) }],
     }),
   ).toThrow('превышает');
+});
+test('cached BPE counts invalidate when the same message or schema objects change', () => {
+  const config = syntheticConfig();
+  const message: LlmMessage = { role: 'user', content: 'small source' };
+  const schema = [
+    {
+      type: 'function' as const,
+      function: {
+        name: 'read',
+        description: 'read',
+        parameters: { description: 'small' },
+      },
+    },
+  ];
+  const before = requestTokens([message], schema, config);
+  message.content = 'complete source fact '.repeat(1000);
+  const longer = requestTokens([message], schema, config);
+  expect(longer).toBeGreaterThan(before);
+  schema[0].function.parameters.description =
+    'complete schema requirement '.repeat(100);
+  expect(requestTokens([message], schema, config)).toBeGreaterThan(longer);
 });
 test('unknown image tokenization fails closed; verified vision upper bound is independent of base64 bytes', () => {
   const config = syntheticConfig();

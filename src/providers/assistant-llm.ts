@@ -6,6 +6,12 @@ import {
 } from './assistant-stream.js';
 import { withImages, type ImageInput } from './assistant-vision.js';
 import { completionInputEstimate } from './assistant-context-policy.js';
+import {
+  LlmRequestError,
+  providerRequestError,
+  readRequestError,
+} from './assistant-llm-error.js';
+export { LlmRequestError } from './assistant-llm-error.js';
 
 export interface LlmTool {
   type: 'function';
@@ -18,11 +24,6 @@ export interface LlmTool {
 export interface Completion {
   message: LlmMessage;
   usage?: { prompt_tokens?: number; completion_tokens?: number; cost?: number };
-}
-export class LlmRequestError extends Error {
-  constructor(readonly status: number) {
-    super(`LLM request failed (${status})`);
-  }
 }
 export interface AssistantLlm {
   complete(
@@ -63,19 +64,16 @@ export class CompatibleAssistantLlm implements AssistantLlm {
       }),
       signal: AbortSignal.any([signal, AbortSignal.timeout(90_000)]),
     });
-    if (!response.ok) throw new LlmRequestError(response.status);
+    if (!response.ok) throw await readRequestError(response);
     if (onContent) return readCompletionStream(response, signal, onContent);
     const data = (await response.json()) as {
       choices?: { message: LlmMessage }[];
       usage?: Completion['usage'];
       error?: unknown;
     };
+    if (data.error) throw providerRequestError(200, data);
     const message = data.choices?.[0]?.message;
-    if (
-      data.error ||
-      !message ||
-      (!message.content && !message.tool_calls?.length)
-    )
+    if (!message || (!message.content && !message.tool_calls?.length))
       throw new LlmRequestError(502);
     return {
       message: {

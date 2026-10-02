@@ -144,6 +144,7 @@ async function executeResearch(
           tools: definitions,
           onContent: undefined,
           images: undefined,
+          callLimit: ctx.config.maxCalls - 1,
         });
       },
     });

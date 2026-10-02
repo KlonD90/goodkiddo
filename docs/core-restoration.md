@@ -7,7 +7,7 @@ TODOs have open/done/dismissed states and author-only mutation; they do not impl
 Memory records hold facts/preferences/skills and also require their author's permission to change.
 
 The original checkpoint kept 24 messages and an extractive digest. [context-compaction.md](context-compaction.md)
-adds opt-in expanded text budgeting and always-on idle semantic compaction; the
+adds opt-in calibrated BPE text budgeting, pressure-triggered semantic compaction and always-on idle compaction; the
 legacy foreground/vision input view remains available for compatibility. Complete available
 source messages remain archived and searchable within their chat. Lasting facts should still
 be saved explicitly; summaries and original sources remain historical data. The full injected

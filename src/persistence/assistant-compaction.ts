@@ -3,6 +3,7 @@ import type { Database } from 'bun:sqlite';
 import type { LlmMessage } from '../shared/assistant-types.js';
 
 export const IDLE_COMPACTION_MS = 60 * 60 * 1000;
+export type CompactionTrigger = 'idle' | 'pressure';
 export interface CompactionSnapshot {
   chatId: string;
   generation: number;
@@ -17,7 +18,15 @@ export class AssistantCompactionState {
       chat_id TEXT PRIMARY KEY, last_user_at INTEGER, generation INTEGER NOT NULL DEFAULT 0,
       attempted_generation INTEGER NOT NULL DEFAULT -1, claim_token TEXT,
       status TEXT NOT NULL DEFAULT 'pending', updated_at INTEGER NOT NULL
+      , trigger TEXT NOT NULL DEFAULT 'idle'
     );`);
+    const columns = db
+      .query('PRAGMA table_info(assistant_compaction)')
+      .all() as { name: string }[];
+    if (!columns.some((column) => column.name === 'trigger'))
+      db.exec(
+        "ALTER TABLE assistant_compaction ADD COLUMN trigger TEXT NOT NULL DEFAULT 'idle'",
+      );
     // On first upgrade restore complete archived sources instead of trusting the
     // legacy first-800-character digest. Persisted compaction state prevents
     // re-expanding already compacted chats on every restart.
@@ -58,6 +67,7 @@ export class AssistantCompactionState {
           `SELECT c.chat_id FROM assistant_compaction c
       JOIN assistant_chats chat ON chat.id=c.chat_id AND chat.active=1
       WHERE c.last_user_at<=? AND c.generation!=c.attempted_generation
+      AND c.claim_token IS NULL
       AND EXISTS (SELECT 1 FROM assistant_history h WHERE h.chat_id=c.chat_id)
       AND NOT EXISTS (SELECT 1 FROM assistant_inbox i WHERE i.status IN ('pending','processing')
         AND json_extract(i.request,'$.chat.id')=c.chat_id)
@@ -66,9 +76,33 @@ export class AssistantCompactionState {
         .all(now - IDLE_COMPACTION_MS) as { chat_id: string }[]
     ).map((r) => r.chat_id);
   }
-  claim(chatId: string, now = Date.now()): CompactionSnapshot | undefined {
+  status(
+    chatId: string,
+  ): { status: string; trigger: CompactionTrigger } | undefined {
+    return this.db
+      .query('SELECT status,trigger FROM assistant_compaction WHERE chat_id=?')
+      .get(chatId) as
+      | { status: string; trigger: CompactionTrigger }
+      | undefined;
+  }
+  claim(
+    chatId: string,
+    now = Date.now(),
+    trigger: CompactionTrigger = 'idle',
+  ): CompactionSnapshot | undefined {
     return this.db.transaction(() => {
-      if (!this.due(now).includes(chatId)) return undefined;
+      const eligible =
+        trigger === 'idle'
+          ? this.due(now).includes(chatId)
+          : !!this.db
+              .query(
+                `SELECT c.chat_id FROM assistant_compaction c
+         JOIN assistant_chats chat ON chat.id=c.chat_id AND chat.active=1
+         WHERE c.chat_id=? AND c.generation!=c.attempted_generation AND c.claim_token IS NULL
+         AND EXISTS (SELECT 1 FROM assistant_history h WHERE h.chat_id=c.chat_id)`,
+              )
+              .get(chatId);
+      if (!eligible) return undefined;
       const token = randomUUID();
       const row = this.db
         .query('SELECT generation FROM assistant_compaction WHERE chat_id=?')
@@ -76,9 +110,9 @@ export class AssistantCompactionState {
       this.db
         .query(
           `UPDATE assistant_compaction SET attempted_generation=generation,
-        claim_token=?,status='running',updated_at=? WHERE chat_id=?`,
+        claim_token=?,status='running',updated_at=?,trigger=? WHERE chat_id=?`,
         )
-        .run(token, now, chatId);
+        .run(token, now, trigger, chatId);
       const rows = this.db
         .query(
           'SELECT id,role,content FROM assistant_history WHERE chat_id=? ORDER BY id',

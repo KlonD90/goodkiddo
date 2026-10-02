@@ -1,211 +1,199 @@
-# Context budget and idle compaction checkpoint
+# Context budget and semantic compaction handoff
 
-Baseline: `7e0bf94d820fd26c02d948fa8af5c4706f59cad6`, production source on
+Exact development baseline: `7e0bf94d820fd26c02d948fa8af5c4706f59cad6`, on
 `restoration/2026-10-02-mini-pages`, release `release20261002-7e0bf94-mini-pages`.
-Development checkout: `/workspace/goodkiddo-context`, branch
-`feature/2026-10-02-token-context`. Historical `main` is not the integration base.
-No production change, credential access, live Telegram trial or paid model call is part of this checkpoint.
+Branch: `feature/2026-10-02-token-context`. Historical main is not the integration base.
+VFS browser/native analytics release `a679944` is maintained separately by the integrator.
+This branch does not replace that release or duplicate its features.
 
-**Not release-ready without the parent/integrator decision below.** The first checkpoint
-`d5837a0` blocked unverified image calls; the compatibility follow-up supersedes that
-behavior and preserves the working image pipeline. No production flag is changed.
+The owner has accepted an approximate 200000-token budget with margin, provider usage
+feedback, working images and full source retention. The previous pending approval for
+this compromise is superseded. Production rollout remains the responsibility of
+integrator `01a0f11c-6c99-72cb-bca0-2866fe4650d0`; no deployment, credential access,
+Telegram trial or model generation call was performed in this checkout.
 
-## Verified limits and configuration
+## Activation and defaults
 
-OpenCode's own model catalog identifies `space-bunny-free` with context **1,048,576**,
-input **524,288**, output **524,288**, and zero token prices. Evidence is pinned to
-[anomalyco/models.dev commit fd6fdfa](https://github.com/anomalyco/models.dev/blob/fd6fdfaee0679ba8a8a6ef29def6900751e1061f/providers/opencode/models/space-bunny-free.toml),
-retrieved 2026-10-02; the entry was last updated 2026-09-23. The catalog is also at
-[models.opencode.ai](https://models.opencode.ai/providers/opencode).
-[OpenCode's documentation](https://opencode.ai/docs/zen/) lists this alias and the
-models endpoint; `/zen/v1/models` lists IDs but does not expose context limits.
-The legacy `/inference/openai/v1/models` could not be read in this environment.
-The implementation pins the provider's published limits for the known OpenCode alias/routes;
-it does not infer the window from `LLM_MAX_OUTPUT_TOKENS`.
-
-Expanded strict text context is opt-in; default is **off**:
+Enable the completed expanded text path explicitly:
 
 ```dotenv
 LLM_TEXT_CONTEXT_BUDGET_ENABLED=true
 ```
 
-With this flag on for text-only calls, the total cap is `min(context.windowTokens, 200000)`. Input must also fit the
-published input ceiling and `total - LLM_MAX_OUTPUT_TOKENS`. With the approved
-runtime reserve of **1800**, this means input budget **198200**, including all
-system/prompt text, full injected summary/memory/TODO data, history, function names,
-arguments, schemas/results and protocol overhead.
-
-No exact tokenizer for the anonymous model is published. Text budgeting uses
-serialized UTF-8 bytes plus conservative framing (1024 per request, 32 per message),
-an upper estimate for byte/subword tokenization rather than characters divided by four.
-Actual provider usage continues to settle the existing reservation and usage ledger.
-This can retain fewer than 198200 actual text tokens; it never advertises an exact
-model tokenizer. Unknown windows fail before a strict HTTP call and before spending.
-
-This is **not an approximate tokenizer calibrated for Space Bunny**, and bytes are
-**not exact tokens**. It assumes byte/subword text tokenization: one input byte is
-charged one conservative budgeting unit, with JSON escaping and extra framing. The
-provider has not published this anonymous model's tokenizer, so there is no measured
-Russian-language token utilization claim. At 198200 raw-text bytes, pure Cyrillic
-letters (two UTF-8 bytes each) would fit about 99100 letters BEFORE any prompt, schema,
-summary or JSON overhead; spaces, punctuation and emoji change the character count.
-That letter count does not say how many model tokens are used.
-
-Conditional examples only: if the real tokenizer averaged 2, 4 or 6 bytes per token
-on a particular Russian input, 198200 text bytes would consume about 99100, 49550 or
-33033 input tokens (49.6%, 24.8% or 16.5% of 200000). These ratios are **not measured
-for this model** and omit framing/output. The actual fraction can only be calculated
-from authoritative tokenizer counts or provider usage; no live model calls were made.
-
-Before enabling strict context for another model or a changed route, the integrator must provide the actual window
-and an inspectable HTTPS metadata reference, bound to the configured model:
+Its code default stays **false**, for reversible integration. Idle compaction remains
+active for known-window models with either flag value. Pressure compaction is enabled
+by the same text flag; there is no separate scheduler/service/automation or retry flag.
+Keep these existing approved values (also their code defaults), without increasing them:
 
 ```dotenv
-LLM_CONTEXT_WINDOW_TOKENS=<verified context window>
-LLM_CONTEXT_METADATA_SOURCE=https://<official metadata or documentation>
-LLM_MAX_INPUT_TOKENS=<verified separate input limit if lower>
+LLM_MAX_OUTPUT_TOKENS=1800
+LLM_MAX_CALLS_PER_TASK=6
 ```
 
-With the flag off, missing metadata does not break the baseline provider configuration.
-It is represented as unknown (window/input zero, no source), never a guessed 200000.
-Idle compaction cannot issue a call for an unknown window and preserves source/history.
+Do not change provider, credentials, configured prices, monthly/daily quotas, search
+limits or the separate Whisper maximum of **$5 per month Asia/Tbilisi**. No paid
+provider fallback is added. This handoff does not request any new credentials.
 
-The cap of 200000 is fixed; increasing the override cannot raise it. Output, call,
-search, daily and monthly financial limits remain the existing settings. The public
-free provider is unchanged. There is no fallback to another or paid model.
+## Published model limits and the explicitly approximate estimator
 
-**Vision budget limitation, without disabling vision:** OpenCode confirms multimodal
-input; no anonymous-model image tokenizer or image-token formula was found in the
-official sources checked. The official model registry/docs were rechecked; no documented image-counting
-endpoint, low-detail formula or equivalent model-specific mode was found.
-The existing image path still accepts and sends the same valid PNG/JPEG/WebP payload
-with `detail=auto`, the same output/call/day/month/byte limits, and the same provider.
-Both Telegram photos and `describe_image` keep working without an image override,
-with the text-context flag either off or on. No additional provider is enabled.
+The current pinned [models.dev Space Bunny entry](https://github.com/anomalyco/models.dev/blob/1af490fab48e51f098eb79d4cdf57802b04d251f/providers/opencode/models/space-bunny-free.toml)
+records context **1048576**, input/output **524288**, multimodal input and zero catalog
+prices. The limits are bound to the known `space-bunny-free` OpenCode routes.
+[Inference documentation](https://opencode.ai/v2/docs/console/inference/) gives the
+working metadata endpoint `/inference/v1/models`; it lists IDs, not tokenizer/window
+metadata. The catalog still describes the model as anonymous. The owner's
+MiniMax M3.1 Flash lead was checked; no official alias/tokenizer binding was established.
+This implementation does not guess its hidden model or use another provider's credentials.
 
-Without verified image metadata, image-bearing calls retain the **baseline** bounded
-input view (24 recent dialogue messages, 12000-character per-message input view,
-8000-character summary view, 30 memory views of 1200 characters and 30 TODOs) and
-baseline financial reservation. These are input views only: persistence is full and
-idle semantic compaction remains active. The new unlimited-message strict context
-selection is NOT silently applied to this compatibility vision path. Its aggregate
-model-token budget remains **unproven**; no claim that image requests fit 200000 or
-that base64 is image tokens is made.
+Total budget is `min(model window,200000)`; input is also limited by the published
+provider input ceiling and `total - max output`. The approved configuration therefore
+allows **198200 estimated input tokens**, with **1800 reserved inside** the 200000 total.
+All system/prompt/durable summary/memory/TODO text, history, tool names, arguments,
+schemas and results count. Images with a verified bound count separately as below.
 
-The baseline reservation includes UTF-8 request bytes plus base64-size overhead. This
-is retained solely as its existing conservative FINANCIAL heuristic, never as verified
-image context accounting. Actual usage settles the reservation when available; missing
-usage remains marked `usage_estimated=true`. No financial ceiling is raised.
+`js-tiktoken@1.0.21` is an exact dependency/lockfile pin. Only its local `o200k_base`
+ranks are imported and bundled; no tokenizer network fetch occurs at runtime.
+The estimator is explicitly named **`o200k_base_proxy_128_v1`**, not a native Space
+Bunny tokenizer. Token-looking user strings are ordinary data. Counting uses Unicode-safe
+128-character windows to bound JS BPE work on huge words; this can add boundary overhead.
+Submitted/source text is unchanged. Counts are cached with serialization checks, so
+mutated messages/schemas cannot reuse stale counts. This is tokenization, not bytes=token.
 
-If official evidence later supplies a verified per-image upper bound covering EVERY
-accepted PNG/JPEG/WebP <=5 MiB, all dimensions and `detail=auto`, these optional settings
-allow image calls to join strict aggregate accounting when the text flag is on:
+Raw estimate = BPE counts of serialized messages and tool schemas + **1024 request
+framing** + **32 per message**. Estimated text input = `ceil(scale * raw estimate)`.
+The initial scale is **1.25**. Valid complete text-only `usage.prompt_tokens` observations
+raise it to `max(previous,1.25,1.1*actual/raw)`; it never decreases. Cached input remains
+part of context. The scale and estimator kind persist in `assistant_state` under a
+hashed endpoint/model/estimator scope, without source text. Restart retains calibration;
+model/route/estimator changes cannot reuse another scope's calibration. Missing, invalid
+or image-bearing usage does not calibrate the text proxy.
+
+**Limitation:** neither this proxy nor usage received after a call guarantees the native
+model's first-request token count. A provider overflow error protects the provider's
+larger window, not our 200000 ceiling. The owner accepted this practical estimate.
+No exact-token or measured Space Bunny Russian utilization claim is made.
+
+For a different/unknown model, verified window configuration remains required when the
+text flag is enabled:
 
 ```dotenv
-LLM_IMAGE_TOKEN_UPPER_BOUND=<verified maximum tokens per accepted image>
-LLM_IMAGE_TOKEN_METADATA_SOURCE=https://<official evidence for that bound>
+LLM_CONTEXT_WINDOW_TOKENS=<verified window>
+LLM_CONTEXT_METADATA_SOURCE=https://<inspectable official evidence>
+LLM_MAX_INPUT_TOKENS=<separate input limit if lower>
 ```
 
-Do not guess another provider's vision formula. Tests cover unknown-metadata legacy
-vision through the actual mocked HTTP adapter, Telegram intake, worker and the image
-tool; synthetic verified-bound accounting remains tested separately.
+No overrides are required for the known configured Space Bunny route. Unknown-window
+strict calls fail before HTTP/spending; flag-off baseline startup is preserved. The
+fixed cap cannot be raised by an override. Idle failure preserves all source context.
 
-## History and source retention
+## Two semantic compaction triggers
 
-With the expanded text flag on, the old 24-message window (the code's real limit)
-and per-message input clipping are removed for text-only requests. The compatibility
-input view is retained while the flag is off and for unverified vision. No extractive first-800-character digest is produced. Every new user and
-assistant message is stored in full in `assistant_history_archive`; upgrading cannot
-recover content already discarded by the old implementation.
-On first upgrade the retained history is rebuilt from the available archive so the
-first semantic pass consumes full old sources instead of trusting the old extractive
-digest. Persisted per-chat state prevents re-expanding compacted chats on restart.
+**Idle:** one hour without addressed user activity in that chat, after normal worker
+queue processing. Messages, commands and buttons reset activity before async intake;
+unaddressed group messages and duplicate updates do not. Persisted activity survives
+restart; legacy sources receive a one-hour startup grace period.
 
-Before each strict foreground call, whole earlier messages are selected by their conservative budgeting cost.
-The latest request, current tool exchanges and system/durable data are mandatory.
-An explicit notice identifies omitted older whole messages and their archive tools.
-An oversized mandatory request fails safely, with source/history preserved.
-All strict metered callers, including brief-only research, use the final total-budget
-guard; the HTTP adapter guards strict direct calls too. Compatibility calls retain
-the baseline reservation. Idle compaction always enforces the strict text budget,
-independently of the foreground text flag. Research keeps its existing shared six-call
-budget and isolation; no research/provider selection change is made here.
+**Pressure:** before each expanded foreground model call, the entire prospective
+request is checked BEFORE selecting a bounded history suffix. At **95% of the input
+budget** (188290 estimated input with the approved reserve), semantic compaction is
+attempted. This also covers a prospective request already exceeding the total cap;
+it does not wait for provider rejection. After success the foreground request uses
+the fresh attributed semantic summary and refreshed active history. The latest user
+request and live assistant/tool exchanges remain mandatory.
 
-In strict text mode an oversized foreground tool result is stored as complete JSON under the current
-chat's `/context/tool-results/` VFS path; the model sees a bounded source reference,
-not arbitrary chopped phrases. Existing VFS byte/file quotas still apply. The
-read-only `context_result_read` pages the exact JSON by character offset, including
-very long single-line strings, so no middle text becomes unreachable through the
-existing line-based reader. `history_read` resolves exact archive source IDs within
-the current chat. Source reads remain subject to the same aggregate request budget.
+Both triggers share the same additive `assistant_compaction` state, generation guard
+and claim token. The additive `trigger` column distinguishes idle/pressure outcomes.
+A concurrent wake cannot steal a running claim, even after new activity changes its
+generation. Success, failure and interrupted attempts are not replayed for unchanged
+context, including after restart. New source/activity permits a later attempt.
 
-Compaction does not remove the archive, explicit memory, TODOs, tasks or source files.
-The existing deliberate `/clear` behavior still deletes history/archive/summary and
-cancels in-flight context; it preserves VFS files, explicit memory and jobs. Generated
-tool-result source files follow that same VFS retention policy and quota.
+The model receives labelled COMPLETE source segments with IDs and UTF-16 offsets,
+plus the prior summary. Every segment must be processed before a commit. Segment
+sizes/batches use the same calibrated BPE budget. Validated JSON retains facts with
+attribution, decisions, open tasks/questions and original URLs/paths; the application
+adds the earliest/latest full archive IDs. Source/summary instructions are untrusted
+historical data. No tools are exposed during semantic compaction.
 
-## Idle behavior, concurrency and recovery
+Summary replacement and active-history removal are one SQLite transaction requiring
+matching generation, claim token, active chat and prior summary. New activity, clear,
+cancellation, shutdown or changed summary invalidates/aborts the attempt; an ignored
+provider abort cannot commit stale output. The full archive is never deleted by
+compaction. Explicit memory, TODOs, jobs and VFS source files remain unchanged.
 
-An additive `assistant_compaction` table stores per-chat last user activity, generation,
-attempted generation and claim status/token. Addressed messages, commands and buttons
-reset the idle hour before asynchronous intake. Unaddressed group messages do not.
-Replayed Telegram updates do not reset activity. Persisted state survives restart;
-legacy histories with no recorded activity state get a one-hour startup grace period.
+Pressure calls share the foreground task's usage, configured/scheduled spend scope
+and six-call limit; they reserve one remaining slot for its answer. They never start
+or finish a separate foreground run. Idle calls retain their normal bounded task and
+chat/day/month accounting. Multi-batch failures leave old summary/history/archive
+intact. Neither trigger emits a user message announcing compaction.
 
-The existing worker checks for idle chats after normal queued/scheduled turns. No
-external automation, separate service or interval making unconditional model calls
-is created. A claim is persisted before calling the model. Repeated wakes and restarts
-do not retry an unchanged successful, failed or ambiguous interrupted generation.
-New user activity or genuinely changed source permits a future attempt.
+On failure/busy/no source or exhausted compaction allowance, foreground history falls
+back to whole-message token selection. The system context contains an explicit safe
+`Semantic compaction status`, and persisted status remains inspectable. Full sources
+stay accessible through chat-scoped `history_search`/`history_read`. Oversized mandatory
+context fails safely; no repeated compaction loop or arbitrary phrase clipping occurs.
 
-The model receives a previous summary and labelled complete source segments with
-IDs and offsets. Every segment must be processed before commit. The prompt asks for
-facts with attribution, decisions, open tasks/questions, exact source URLs/paths,
-uncertainty and cancellations. Validated JSON has facts/decisions/open_tasks/sources;
-the application adds the durable original archive ID range. Subsequent summaries keep
-the earliest source ID. The model is given no tools; source/summary instructions are
-explicitly historical data, never active instructions or authorization.
+## Overflow retry, tools and finance
 
-Summary replacement and removal of summarized rows from the active history happen
-in one SQLite transaction only if the claim token, generation, active chat and previous
-summary still match. New activity aborts idle work; `/clear`, shutdown and cancellation
-abort it too. A provider ignoring abort cannot commit stale output. A changed manual
-summary invalidates commit. Source failure, invalid JSON, tool calls, token overflow
-or exhausted budget leave the existing summary, active history and archive unchanged.
+Only explicit structured context-overflow codes or narrow token-window error messages
+allow one smaller retry **per task**, persisted across restart. Ordinary HTTP 400/413,
+image body-size failures, auth, quota and rate-limit errors do not qualify. Error bodies
+are read with a 16 KiB bound and never retained/logged. HTTP, JSON and SSE error events
+use the same safe classification.
 
-Large sources can require several bounded calls but share the normal per-task maximum
-(six in the approved runtime), per-chat daily quota, monthly spend reservations and
-usage accounting. If all segments cannot be summarized within that allowance, no
-partial summary is committed. Failed/blocked attempts do not retry every idle hour;
-future activity is required. A persisted `status` makes this inspectable locally.
-The separate Whisper maximum of **$5 per month Asia/Tbilisi** is unchanged.
-Compaction and its restart recovery never enqueue user progress/failure notifications.
+The retry halves this failed request's estimated input allowance. Foreground history
+is rebuilt as whole messages while preserving the current request and live tool
+calls/results. Completed tools are not re-executed. Semantic compaction returns deferred
+source segments to its queue, retries a smaller batch and consumes every segment before
+commit. A request that cannot safely shrink is not resent unchanged. A second overflow
+fails. All attempts, including failures/retries, count toward the same six calls and
+financial reservation; research preserves its outer synthesis slot.
 
-## Integration and deployment handoff
+Context token units and FINANCIAL allowance are separate. The latter remains at least
+the baseline conservative request-byte/base64-size reservation, and at least the BPE
+estimate. This heuristic is not a statement about image/model tokens. Actual valid
+provider usage/cost settles the ledger; missing/ambiguous failures keep the reservation
+and `usage_estimated=true`. No cap is relaxed to fund compaction or retries.
 
-Only integrator `01a0f11c-6c99-72cb-bca0-2866fe4650d0` may coordinate a production
-deployment. Integrate the checkpoint onto the exact production baseline above, not
-historical main. VFS browser and native PostHog work belong to the other workers;
-preserve their changes when resolving shared agent/worker/config/store files.
+A large foreground tool result is stored as COMPLETE JSON in this chat's
+`/context/tool-results/` VFS, subject to existing quotas. A bounded pointer replaces
+inline content, without a chopped excerpt. Inline admission also considers remaining
+mandatory tool-chain budget, not just each result independently. `context_result_read`
+provides exact paginated Unicode-safe reads, including long single-line strings.
+Tool side effects never repeat because of compaction or overflow recovery.
 
-**Decision requested through the parent:** allow activation of
-`LLM_TEXT_CONTEXT_BUDGET_ENABLED=true` for expanded text context while explicitly
-accepting the unchanged legacy vision path with an unproven aggregate token budget,
-or keep the foreground flag off until image/tokenizer evidence is available?
-The default is off; the worker does not modify production configuration. Neither
-choice grants a complete 200000-token guarantee for unverified vision. Archive and
-idle compaction are retained in both modes. Do not label this checkpoint release-ready
-without the parent/integrator decision.
+## Working images and retention
 
-Review the pinned model metadata and this vision limitation before release. Do not change
-credentials, prices, output/call limits or Whisper cap to work around a blocked call.
-There is no mandatory override for the known `space-bunny-free` route. No schema
-replacement is needed: the new table is created additively by `AssistantStore`.
-Back up the existing private assistant database through the integrator's approved
-procedure before release. Rollback should restore the prior executable without
-deleting the new table or full archive; old code will resume its old history limits.
+Photos and `describe_image` keep the existing valid PNG/JPEG/WebP, 5 MiB, at-most-two
+images, `detail=auto` path with either flag value. No unknown-image shutdown is added.
+Without official image counting metadata, image-bearing requests retain the baseline
+24-message/12000-character bounded input view, bounded durable views and conservative
+financial allowance. The aggregate vision token count remains **unproven**; base64
+length is never used to claim a context fit. This compatibility exception is explicit.
 
-Mocked verification commands (Bun 1.3.11; no provider traffic):
+Optional verified image bounds (covering EVERY accepted dimension and auto detail)
+can later enable aggregate BPE-plus-image admission with the text flag:
+
+```dotenv
+LLM_IMAGE_TOKEN_UPPER_BOUND=<verified bound per accepted image>
+LLM_IMAGE_TOKEN_METADATA_SOURCE=https://<official evidence>
+```
+
+Do not guess a MiniMax/OpenAI image formula for this anonymous alias. Image usage does
+not alter the text calibration. Full user/assistant archive persistence and idle
+compaction remain enabled in compatibility mode. `/clear` retains its deliberate
+history/archive/summary deletion and cancellation behavior; VFS, explicit memory and
+saved tasks follow their existing retention policy. Already-discarded legacy text
+cannot be reconstructed, but available old archive sources are restored once on upgrade.
+
+## Integration and verification
+
+Integrate the cumulative feature commits from exact `7e0bf94`, preserving the already
+separate VFS/native analytics release. Shared agent/budget/store/docs files need careful
+merge; no production action is authorized to this worker. The integrator should use
+the approved private-database backup procedure before activation. Rollback may disable
+the text flag or restore the prior executable without deleting new tables/archive.
+
+Mocked checks (no generation/provider traffic):
 
 ```bash
 bun test ./checks/*.check.ts checks/analytics src/assistant/core-state.test.ts src/assistant/core-safety.test.ts src/assistant/prompt-jobs.test.ts
@@ -216,21 +204,16 @@ bun run test
 bun run typecheck
 ```
 
-The first checkpoint had **170 Bun checks pass**, including **23 context/compaction checks**.
-The compatibility follow-up adds flag/default, working unknown-metadata photo/tool/HTTP
-flow and flag-off archive/idle tests; final counts are in the completion handoff. This includes
-existing voice ($5 cap), VFS, mini-pages, delivery, research, recurring jobs and analytics.
-Both focused typechecks and the build pass.
+Final verification: **194 Bun tests pass across 21 files**, including **47 context/compaction tests**; both focused typechecks pass; build passes (467 modules, 5.60 MB). Vitest again reports 704 passing tests / 69 passing suites and the same three baseline failures; global typecheck reports the same TS2493. No provider generation call was made. Checkpoint SHA is in the completion handoff. Context checks cover BPE
+boundary/cap/output reserve, full request/tool admission, no text message-count limit,
+persisted upward feedback, safe retry/finance/call limits, pressure threshold and actual
+semantic replacement, huge tool sources, both trigger orders, failure fallback,
+restart/additive migration, clear/cancel/activity races and archive/chat isolation.
+Existing media/Whisper/VFS/mini-pages/delivery/research/jobs/analytics checks are included.
 
-Compatibility follow-up: **173 Bun checks pass**, including **26 context/compaction
-checks**. Actual mocked HTTP image payload is tested for both flag states without
-image-token metadata; Telegram photo and `describe_image` integration tests also run
-without an override. The full archive and idle compaction are tested with the
-foreground flag off. Both focused typechecks and the build pass. No paid calls.
-
-The last two baseline-wide commands have pre-existing blockers, reproduced in a
-separate exact-7e0bf94 checkout: Vitest runs 704 tests successfully but cannot import
-`bun:test` in three existing assistant suites; global typecheck reports
-`src/capabilities/browser/job.test.ts:49` TS2493 (empty mock tuple). The Bun assistant
-suites are run directly above; the active application typecheck and build pass.
-Detailed final verification counts and checkpoint SHA are in the completion handoff.
+Known baseline-wide blockers, previously reproduced at exact `7e0bf94`: Vitest passes
+704 tests but cannot import `bun:test` in three existing assistant suites; global
+typecheck reports `src/capabilities/browser/job.test.ts:49` TS2493 (empty mock tuple).
+Those assistant suites run directly with Bun; active application/checks typechecks
+and build are checked separately. Do not call either baseline-wide command passing
+unless these unrelated baseline issues are repaired in the integration branch.

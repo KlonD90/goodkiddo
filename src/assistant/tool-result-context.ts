@@ -6,6 +6,8 @@ import {
   contextLimits,
   messageTokens,
 } from '../providers/assistant-context-budget.js';
+import { contextEstimateConfig } from '../persistence/assistant-context-estimate.js';
+import { estimateScale } from '../providers/assistant-token-estimate.js';
 
 // Keep a complete source rather than cutting arbitrary phrases out of tool JSON.
 // Existing VFS quotas still apply. A quota failure fails the turn safely.
@@ -13,12 +15,15 @@ export function toolResultContext(
   result: unknown,
   ctx: ToolContext,
   strict = true,
+  inlineLimit?: number,
 ): string {
   const content = JSON.stringify(result) ?? 'null';
   if (!strict) return content;
+  const config = contextEstimateConfig(ctx.store, ctx.config);
   if (
-    messageTokens({ role: 'tool', content }) <=
-    contextLimits(ctx.config).input / 4
+    Math.ceil(
+      estimateScale(config) * messageTokens({ role: 'tool', content }),
+    ) <= Math.min(contextLimits(config).input / 4, inlineLimit ?? Infinity)
   )
     return content;
   const source = new AssistantFiles(ctx.store.db, ctx.config.fileLimits).write(

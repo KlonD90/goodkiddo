@@ -28,6 +28,15 @@ export function completionInputEstimate(
 ): number {
   if (strictContextEnabled(config, images))
     return assertRequestFits(messages, tools, config, images);
+  return financialInputAllowance(messages, tools, images);
+}
+
+// Preserve the baseline conservative FINANCIAL reservation separately from BPE context units.
+export function financialInputAllowance(
+  messages: LlmMessage[],
+  tools: LlmTool[],
+  images: ImageInput[] = [],
+): number {
   return (
     Buffer.byteLength(JSON.stringify({ messages, tools }), 'utf8') +
     1024 +

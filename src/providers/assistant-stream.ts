@@ -1,5 +1,6 @@
 import type { LlmMessage, ToolCall } from '../shared/assistant-types.js';
 import type { Completion } from './assistant-llm.js';
+import { providerRequestError } from './assistant-llm-error.js';
 
 export type ContentSnapshot = (text: string) => void;
 interface StreamDelta {
@@ -46,7 +47,7 @@ export async function readCompletionStream(
         finish_reason?: string | null;
       }[];
     };
-    if (payload.error) throw new Error('Provider stream error');
+    if (payload.error) throw providerRequestError(200, payload);
     if (payload.usage) usage = payload.usage;
     const choice = payload.choices?.find((item) => (item.index || 0) === 0);
     if (!choice) return;

@@ -54,15 +54,15 @@ Usage is measured after every attempted LLM call. Missing usage/network uncertai
 
 Only addressed group messages enter model context. Full user/assistant sources are
 stored without message-count or per-message persistence clipping. With
-`LLM_TEXT_CONTEXT_BUDGET_ENABLED=true` (default off), text-only input selection uses
-whole messages without a count limit and a conservative UTF-8 byte estimate against
-min(verified window, 200000) with output reserve included. This is not an exact model
-tokenizer. Unverified image calls retain the working baseline vision pipeline and its
-bounded input view/financial reservation, even when the text flag is on; their total
-model-token budget is unproven. There is no unknown-image shutdown. After one idle
-hour strict bounded semantic compaction runs independently of the foreground flag,
-preserving the full archive. See [context-compaction.md](context-compaction.md) for
-the requested parent/integrator activation decision and limits. Processed inbox bodies
+`LLM_TEXT_CONTEXT_BUDGET_ENABLED=true` (default off), whole text messages are selected
+by a local BPE proxy, initial 25% margin and persisted upward provider-usage feedback.
+The total min(verified window, 200000) includes the output reserve. Semantic compaction
+runs before 95% input-budget pressure; idle-hour compaction remains active independently
+of the flag. Both preserve the full archive and share a per-chat claim/generation guard.
+Pressure and its one-per-task overflow retry share existing call/spend limits. Unverified
+images retain the working baseline vision input view and financial reservation; their
+aggregate native-token budget remains unproven. See [context-compaction.md](context-compaction.md)
+for the approved approximate-budget activation and integration handoff. Processed inbox bodies
 are erased; pending bodies stay until processing. Completed jobs, votes and usage
 metadata remain. `/clear` removes conversation and archive, not the job archive.
 Database backups contain private data.

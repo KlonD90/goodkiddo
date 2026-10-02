@@ -398,6 +398,7 @@ test('failed summary is not replayed on restart, and changed summary invalidates
 
 test('compaction failure after a later source chunk leaves all original context and archive intact', async () => {
   const s = fixture();
+  s.config.context.windowTokens = 50_000;
   s.store.remember(s.chatId, 'user', 'Long source facts '.repeat(20000));
   let calls = 0;
   s.llm = {
@@ -467,6 +468,7 @@ test('monthly and daily limits stop compaction before model call; usage stays bo
 });
 test('long sources are summarized across bounded calls; all source segments are consumed before atomic commit', async () => {
   const s = fixture();
+  s.config.context.windowTokens = 50_000;
   const full = 'α🙂 large fact. '.repeat(18000);
   s.store.remember(s.chatId, 'user', full);
   const pieces: string[] = [];
@@ -491,6 +493,7 @@ test('long sources are summarized across bounded calls; all source segments are 
 });
 test('shared model-call ceiling prevents partial compaction from discarding unsummarized source', async () => {
   const s = fixture();
+  s.config.context.windowTokens = 50_000;
   s.config.maxCalls = 1;
   s.store.remember(s.chatId, 'user', 'large full source '.repeat(20000));
   let calls = 0;

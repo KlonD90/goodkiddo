@@ -32,6 +32,16 @@ import {
   strictContextEnabled,
 } from '../providers/assistant-context-policy.js';
 import { toolResultContext } from './tool-result-context.js';
+import { contextEstimateConfig } from '../persistence/assistant-context-estimate.js';
+import { compactPressureChat } from './idle-compaction.js';
+import {
+  contextUnderPressure,
+  compactionFallbackNotice,
+} from './context-pressure.js';
+import {
+  contextLimits,
+  requestTokens,
+} from '../providers/assistant-context-budget.js';
 
 export class AssistantTurnLimit extends Error {}
 export async function runAssistant(args: {
@@ -73,6 +83,7 @@ export async function runAssistant(args: {
     assertCurrentContext(store, request);
     assertScheduledTurn(store, request);
     args.signal.throwIfAborted();
+    let estimatedConfig = contextEstimateConfig(store, config);
     // Refresh time/timezone after a tool changes the chat settings.
     const system: LlmMessage = {
       role: 'system',
@@ -80,6 +91,33 @@ export async function runAssistant(args: {
         assistantPrompt(request, !!config.braveKey) +
         durableChatContext(ctx, !strictContextEnabled(config, images)),
     };
+    if (
+      contextUnderPressure(
+        [system, ...history, ...messages],
+        tools,
+        estimatedConfig,
+        images,
+      )
+    ) {
+      const compacted = await compactPressureChat({
+        ...args,
+        chatId: request.chat.id,
+      });
+      assertCurrentContext(store, request);
+      assertScheduledTurn(store, request);
+      args.signal.throwIfAborted();
+      if (compacted)
+        history.splice(0, history.length, ...store.history(request.chat.id));
+      estimatedConfig = contextEstimateConfig(store, config);
+      system.content =
+        assistantPrompt(request, !!config.braveKey) +
+        durableChatContext(ctx, !strictContextEnabled(config, images)) +
+        (compacted
+          ? ''
+          : compactionFallbackNotice(
+              store.compaction.status(request.chat.id)?.status ?? 'unavailable',
+            ));
+    }
     args.onContent?.('');
     const message = await meteredCompletion({
       ...args,
@@ -88,11 +126,21 @@ export async function runAssistant(args: {
         history,
         current: messages,
         tools,
-        config,
+        config: estimatedConfig,
         images,
       }),
       tools,
       images,
+      rebuildContext: (retryConfig, inputLimit) =>
+        conversationMessages({
+          system,
+          history,
+          current: messages,
+          tools,
+          config: retryConfig,
+          images,
+          inputLimit,
+        }),
       onContent: args.onContent
         ? (snapshot) => {
             assertCurrentContext(store, request);
@@ -158,6 +206,19 @@ export async function runAssistant(args: {
           result,
           ctx,
           strictContextEnabled(config, images),
+          strictContextEnabled(config, images)
+            ? Math.max(
+                0,
+                (contextLimits(estimatedConfig).input -
+                  requestTokens(
+                    [system, ...messages],
+                    tools,
+                    estimatedConfig,
+                    images,
+                  )) /
+                  2,
+              )
+            : undefined,
         ),
       });
     }

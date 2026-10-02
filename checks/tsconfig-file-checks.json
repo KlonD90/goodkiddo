@@ -8,6 +8,8 @@
   "include": [
     "./assistant-files.check.ts",
     "./assistant-context-budget.check.ts",
+    "./assistant-context-completion.check.ts",
+    "./assistant-context-pressure.check.ts",
     "./assistant-idle-compaction.check.ts",
     "./assistant-research.check.ts",
     "./assistant-browser.check.ts",

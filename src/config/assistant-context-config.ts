@@ -4,11 +4,13 @@ export const SPACE_BUNNY_METADATA = {
   windowTokens: 1_048_576,
   inputTokens: 524_288,
   source:
-    'https://github.com/anomalyco/models.dev/blob/fd6fdfaee0679ba8a8a6ef29def6900751e1061f/providers/opencode/models/space-bunny-free.toml',
+    'https://github.com/anomalyco/models.dev/blob/1af490fab48e51f098eb79d4cdf57802b04d251f/providers/opencode/models/space-bunny-free.toml',
 };
 export interface ContextConfig {
-  /** Opt-in strict expanded text context; legacy vision remains compatible without image metadata. */
+  /** Opt-in expanded text context using an explicitly approximate local BPE proxy. */
   textBudgetEnabled?: boolean;
+  /** Runtime calibration loaded from persistence; never configured below the initial 1.25 margin. */
+  estimateScale?: number;
   windowTokens: number;
   inputTokens: number;
   source: string;
